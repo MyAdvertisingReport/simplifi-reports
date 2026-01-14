@@ -1,0 +1,2114 @@
+{
+  "orgId": 515498,
+  "orgName": "Advanced Spinal Fitness",
+  "fetchedAt": "2026-01-13T19:01:29.518Z",
+  "totalTemplates": 189,
+  "categories": {
+    "Ad/Campaign Reporting": [
+      {
+        "template_id": "26627",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Conversion by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "26628",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Conversion by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "26573",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Conversion by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "26574",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Conversion by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "26607",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "26606",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "26602",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "26603",
+        "category": "Ad/Campaign Reporting",
+        "title": "Account Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "361662",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Account Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "26940",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Ad Performance",
+        "description": ""
+      },
+      {
+        "template_id": "26942",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Ad Performance  by Day",
+        "description": ""
+      },
+      {
+        "template_id": "26945",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Campaign Performance",
+        "description": ""
+      },
+      {
+        "template_id": "26944",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Campaign Performance by Day",
+        "description": ""
+      },
+      {
+        "template_id": "26948",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Conversions by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "26949",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Conversions by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "48542",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Pacing Report",
+        "description": ""
+      },
+      {
+        "template_id": "674007",
+        "category": "Ad/Campaign Reporting",
+        "title": "Organization Pacing Report with Reach and Frequency",
+        "description": ""
+      },
+      {
+        "template_id": "772285",
+        "category": "Ad/Campaign Reporting",
+        "title": "Underspending Campaigns Report",
+        "description": ""
+      }
+    ],
+    "Addressable Geo-Fence Reporting": [
+      {
+        "template_id": "129084",
+        "category": "Addressable Geo-Fence Reporting",
+        "title": "Zip+4 Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "129085",
+        "category": "Addressable Geo-Fence Reporting",
+        "title": "Zip+4 Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Audio Interaction Reporting": [
+      {
+        "template_id": "807851",
+        "category": "Audio Interaction Reporting",
+        "title": "Audio Interaction by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "807865",
+        "category": "Audio Interaction Reporting",
+        "title": "Audio Interaction by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "807866",
+        "category": "Audio Interaction Reporting",
+        "title": "Audio Interaction by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "807873",
+        "category": "Audio Interaction Reporting",
+        "title": "Audio Interaction by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "808101",
+        "category": "Audio Interaction Reporting",
+        "title": "Audio Interaction by Deal ID",
+        "description": ""
+      },
+      {
+        "template_id": "805541",
+        "category": "Audio Interaction Reporting",
+        "title": "Context Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805598",
+        "category": "Audio Interaction Reporting",
+        "title": "Context Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "805612",
+        "category": "Audio Interaction Reporting",
+        "title": "Device Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805614",
+        "category": "Audio Interaction Reporting",
+        "title": "Device Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "805616",
+        "category": "Audio Interaction Reporting",
+        "title": "Domain Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805620",
+        "category": "Audio Interaction Reporting",
+        "title": "Domain Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "805622",
+        "category": "Audio Interaction Reporting",
+        "title": "Geo Fencing Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805624",
+        "category": "Audio Interaction Reporting",
+        "title": "Geo Fencing Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "805628",
+        "category": "Audio Interaction Reporting",
+        "title": "Keyword Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805630",
+        "category": "Audio Interaction Reporting",
+        "title": "Keyword Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "805633",
+        "category": "Audio Interaction Reporting",
+        "title": "Location Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805634",
+        "category": "Audio Interaction Reporting",
+        "title": "Location Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "807843",
+        "category": "Audio Interaction Reporting",
+        "title": "Organization Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "807848",
+        "category": "Audio Interaction Reporting",
+        "title": "Organization Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "805667",
+        "category": "Audio Interaction Reporting",
+        "title": "Segment Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805668",
+        "category": "Audio Interaction Reporting",
+        "title": "Segment Audio Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "805675",
+        "category": "Audio Interaction Reporting",
+        "title": "Zip+4 Audio Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "805677",
+        "category": "Audio Interaction Reporting",
+        "title": "Zip+4 Audio Interaction by Day",
+        "description": ""
+      }
+    ],
+    "Context Reporting": [
+      {
+        "template_id": "53588",
+        "category": "Context Reporting",
+        "title": "Context Conversion by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53589",
+        "category": "Context Reporting",
+        "title": "Context Conversion by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53585",
+        "category": "Context Reporting",
+        "title": "Context Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53584",
+        "category": "Context Reporting",
+        "title": "Context Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53582",
+        "category": "Context Reporting",
+        "title": "Context Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53583",
+        "category": "Context Reporting",
+        "title": "Context Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53586",
+        "category": "Context Reporting",
+        "title": "Organization Context Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53587",
+        "category": "Context Reporting",
+        "title": "Organization Context Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Data Provider Reporting": [
+      {
+        "template_id": "53590",
+        "category": "Data Provider Reporting",
+        "title": "Data Provider Performance",
+        "description": ""
+      },
+      {
+        "template_id": "53591",
+        "category": "Data Provider Reporting",
+        "title": "Data Provider Performance by Day",
+        "description": ""
+      }
+    ],
+    "Device Reporting": [
+      {
+        "template_id": "53594",
+        "category": "Device Reporting",
+        "title": "Device Type by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53595",
+        "category": "Device Reporting",
+        "title": "Device Type by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53593",
+        "category": "Device Reporting",
+        "title": "Device Type by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53592",
+        "category": "Device Reporting",
+        "title": "Device Type by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53596",
+        "category": "Device Reporting",
+        "title": "Organization Device Type by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53597",
+        "category": "Device Reporting",
+        "title": "Organization Device Type by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Domain Reporting": [
+      {
+        "template_id": "53598",
+        "category": "Domain Reporting",
+        "title": "Domain Conversions by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53599",
+        "category": "Domain Reporting",
+        "title": "Domain Conversions by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53601",
+        "category": "Domain Reporting",
+        "title": "Domain Conversions by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53600",
+        "category": "Domain Reporting",
+        "title": "Domain Conversions by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53605",
+        "category": "Domain Reporting",
+        "title": "Domain Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53604",
+        "category": "Domain Reporting",
+        "title": "Domain Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53602",
+        "category": "Domain Reporting",
+        "title": "Domain Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53603",
+        "category": "Domain Reporting",
+        "title": "Domain Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53613",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Conversions by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53612",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Conversions by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53610",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Conversions by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53611",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Conversions by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53606",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53607",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53609",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53608",
+        "category": "Domain Reporting",
+        "title": "Organization Domain Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Dynamic Ad Reporting": [
+      {
+        "template_id": "677479",
+        "category": "Dynamic Ad Reporting",
+        "title": "Organization Dynamic Click Ad Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "677481",
+        "category": "Dynamic Ad Reporting",
+        "title": "Organization Dynamic Click Ad Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "677478",
+        "category": "Dynamic Ad Reporting",
+        "title": "Organization Dynamic Impression Ad Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "677480",
+        "category": "Dynamic Ad Reporting",
+        "title": "Organization Dynamic Impression Ad Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Geo-Fence Reporting": [
+      {
+        "template_id": "87451",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Conversion Lift Statistics by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "87452",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Conversion Lift Statistics by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53614",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53615",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "63552",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Ad by Target and Conversion Fence",
+        "description": ""
+      },
+      {
+        "template_id": "63553",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Ad by Target and Conversion Fence by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53617",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53616",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "63550",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Campaign by Target and Conversion Fence",
+        "description": ""
+      },
+      {
+        "template_id": "63551",
+        "category": "Geo-Fence Reporting",
+        "title": "Geo Fencing by Campaign by Target and Conversion Fence by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53618",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53619",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "63555",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Conversion Fence by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "63556",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Conversion Fence by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53620",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Geo-Fence by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53621",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Geo-Fence by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "63557",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Target and Conversion Fence by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "63558",
+        "category": "Geo-Fence Reporting",
+        "title": "Organization Geo-Fencing Conversions by Target and Conversion Fence by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Hourly Reporting": [
+      {
+        "template_id": "26878",
+        "category": "Hourly Reporting",
+        "title": "Hourly Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "26877",
+        "category": "Hourly Reporting",
+        "title": "Hourly Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "26875",
+        "category": "Hourly Reporting",
+        "title": "Hourly Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "26876",
+        "category": "Hourly Reporting",
+        "title": "Hourly Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "27085",
+        "category": "Hourly Reporting",
+        "title": "Organization Hourly Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "27086",
+        "category": "Hourly Reporting",
+        "title": "Organization Hourly Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Insights Reports": [
+      {
+        "template_id": "87445",
+        "category": "Insights Reports",
+        "title": "Audience Insights by Campaign",
+        "description": ""
+      }
+    ],
+    "IP Reporting": [
+      {
+        "template_id": "62359",
+        "category": "IP Reporting",
+        "title": "IP Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "62357",
+        "category": "IP Reporting",
+        "title": "IP Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "62355",
+        "category": "IP Reporting",
+        "title": "IP Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "62356",
+        "category": "IP Reporting",
+        "title": "IP Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Keyword Reporting": [
+      {
+        "template_id": "53626",
+        "category": "Keyword Reporting",
+        "title": "Keyword Conversions by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53627",
+        "category": "Keyword Reporting",
+        "title": "Keyword Conversions by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53625",
+        "category": "Keyword Reporting",
+        "title": "Keyword Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53624",
+        "category": "Keyword Reporting",
+        "title": "Keyword Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53622",
+        "category": "Keyword Reporting",
+        "title": "Keyword Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53623",
+        "category": "Keyword Reporting",
+        "title": "Keyword Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53628",
+        "category": "Keyword Reporting",
+        "title": "Organization Keyword Conversions by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53629",
+        "category": "Keyword Reporting",
+        "title": "Organization Keyword Conversions by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53630",
+        "category": "Keyword Reporting",
+        "title": "Organization Keyword Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53631",
+        "category": "Keyword Reporting",
+        "title": "Organization Keyword Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53632",
+        "category": "Keyword Reporting",
+        "title": "Organization Keyword Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53633",
+        "category": "Keyword Reporting",
+        "title": "Organization Keyword Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Location Based Reporting": [
+      {
+        "template_id": "53637",
+        "category": "Location Based Reporting",
+        "title": "Location Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53636",
+        "category": "Location Based Reporting",
+        "title": "Location Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53634",
+        "category": "Location Based Reporting",
+        "title": "Location Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53635",
+        "category": "Location Based Reporting",
+        "title": "Location Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "319518",
+        "category": "Location Based Reporting",
+        "title": "Organization Location Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "319523",
+        "category": "Location Based Reporting",
+        "title": "Organization Location Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53638",
+        "category": "Location Based Reporting",
+        "title": "Organization Location Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53639",
+        "category": "Location Based Reporting",
+        "title": "Organization Location Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "319519",
+        "category": "Location Based Reporting",
+        "title": "Organization Postal Code Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "319520",
+        "category": "Location Based Reporting",
+        "title": "Organization Postal Code Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "319522",
+        "category": "Location Based Reporting",
+        "title": "Organization Postal Code Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "319521",
+        "category": "Location Based Reporting",
+        "title": "Organization Postal Code Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53640",
+        "category": "Location Based Reporting",
+        "title": "Postal Code Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53641",
+        "category": "Location Based Reporting",
+        "title": "Postal Code Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53643",
+        "category": "Location Based Reporting",
+        "title": "Postal Code Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53642",
+        "category": "Location Based Reporting",
+        "title": "Postal Code Performance by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Reach and Frequency Reporting": [
+      {
+        "template_id": "1017237",
+        "category": "Reach and Frequency Reporting",
+        "title": "Reach and Frequency Performance",
+        "description": ""
+      }
+    ],
+    "Retail Performance Reporting": [
+      {
+        "template_id": "319525",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "319526",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "319528",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "319527",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "319529",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance with Markup by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "319530",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance with Markup by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "319532",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance with Markup by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "319531",
+        "category": "Retail Performance Reporting",
+        "title": "Organization Retail Performance with Markup by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53644",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53645",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53647",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53646",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53648",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance with Markup by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53649",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance with Markup by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53651",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance with Markup by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53650",
+        "category": "Retail Performance Reporting",
+        "title": "Retail Performance with Markup by Campaign by Day",
+        "description": ""
+      }
+    ],
+    "Segment Reporting": [
+      {
+        "template_id": "53654",
+        "category": "Segment Reporting",
+        "title": "Data Provider Segment Inventory",
+        "description": ""
+      },
+      {
+        "template_id": "53655",
+        "category": "Segment Reporting",
+        "title": "Data Provider Segment Inventory by Day",
+        "description": ""
+      },
+      {
+        "template_id": "361670",
+        "category": "Segment Reporting",
+        "title": "Organization Data Provider Segment Inventory by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53652",
+        "category": "Segment Reporting",
+        "title": "Organization Segment Performance",
+        "description": ""
+      },
+      {
+        "template_id": "53653",
+        "category": "Segment Reporting",
+        "title": "Organization Segment Performance by Day",
+        "description": ""
+      }
+    ],
+    "Video Interaction Reporting": [
+      {
+        "template_id": "177937",
+        "category": "Video Interaction Reporting",
+        "title": "Context Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "177967",
+        "category": "Video Interaction Reporting",
+        "title": "Context Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "177986",
+        "category": "Video Interaction Reporting",
+        "title": "Device Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "177984",
+        "category": "Video Interaction Reporting",
+        "title": "Device Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "177969",
+        "category": "Video Interaction Reporting",
+        "title": "Domain Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "177970",
+        "category": "Video Interaction Reporting",
+        "title": "Domain Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "177981",
+        "category": "Video Interaction Reporting",
+        "title": "Geo Fencing Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "177982",
+        "category": "Video Interaction Reporting",
+        "title": "Geo Fencing Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "177973",
+        "category": "Video Interaction Reporting",
+        "title": "Keyword Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "177972",
+        "category": "Video Interaction Reporting",
+        "title": "Keyword Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "177988",
+        "category": "Video Interaction Reporting",
+        "title": "Location Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "177989",
+        "category": "Video Interaction Reporting",
+        "title": "Location Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "12057",
+        "category": "Video Interaction Reporting",
+        "title": "Organization Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "12058",
+        "category": "Video Interaction Reporting",
+        "title": "Organization Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "656202",
+        "category": "Video Interaction Reporting",
+        "title": "Segment Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "656208",
+        "category": "Video Interaction Reporting",
+        "title": "Segment Video Interaction by Day",
+        "description": ""
+      },
+      {
+        "template_id": "12105",
+        "category": "Video Interaction Reporting",
+        "title": "Video Interaction by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "12104",
+        "category": "Video Interaction Reporting",
+        "title": "Video Interaction by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "12102",
+        "category": "Video Interaction Reporting",
+        "title": "Video Interaction by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "12103",
+        "category": "Video Interaction Reporting",
+        "title": "Video Interaction by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "178001",
+        "category": "Video Interaction Reporting",
+        "title": "Zip+4 Video Interaction",
+        "description": ""
+      },
+      {
+        "template_id": "178000",
+        "category": "Video Interaction Reporting",
+        "title": "Zip+4 Video Interaction by Day",
+        "description": ""
+      }
+    ],
+    "Viewability Reporting": [
+      {
+        "template_id": "361672",
+        "category": "Viewability Reporting",
+        "title": "Organization Viewability by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "105318",
+        "category": "Viewability Reporting",
+        "title": "Viewability Average by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "105320",
+        "category": "Viewability Reporting",
+        "title": "Viewability Average by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "105322",
+        "category": "Viewability Reporting",
+        "title": "Viewability Average by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "105323",
+        "category": "Viewability Reporting",
+        "title": "Viewability Average by Campaign by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53678",
+        "category": "Viewability Reporting",
+        "title": "Viewability by Ad",
+        "description": ""
+      },
+      {
+        "template_id": "53679",
+        "category": "Viewability Reporting",
+        "title": "Viewability by Ad by Day",
+        "description": ""
+      },
+      {
+        "template_id": "53681",
+        "category": "Viewability Reporting",
+        "title": "Viewability by Campaign",
+        "description": ""
+      },
+      {
+        "template_id": "53680",
+        "category": "Viewability Reporting",
+        "title": "Viewability by Campaign by Day",
+        "description": ""
+      }
+    ]
+  },
+  "recommended": [
+    {
+      "id": "26627",
+      "title": "Account Conversion by Ad",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26628",
+      "title": "Account Conversion by Ad by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26573",
+      "title": "Account Conversion by Campaign",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26574",
+      "title": "Account Conversion by Campaign by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26607",
+      "title": "Account Performance by Ad",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26606",
+      "title": "Account Performance by Ad by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26602",
+      "title": "Account Performance by Campaign",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26603",
+      "title": "Account Performance by Campaign by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "361662",
+      "title": "Organization Account Performance by Campaign by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26940",
+      "title": "Organization Ad Performance",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26942",
+      "title": "Organization Ad Performance  by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26945",
+      "title": "Organization Campaign Performance",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26944",
+      "title": "Organization Campaign Performance by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26948",
+      "title": "Organization Conversions by Campaign",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "26949",
+      "title": "Organization Conversions by Campaign by Day",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "772285",
+      "title": "Underspending Campaigns Report",
+      "category": "Ad/Campaign Reporting"
+    },
+    {
+      "id": "129084",
+      "title": "Zip+4 Performance by Campaign",
+      "category": "Addressable Geo-Fence Reporting"
+    },
+    {
+      "id": "129085",
+      "title": "Zip+4 Performance by Campaign by Day",
+      "category": "Addressable Geo-Fence Reporting"
+    },
+    {
+      "id": "807865",
+      "title": "Audio Interaction by Ad by Day",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "807866",
+      "title": "Audio Interaction by Campaign",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "807873",
+      "title": "Audio Interaction by Campaign by Day",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "805622",
+      "title": "Geo Fencing Audio Interaction",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "805624",
+      "title": "Geo Fencing Audio Interaction by Day",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "805633",
+      "title": "Location Audio Interaction",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "805634",
+      "title": "Location Audio Interaction by Day",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "53588",
+      "title": "Context Conversion by Campaign",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53589",
+      "title": "Context Conversion by Campaign by Day",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53585",
+      "title": "Context Performance by Ad",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53584",
+      "title": "Context Performance by Ad by Day",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53582",
+      "title": "Context Performance by Campaign",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53583",
+      "title": "Context Performance by Campaign by Day",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53586",
+      "title": "Organization Context Performance by Campaign",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53587",
+      "title": "Organization Context Performance by Campaign by Day",
+      "category": "Context Reporting"
+    },
+    {
+      "id": "53590",
+      "title": "Data Provider Performance",
+      "category": "Data Provider Reporting"
+    },
+    {
+      "id": "53591",
+      "title": "Data Provider Performance by Day",
+      "category": "Data Provider Reporting"
+    },
+    {
+      "id": "53595",
+      "title": "Device Type by Ad by Day",
+      "category": "Device Reporting"
+    },
+    {
+      "id": "53593",
+      "title": "Device Type by Campaign",
+      "category": "Device Reporting"
+    },
+    {
+      "id": "53592",
+      "title": "Device Type by Campaign by Day",
+      "category": "Device Reporting"
+    },
+    {
+      "id": "53596",
+      "title": "Organization Device Type by Campaign",
+      "category": "Device Reporting"
+    },
+    {
+      "id": "53597",
+      "title": "Organization Device Type by Campaign by Day",
+      "category": "Device Reporting"
+    },
+    {
+      "id": "53598",
+      "title": "Domain Conversions by Ad",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53599",
+      "title": "Domain Conversions by Ad by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53601",
+      "title": "Domain Conversions by Campaign",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53600",
+      "title": "Domain Conversions by Campaign by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53605",
+      "title": "Domain Performance by Ad",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53604",
+      "title": "Domain Performance by Ad by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53602",
+      "title": "Domain Performance by Campaign",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53603",
+      "title": "Domain Performance by Campaign by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53613",
+      "title": "Organization Domain Conversions by Ad",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53612",
+      "title": "Organization Domain Conversions by Ad by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53610",
+      "title": "Organization Domain Conversions by Campaign",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53611",
+      "title": "Organization Domain Conversions by Campaign by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53606",
+      "title": "Organization Domain Performance by Ad",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53607",
+      "title": "Organization Domain Performance by Ad by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53609",
+      "title": "Organization Domain Performance by Campaign",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "53608",
+      "title": "Organization Domain Performance by Campaign by Day",
+      "category": "Domain Reporting"
+    },
+    {
+      "id": "677479",
+      "title": "Organization Dynamic Click Ad Performance by Campaign",
+      "category": "Dynamic Ad Reporting"
+    },
+    {
+      "id": "677481",
+      "title": "Organization Dynamic Click Ad Performance by Campaign by Day",
+      "category": "Dynamic Ad Reporting"
+    },
+    {
+      "id": "677478",
+      "title": "Organization Dynamic Impression Ad Performance by Campaign",
+      "category": "Dynamic Ad Reporting"
+    },
+    {
+      "id": "677480",
+      "title": "Organization Dynamic Impression Ad Performance by Campaign by Day",
+      "category": "Dynamic Ad Reporting"
+    },
+    {
+      "id": "87451",
+      "title": "Geo Conversion Lift Statistics by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "87452",
+      "title": "Geo Conversion Lift Statistics by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53614",
+      "title": "Geo Fencing by Ad",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53615",
+      "title": "Geo Fencing by Ad by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63552",
+      "title": "Geo Fencing by Ad by Target and Conversion Fence",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63553",
+      "title": "Geo Fencing by Ad by Target and Conversion Fence by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53617",
+      "title": "Geo Fencing by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53616",
+      "title": "Geo Fencing by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63550",
+      "title": "Geo Fencing by Campaign by Target and Conversion Fence",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63551",
+      "title": "Geo Fencing by Campaign by Target and Conversion Fence by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53618",
+      "title": "Organization Geo-Fencing Conversions by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53619",
+      "title": "Organization Geo-Fencing Conversions by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63555",
+      "title": "Organization Geo-Fencing Conversions by Conversion Fence by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63556",
+      "title": "Organization Geo-Fencing Conversions by Conversion Fence by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53620",
+      "title": "Organization Geo-Fencing Conversions by Geo-Fence by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53621",
+      "title": "Organization Geo-Fencing Conversions by Geo-Fence by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63557",
+      "title": "Organization Geo-Fencing Conversions by Target and Conversion Fence by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63558",
+      "title": "Organization Geo-Fencing Conversions by Target and Conversion Fence by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "26878",
+      "title": "Hourly Performance by Ad",
+      "category": "Hourly Reporting"
+    },
+    {
+      "id": "26877",
+      "title": "Hourly Performance by Ad by Day",
+      "category": "Hourly Reporting"
+    },
+    {
+      "id": "26875",
+      "title": "Hourly Performance by Campaign",
+      "category": "Hourly Reporting"
+    },
+    {
+      "id": "26876",
+      "title": "Hourly Performance by Campaign by Day",
+      "category": "Hourly Reporting"
+    },
+    {
+      "id": "27085",
+      "title": "Organization Hourly Performance by Campaign",
+      "category": "Hourly Reporting"
+    },
+    {
+      "id": "27086",
+      "title": "Organization Hourly Performance by Campaign by Day",
+      "category": "Hourly Reporting"
+    },
+    {
+      "id": "87445",
+      "title": "Audience Insights by Campaign",
+      "category": "Insights Reports"
+    },
+    {
+      "id": "62359",
+      "title": "IP Performance by Ad",
+      "category": "IP Reporting"
+    },
+    {
+      "id": "62357",
+      "title": "IP Performance by Ad by Day",
+      "category": "IP Reporting"
+    },
+    {
+      "id": "62355",
+      "title": "IP Performance by Campaign",
+      "category": "IP Reporting"
+    },
+    {
+      "id": "62356",
+      "title": "IP Performance by Campaign by Day",
+      "category": "IP Reporting"
+    },
+    {
+      "id": "53626",
+      "title": "Keyword Conversions by Campaign",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53627",
+      "title": "Keyword Conversions by Campaign by Day",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53625",
+      "title": "Keyword Performance by Ad",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53624",
+      "title": "Keyword Performance by Ad by Day",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53622",
+      "title": "Keyword Performance by Campaign",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53623",
+      "title": "Keyword Performance by Campaign by Day",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53628",
+      "title": "Organization Keyword Conversions by Campaign",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53629",
+      "title": "Organization Keyword Conversions by Campaign by Day",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53630",
+      "title": "Organization Keyword Performance by Ad",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53631",
+      "title": "Organization Keyword Performance by Ad by Day",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53632",
+      "title": "Organization Keyword Performance by Campaign",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53633",
+      "title": "Organization Keyword Performance by Campaign by Day",
+      "category": "Keyword Reporting"
+    },
+    {
+      "id": "53637",
+      "title": "Location Performance by Ad",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53636",
+      "title": "Location Performance by Ad by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53634",
+      "title": "Location Performance by Campaign",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53635",
+      "title": "Location Performance by Campaign by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319518",
+      "title": "Organization Location Performance by Ad",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319523",
+      "title": "Organization Location Performance by Ad by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53638",
+      "title": "Organization Location Performance by Campaign",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53639",
+      "title": "Organization Location Performance by Campaign by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319519",
+      "title": "Organization Postal Code Performance by Ad",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319520",
+      "title": "Organization Postal Code Performance by Ad by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319522",
+      "title": "Organization Postal Code Performance by Campaign",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319521",
+      "title": "Organization Postal Code Performance by Campaign by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53640",
+      "title": "Postal Code Performance by Ad",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53641",
+      "title": "Postal Code Performance by Ad by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53643",
+      "title": "Postal Code Performance by Campaign",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53642",
+      "title": "Postal Code Performance by Campaign by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "1017237",
+      "title": "Reach and Frequency Performance",
+      "category": "Reach and Frequency Reporting"
+    },
+    {
+      "id": "319525",
+      "title": "Organization Retail Performance by Ad",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "319526",
+      "title": "Organization Retail Performance by Ad by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "319528",
+      "title": "Organization Retail Performance by Campaign",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "319527",
+      "title": "Organization Retail Performance by Campaign by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "319529",
+      "title": "Organization Retail Performance with Markup by Ad",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "319530",
+      "title": "Organization Retail Performance with Markup by Ad by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "319532",
+      "title": "Organization Retail Performance with Markup by Campaign",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "319531",
+      "title": "Organization Retail Performance with Markup by Campaign by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53644",
+      "title": "Retail Performance by Ad",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53645",
+      "title": "Retail Performance by Ad by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53647",
+      "title": "Retail Performance by Campaign",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53646",
+      "title": "Retail Performance by Campaign by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53648",
+      "title": "Retail Performance with Markup by Ad",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53649",
+      "title": "Retail Performance with Markup by Ad by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53651",
+      "title": "Retail Performance with Markup by Campaign",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53650",
+      "title": "Retail Performance with Markup by Campaign by Day",
+      "category": "Retail Performance Reporting"
+    },
+    {
+      "id": "53652",
+      "title": "Organization Segment Performance",
+      "category": "Segment Reporting"
+    },
+    {
+      "id": "53653",
+      "title": "Organization Segment Performance by Day",
+      "category": "Segment Reporting"
+    },
+    {
+      "id": "177981",
+      "title": "Geo Fencing Video Interaction",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "177982",
+      "title": "Geo Fencing Video Interaction by Day",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "177988",
+      "title": "Location Video Interaction",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "177989",
+      "title": "Location Video Interaction by Day",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "12104",
+      "title": "Video Interaction by Ad by Day",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "12102",
+      "title": "Video Interaction by Campaign",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "12103",
+      "title": "Video Interaction by Campaign by Day",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "361672",
+      "title": "Organization Viewability by Campaign by Day",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "105318",
+      "title": "Viewability Average by Ad",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "105320",
+      "title": "Viewability Average by Ad by Day",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "105322",
+      "title": "Viewability Average by Campaign",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "105323",
+      "title": "Viewability Average by Campaign by Day",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "53678",
+      "title": "Viewability by Ad",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "53679",
+      "title": "Viewability by Ad by Day",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "53681",
+      "title": "Viewability by Campaign",
+      "category": "Viewability Reporting"
+    },
+    {
+      "id": "53680",
+      "title": "Viewability by Campaign by Day",
+      "category": "Viewability Reporting"
+    }
+  ],
+  "geoTemplates": [
+    {
+      "id": "805622",
+      "title": "Geo Fencing Audio Interaction",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "805624",
+      "title": "Geo Fencing Audio Interaction by Day",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "805633",
+      "title": "Location Audio Interaction",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "805634",
+      "title": "Location Audio Interaction by Day",
+      "category": "Audio Interaction Reporting"
+    },
+    {
+      "id": "87451",
+      "title": "Geo Conversion Lift Statistics by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "87452",
+      "title": "Geo Conversion Lift Statistics by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53614",
+      "title": "Geo Fencing by Ad",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53615",
+      "title": "Geo Fencing by Ad by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63552",
+      "title": "Geo Fencing by Ad by Target and Conversion Fence",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63553",
+      "title": "Geo Fencing by Ad by Target and Conversion Fence by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53617",
+      "title": "Geo Fencing by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53616",
+      "title": "Geo Fencing by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63550",
+      "title": "Geo Fencing by Campaign by Target and Conversion Fence",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63551",
+      "title": "Geo Fencing by Campaign by Target and Conversion Fence by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53618",
+      "title": "Organization Geo-Fencing Conversions by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53619",
+      "title": "Organization Geo-Fencing Conversions by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63555",
+      "title": "Organization Geo-Fencing Conversions by Conversion Fence by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63556",
+      "title": "Organization Geo-Fencing Conversions by Conversion Fence by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53620",
+      "title": "Organization Geo-Fencing Conversions by Geo-Fence by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53621",
+      "title": "Organization Geo-Fencing Conversions by Geo-Fence by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63557",
+      "title": "Organization Geo-Fencing Conversions by Target and Conversion Fence by Campaign",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "63558",
+      "title": "Organization Geo-Fencing Conversions by Target and Conversion Fence by Campaign by Day",
+      "category": "Geo-Fence Reporting"
+    },
+    {
+      "id": "53637",
+      "title": "Location Performance by Ad",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53636",
+      "title": "Location Performance by Ad by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53634",
+      "title": "Location Performance by Campaign",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53635",
+      "title": "Location Performance by Campaign by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319518",
+      "title": "Organization Location Performance by Ad",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "319523",
+      "title": "Organization Location Performance by Ad by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53638",
+      "title": "Organization Location Performance by Campaign",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "53639",
+      "title": "Organization Location Performance by Campaign by Day",
+      "category": "Location Based Reporting"
+    },
+    {
+      "id": "177981",
+      "title": "Geo Fencing Video Interaction",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "177982",
+      "title": "Geo Fencing Video Interaction by Day",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "177988",
+      "title": "Location Video Interaction",
+      "category": "Video Interaction Reporting"
+    },
+    {
+      "id": "177989",
+      "title": "Location Video Interaction by Day",
+      "category": "Video Interaction Reporting"
+    }
+  ]
+}
