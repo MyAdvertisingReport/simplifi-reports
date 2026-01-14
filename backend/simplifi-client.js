@@ -534,7 +534,7 @@ class SimplifiClient {
         throw new Error('No download URL found in keywords response');
       }
       
-      // Use native https with browser-like headers
+      // Use native https - try curl's actual default Accept header
       const url = new URL(downloadUrl);
       
       const keywords = await new Promise((resolve, reject) => {
@@ -545,8 +545,7 @@ class SimplifiClient {
           headers: {
             'X-App-Key': this.appKey,
             'X-User-Key': this.userKey,
-            // Mimic curl default behavior - no Accept header restriction
-            'User-Agent': 'curl/7.68.0'
+            'Accept': '*/*'
           }
         };
         
@@ -558,6 +557,7 @@ class SimplifiClient {
           
           console.log(`[SIMPLIFI CLIENT] Response status: ${res.statusCode}`);
           console.log(`[SIMPLIFI CLIENT] Response content-type:`, res.headers['content-type']);
+          console.log(`[SIMPLIFI CLIENT] All response headers:`, JSON.stringify(res.headers));
           
           res.on('data', chunk => {
             data += chunk;
