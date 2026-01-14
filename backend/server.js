@@ -1222,6 +1222,36 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/domain-perform
   }
 });
 
+// Device breakdown endpoint (Report Center)
+app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/device-breakdown', authenticateToken, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json([]); // Return empty array if not initialized
+    }
+    const data = await reportCenterService.getDeviceBreakdown(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json(data || []);
+  } catch (error) {
+    console.error('Device breakdown error:', error);
+    res.json([]); // Return empty on error
+  }
+});
+
+// Viewability endpoint (Report Center)
+app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/viewability', authenticateToken, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json(null); // Return null if not initialized
+    }
+    const data = await reportCenterService.getViewabilityMetrics(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json(data);
+  } catch (error) {
+    console.error('Viewability error:', error);
+    res.json(null); // Return null on error
+  }
+});
+
 // ============================================
 // ERROR HANDLING
 // ============================================
