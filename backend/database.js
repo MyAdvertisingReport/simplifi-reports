@@ -172,6 +172,19 @@ async function initializeDatabase() {
     );
   `);
 
+  db.run(`
+    -- Client assignments (which sales reps can see which clients)
+    CREATE TABLE IF NOT EXISTS client_assignments (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (client_id) REFERENCES clients(id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      UNIQUE(client_id, user_id)
+    );
+  `);
+
   // Save to file
   saveDatabase();
 
@@ -675,6 +688,80 @@ class DatabaseHelper {
     db.run("DELETE FROM report_models WHERE id = ?", [id]);
     saveDatabase();
     return true;
+  }
+
+  // ============================================
+  // CLIENT ASSIGNMENT METHODS
+  // ============================================
+
+  // Assign a client to a user (sales rep)
+  assignClientToUser(clientId, userId) {
+    const id = uuidv4();
+    try {
+      db.run(`
+        INSERT OR IGNORE INTO client_assignments (id, client_id, user_id)
+        VALUES (?, ?, ?)
+      `, [id, clientId, userId]);
+      saveDatabase();
+      return true;
+    } catch (error) {
+      console.error('Error assigning client:', error);
+      return false;
+    }
+  }
+
+  // Remove client assignment
+  unassignClientFromUser(clientId, userId) {
+    db.run("DELETE FROM client_assignments WHERE client_id = ? AND user_id = ?", [clientId, userId]);
+    saveDatabase();
+    return true;
+  }
+
+  // Get all clients assigned to a user
+  getClientsByUserId(userId) {
+    const result = db.exec(`
+      SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
+      FROM clients c
+      JOIN brands b ON c.brand_id = b.id
+      JOIN client_assignments ca ON c.id = ca.client_id
+      WHERE ca.user_id = ?
+      ORDER BY c.name
+    `, [userId]);
+    return rowsToObjects(result);
+  }
+
+  // Get all users assigned to a client
+  getUsersByClientId(clientId) {
+    const result = db.exec(`
+      SELECT u.id, u.email, u.name, u.role
+      FROM users u
+      JOIN client_assignments ca ON u.id = ca.user_id
+      WHERE ca.client_id = ?
+      ORDER BY u.name
+    `, [clientId]);
+    return rowsToObjects(result);
+  }
+
+  // Get all client assignments
+  getAllClientAssignments() {
+    const result = db.exec(`
+      SELECT ca.*, c.name as client_name, u.name as user_name, u.email as user_email
+      FROM client_assignments ca
+      JOIN clients c ON ca.client_id = c.id
+      JOIN users u ON ca.user_id = u.id
+      ORDER BY c.name, u.name
+    `);
+    return rowsToObjects(result);
+  }
+
+  // Check if user has access to client
+  userHasAccessToClient(userId, clientId) {
+    const result = db.exec(`
+      SELECT COUNT(*) as count FROM client_assignments 
+      WHERE user_id = ? AND client_id = ?
+    `, [userId, clientId]);
+    const row = getOne(result);
+    return row && row.count > 0;
   }
 }
 

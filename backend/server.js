@@ -190,7 +190,25 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 app.get('/api/auth/me', authenticateToken, (req, res) => {
-  res.json({ user: req.user });
+  try {
+    // Fetch fresh user data from database instead of using stale JWT data
+    const user = dbHelper.getUserById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    // Don't send password_hash to client
+    res.json({ 
+      user: { 
+        id: user.id, 
+        email: user.email, 
+        name: user.name, 
+        role: user.role 
+      } 
+    });
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({ error: 'Failed to get user' });
+  }
 });
 
 // ============================================
@@ -344,7 +362,13 @@ app.post('/api/brands', authenticateToken, requireAdmin, (req, res) => {
 
 app.get('/api/clients', authenticateToken, (req, res) => {
   try {
-    const clients = dbHelper.getAllClients();
+    let clients;
+    // Admins see all clients, sales reps only see assigned clients
+    if (req.user.role === 'admin') {
+      clients = dbHelper.getAllClients();
+    } else {
+      clients = dbHelper.getClientsByUserId(req.user.id);
+    }
     res.json(clients);
   } catch (error) {
     console.error('Get clients error:', error);
@@ -357,6 +381,10 @@ app.get('/api/clients/:id', authenticateToken, (req, res) => {
     const client = dbHelper.getClientById(req.params.id);
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
+    }
+    // Check access for non-admin users
+    if (req.user.role !== 'admin' && !dbHelper.userHasAccessToClient(req.user.id, req.params.id)) {
+      return res.status(403).json({ error: 'Access denied to this client' });
     }
     res.json(client);
   } catch (error) {
@@ -372,6 +400,69 @@ app.post('/api/clients', authenticateToken, (req, res) => {
   } catch (error) {
     console.error('Create client error:', error);
     res.status(500).json({ error: 'Failed to create client' });
+  }
+});
+
+// ============================================
+// CLIENT ASSIGNMENT ROUTES (Admin only)
+// ============================================
+
+// Get all assignments
+app.get('/api/client-assignments', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const assignments = dbHelper.getAllClientAssignments();
+    res.json(assignments);
+  } catch (error) {
+    console.error('Get assignments error:', error);
+    res.status(500).json({ error: 'Failed to get assignments' });
+  }
+});
+
+// Get users assigned to a specific client
+app.get('/api/clients/:id/assignments', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const users = dbHelper.getUsersByClientId(req.params.id);
+    res.json(users);
+  } catch (error) {
+    console.error('Get client assignments error:', error);
+    res.status(500).json({ error: 'Failed to get client assignments' });
+  }
+});
+
+// Assign a user to a client
+app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID required' });
+    }
+    dbHelper.assignClientToUser(req.params.id, userId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Assign client error:', error);
+    res.status(500).json({ error: 'Failed to assign client' });
+  }
+});
+
+// Remove user from client
+app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    dbHelper.unassignClientFromUser(req.params.id, req.params.userId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Unassign client error:', error);
+    res.status(500).json({ error: 'Failed to unassign client' });
+  }
+});
+
+// Get clients assigned to a specific user
+app.get('/api/users/:id/clients', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const clients = dbHelper.getClientsByUserId(req.params.id);
+    res.json(clients);
+  } catch (error) {
+    console.error('Get user clients error:', error);
+    res.status(500).json({ error: 'Failed to get user clients' });
   }
 });
 

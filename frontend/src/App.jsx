@@ -5976,28 +5976,92 @@ function EditClientForm({ client, onSave, onCancel }) {
 // OTHER PAGES
 // ============================================
 function UsersPage() {
+  const { user } = useAuth();
   const [users, setUsers] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'sales' });
+  
+  // Assignment modal state
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [userClients, setUserClients] = useState([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
 
-  useEffect(() => { api.get('/api/users').then(setUsers).catch(console.error).finally(() => setLoading(false)); }, []);
+  useEffect(() => { 
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [usersData, clientsData] = await Promise.all([
+        api.get('/api/users'),
+        api.get('/api/clients')
+      ]);
+      setUsers(usersData);
+      setClients(clientsData);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
       await api.post('/api/users', newUser);
       setShowModal(false);
-      setUsers(await api.get('/api/users'));
+      setNewUser({ email: '', password: '', name: '', role: 'sales' });
+      loadData();
     } catch (err) { alert(err.message); }
+  };
+
+  const openAssignModal = async (u) => {
+    setSelectedUser(u);
+    setShowAssignModal(true);
+    setAssignmentsLoading(true);
+    try {
+      const assignedClients = await api.get(`/api/users/${u.id}/clients`);
+      setUserClients(assignedClients.map(c => c.id));
+    } catch (err) {
+      console.error(err);
+      setUserClients([]);
+    }
+    setAssignmentsLoading(false);
+  };
+
+  const toggleClientAssignment = async (clientId) => {
+    const isAssigned = userClients.includes(clientId);
+    try {
+      if (isAssigned) {
+        await api.delete(`/api/clients/${clientId}/assignments/${selectedUser.id}`);
+        setUserClients(userClients.filter(id => id !== clientId));
+      } else {
+        await api.post(`/api/clients/${clientId}/assignments`, { userId: selectedUser.id });
+        setUserClients([...userClients, clientId]);
+      }
+    } catch (err) {
+      alert('Failed to update assignment: ' + err.message);
+    }
   };
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
+  // Only admins can see this page
+  if (user?.role !== 'admin') {
+    return (
+      <div style={{ textAlign: 'center', padding: '3rem' }}>
+        <h2>Access Denied</h2>
+        <p style={{ color: '#6b7280' }}>You don't have permission to view this page.</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div><h1>Users</h1><p style={{ color: '#6b7280' }}>Manage team members</p></div>
+        <div><h1>Users</h1><p style={{ color: '#6b7280' }}>Manage team members and client assignments</p></div>
         <button onClick={() => setShowModal(true)} style={{ padding: '0.625rem 1.25rem', background: '#1e3a8a', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Add User</button>
       </div>
       <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
@@ -6006,6 +6070,7 @@ function UsersPage() {
             <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Name</th>
             <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Email</th>
             <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Role</th>
+            <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Actions</th>
           </tr></thead>
           <tbody>
             {users.map(u => (
@@ -6017,11 +6082,26 @@ function UsersPage() {
                     {u.role === 'admin' ? 'Admin' : 'Sales'}
                   </span>
                 </td>
+                <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                  {u.role === 'sales' && (
+                    <button 
+                      onClick={() => openAssignModal(u)}
+                      style={{ padding: '0.375rem 0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
+                    >
+                      Assign Clients
+                    </button>
+                  )}
+                  {u.role === 'admin' && (
+                    <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Full Access</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Add User Modal */}
       {showModal && (
         <Modal title="Add New User" onClose={() => setShowModal(false)}>
           <form onSubmit={handleCreate}>
@@ -6032,7 +6112,7 @@ function UsersPage() {
               <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Role</label>
               <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}>
-                <option value="sales">Sales (View Only)</option>
+                <option value="sales">Sales (View Assigned Clients Only)</option>
                 <option value="admin">Admin (Full Access)</option>
               </select>
             </div>
@@ -6042,6 +6122,62 @@ function UsersPage() {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* Assign Clients Modal */}
+      {showAssignModal && selectedUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '500px', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ margin: '0 0 0.5rem' }}>Assign Clients to {selectedUser.name}</h3>
+            <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              Select which clients this sales rep can view and access.
+            </p>
+            
+            {assignmentsLoading ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}>
+                {clients.length === 0 ? (
+                  <p style={{ padding: '1rem', color: '#6b7280', textAlign: 'center' }}>No clients available. Sync clients from Simpli.fi first.</p>
+                ) : (
+                  clients.map(client => (
+                    <label 
+                      key={client.id} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: '0.75rem 1rem', 
+                        borderBottom: '1px solid #f3f4f6',
+                        cursor: 'pointer',
+                        background: userClients.includes(client.id) ? '#eff6ff' : 'transparent'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={userClients.includes(client.id)}
+                        onChange={() => toggleClientAssignment(client.id)}
+                        style={{ marginRight: '0.75rem', width: '18px', height: '18px', cursor: 'pointer' }}
+                      />
+                      <span style={{ fontWeight: 500 }}>{client.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                {userClients.length} client{userClients.length !== 1 ? 's' : ''} assigned
+              </span>
+              <button 
+                onClick={() => setShowAssignModal(false)} 
+                style={{ padding: '0.625rem 1.25rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 500 }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
