@@ -194,6 +194,38 @@ async function initializeDatabase() {
     );
   `);
 
+  // Stats cache table - stores historical stats to reduce API calls
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS stats_cache (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      campaign_id INTEGER,
+      stat_date DATE NOT NULL,
+      impressions INTEGER DEFAULT 0,
+      clicks INTEGER DEFAULT 0,
+      total_spend DECIMAL(10,2) DEFAULT 0,
+      ctr DECIMAL(8,6) DEFAULT 0,
+      vcr DECIMAL(8,6) DEFAULT 0,
+      video_complete INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(client_id, campaign_id, stat_date)
+    )
+  `);
+
+  // Track last successful fetch per client
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS fetch_log (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      last_fetch_date DATE NOT NULL,
+      last_fetch_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      status TEXT DEFAULT 'success',
+      error_message TEXT,
+      UNIQUE(client_id)
+    )
+  `);
+
   console.log('✓ Database tables initialized');
   return pool;
 }
@@ -808,6 +840,113 @@ class DatabaseHelper {
       WHERE user_id = $1 AND client_id = $2
     `, [userId, clientId]);
     return parseInt(result.rows[0].count) > 0;
+  }
+
+  // ============================================
+  // STATS CACHE METHODS
+  // ============================================
+
+  // Save stats to cache (upsert)
+  async cacheStats(clientId, campaignId, statDate, stats) {
+    const id = `${clientId}-${campaignId || 'org'}-${statDate}`;
+    await pool.query(`
+      INSERT INTO stats_cache (id, client_id, campaign_id, stat_date, impressions, clicks, total_spend, ctr, vcr, video_complete, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
+      ON CONFLICT (client_id, campaign_id, stat_date) 
+      DO UPDATE SET 
+        impressions = EXCLUDED.impressions,
+        clicks = EXCLUDED.clicks,
+        total_spend = EXCLUDED.total_spend,
+        ctr = EXCLUDED.ctr,
+        vcr = EXCLUDED.vcr,
+        video_complete = EXCLUDED.video_complete,
+        updated_at = CURRENT_TIMESTAMP
+    `, [
+      id, 
+      clientId, 
+      campaignId || null, 
+      statDate, 
+      stats.impressions || 0,
+      stats.clicks || 0,
+      stats.total_spend || 0,
+      stats.ctr || 0,
+      stats.vcr || 0,
+      stats.video_complete || 0
+    ]);
+  }
+
+  // Batch save stats
+  async cacheStatsBatch(clientId, statsArray) {
+    for (const stat of statsArray) {
+      await this.cacheStats(
+        clientId,
+        stat.campaign_id,
+        stat.stat_date,
+        stat
+      );
+    }
+  }
+
+  // Get cached stats for a client within date range
+  async getCachedStats(clientId, startDate, endDate, byCampaign = false) {
+    let query;
+    if (byCampaign) {
+      query = `
+        SELECT campaign_id, 
+               SUM(impressions) as impressions, 
+               SUM(clicks) as clicks, 
+               SUM(total_spend) as total_spend
+        FROM stats_cache 
+        WHERE client_id = $1 AND stat_date >= $2 AND stat_date <= $3 AND campaign_id IS NOT NULL
+        GROUP BY campaign_id
+      `;
+    } else {
+      query = `
+        SELECT stat_date, 
+               SUM(impressions) as impressions, 
+               SUM(clicks) as clicks, 
+               SUM(total_spend) as total_spend
+        FROM stats_cache 
+        WHERE client_id = $1 AND stat_date >= $2 AND stat_date <= $3
+        GROUP BY stat_date
+        ORDER BY stat_date
+      `;
+    }
+    const result = await pool.query(query, [clientId, startDate, endDate]);
+    return result.rows;
+  }
+
+  // Get the last date we have cached data for a client
+  async getLastCachedDate(clientId) {
+    const result = await pool.query(
+      "SELECT MAX(stat_date) as last_date FROM stats_cache WHERE client_id = $1",
+      [clientId]
+    );
+    return result.rows[0]?.last_date || null;
+  }
+
+  // Update fetch log
+  async updateFetchLog(clientId, lastFetchDate, status = 'success', errorMessage = null) {
+    const id = `fetch-${clientId}`;
+    await pool.query(`
+      INSERT INTO fetch_log (id, client_id, last_fetch_date, last_fetch_time, status, error_message)
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP, $4, $5)
+      ON CONFLICT (client_id)
+      DO UPDATE SET 
+        last_fetch_date = EXCLUDED.last_fetch_date,
+        last_fetch_time = CURRENT_TIMESTAMP,
+        status = EXCLUDED.status,
+        error_message = EXCLUDED.error_message
+    `, [id, clientId, lastFetchDate, status, errorMessage]);
+  }
+
+  // Get fetch log for a client
+  async getFetchLog(clientId) {
+    const result = await pool.query(
+      "SELECT * FROM fetch_log WHERE client_id = $1",
+      [clientId]
+    );
+    return result.rows[0] || null;
   }
 }
 

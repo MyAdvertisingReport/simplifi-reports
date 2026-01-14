@@ -819,6 +819,83 @@ app.get('/api/simplifi/organizations/:orgId/stats', authenticateToken, async (re
   }
 });
 
+// Smart stats endpoint - uses cache + incremental fetch
+app.get('/api/clients/:clientId/cached-stats', authenticateToken, async (req, res) => {
+  try {
+    const { startDate, endDate, byCampaign } = req.query;
+    const clientId = req.params.clientId;
+    
+    // Get the client
+    const client = await dbHelper.getClientById(clientId);
+    if (!client || !client.simplifi_org_id) {
+      return res.status(404).json({ error: 'Client not found or no org linked' });
+    }
+    
+    // Check what we have cached
+    const lastCachedDate = await dbHelper.getLastCachedDate(clientId);
+    const today = new Date().toISOString().split('T')[0];
+    
+    let needsFetch = true;
+    let fetchStartDate = startDate;
+    
+    if (lastCachedDate) {
+      const lastCached = new Date(lastCachedDate);
+      const requestEnd = new Date(endDate);
+      
+      // Only fetch if we need newer data
+      if (lastCached >= requestEnd) {
+        needsFetch = false;
+      } else {
+        // Fetch from day after last cached date
+        const nextDay = new Date(lastCached);
+        nextDay.setDate(nextDay.getDate() + 1);
+        fetchStartDate = nextDay.toISOString().split('T')[0];
+      }
+    }
+    
+    // Try to fetch new data from Simpli.fi
+    if (needsFetch) {
+      try {
+        console.log(`Fetching stats for ${client.name} from ${fetchStartDate} to ${endDate}`);
+        
+        // Fetch daily stats to cache
+        const dailyStats = await simplifiClient.getOrganizationStats(
+          client.simplifi_org_id,
+          fetchStartDate,
+          endDate,
+          true, // byDay
+          true  // byCampaign
+        );
+        
+        // Cache the new stats
+        if (dailyStats.campaign_stats && dailyStats.campaign_stats.length > 0) {
+          await dbHelper.cacheStatsBatch(clientId, dailyStats.campaign_stats);
+          await dbHelper.updateFetchLog(clientId, endDate, 'success');
+          console.log(`Cached ${dailyStats.campaign_stats.length} stat records for ${client.name}`);
+        }
+      } catch (fetchError) {
+        // Log the error but don't fail - we'll use cached data
+        console.error(`Failed to fetch fresh stats for ${client.name}:`, fetchError.message);
+        await dbHelper.updateFetchLog(clientId, lastCachedDate || startDate, 'error', fetchError.message);
+      }
+    }
+    
+    // Return cached stats for the requested range
+    const cachedStats = await dbHelper.getCachedStats(clientId, startDate, endDate, byCampaign === 'true');
+    
+    // Format response similar to Simpli.fi API
+    res.json({
+      campaign_stats: cachedStats,
+      from_cache: true,
+      last_cached: lastCachedDate
+    });
+    
+  } catch (error) {
+    console.error('Get cached stats error:', error);
+    res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
 // Get campaign details
 app.get('/api/simplifi/campaigns/:campaignId', authenticateToken, async (req, res) => {
   try {

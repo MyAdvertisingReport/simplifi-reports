@@ -539,9 +539,18 @@ function DashboardPage() {
         
         await Promise.all(batch.map(async (client) => {
         try {
-          // Load stats and campaigns sequentially per client to reduce concurrent calls
-          const stats = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byCampaign=true`);
-          const dailyStats = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byDay=true`);
+          // Try cached stats first (includes incremental fetch), fallback to direct API
+          let stats, dailyStats;
+          try {
+            stats = await api.get(`/api/clients/${client.id}/cached-stats?startDate=${startDate}&endDate=${endDate}&byCampaign=true`);
+            dailyStats = await api.get(`/api/clients/${client.id}/cached-stats?startDate=${startDate}&endDate=${endDate}`);
+          } catch (cacheError) {
+            // Fallback to direct API if cache endpoint fails
+            console.log(`Cache miss for ${client.name}, trying direct API`);
+            stats = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byCampaign=true`);
+            dailyStats = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byDay=true`);
+          }
+          
           const campaigns = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/campaigns`);
           const pixelData = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/pixels`).catch(() => ({ first_party_segments: [] }));
 
