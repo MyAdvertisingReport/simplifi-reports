@@ -505,6 +505,38 @@ class SimplifiClient {
   }
 
   /**
+   * Download the actual keyword list for a campaign (returns CSV parsed as array)
+   * @param {number} orgId - Organization ID
+   * @param {number} campaignId - Campaign ID
+   */
+  async downloadCampaignKeywords(orgId, campaignId) {
+    try {
+      const response = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}/keywords/download`, {
+        responseType: 'text'
+      });
+      
+      // Parse CSV - format is: keyword,max_bid (max_bid is optional)
+      const csvText = response.data;
+      const lines = csvText.split('\n').filter(line => line.trim());
+      
+      const keywords = lines.map((line, index) => {
+        const parts = line.split(',');
+        return {
+          id: index + 1,
+          keyword: parts[0]?.trim() || '',
+          max_bid: parts[1] ? parseFloat(parts[1].trim()) : null
+        };
+      }).filter(kw => kw.keyword); // Filter out empty lines
+      
+      console.log(`[SIMPLIFI CLIENT] Downloaded ${keywords.length} keywords for campaign ${campaignId}`);
+      return { keywords };
+    } catch (error) {
+      console.error(`[SIMPLIFI CLIENT] Error downloading keywords for org ${orgId}, campaign ${campaignId}:`, error.message);
+      throw this._handleError(error);
+    }
+  }
+
+  /**
    * Get campaign targeting info (includes keywords, geo-fences, etc.)
    * @param {number} orgId - Organization ID
    * @param {number} campaignId - Campaign ID

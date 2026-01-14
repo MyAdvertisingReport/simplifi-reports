@@ -1207,6 +1207,18 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keywords', aut
   }
 });
 
+// Download actual keyword list (returns parsed CSV as JSON array)
+app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keywords/download', authenticateToken, async (req, res) => {
+  try {
+    const { orgId, campaignId } = req.params;
+    const keywords = await simplifiClient.downloadCampaignKeywords(orgId, campaignId);
+    res.json(keywords);
+  } catch (error) {
+    console.error('Download keywords error:', error);
+    res.status(500).json({ error: 'Failed to download keywords', details: error.message });
+  }
+});
+
 // Get campaign keywords (legacy endpoint without org - kept for backward compatibility)
 app.get('/api/simplifi/campaigns/:campaignId/keywords', authenticateToken, async (req, res) => {
   try {

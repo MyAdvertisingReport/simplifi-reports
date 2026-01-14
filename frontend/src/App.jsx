@@ -3900,16 +3900,28 @@ function CampaignDetailPage() {
         } catch (e) { console.error('Could not fetch geo-fences:', e); }
       }
 
-      // Get keywords - always try to fetch (don't rely on campaign name detection)
-      // The API will return count: 0 if no keywords exist
+      // Get keywords - download the actual keyword list
       try {
-        // Use the org-aware endpoint for better reliability
-        const keywordsData = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords`);
-        console.log('Keywords API response:', keywordsData);
-        // The API returns { keywords: [{ count: N, ... }] } 
-        const keywordInfo = keywordsData.keywords?.[0] || keywordsData;
+        // First get keyword summary to check count
+        const keywordSummary = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords`);
+        console.log('Keywords summary:', keywordSummary);
+        
+        const keywordInfo = keywordSummary.keywords?.[0];
         if (keywordInfo && keywordInfo.count > 0) {
-          setKeywords(keywordsData.keywords || [keywordInfo]);
+          // Download the actual keyword list
+          try {
+            const keywordList = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords/download`);
+            console.log('Downloaded keywords:', keywordList);
+            setKeywords(keywordList.keywords || []);
+          } catch (downloadErr) {
+            console.log('Could not download keyword list, using summary:', downloadErr.message);
+            // Fallback to just showing the count
+            setKeywords([{ 
+              keyword: `${keywordInfo.count} keywords in campaign`,
+              count: keywordInfo.count,
+              isSummary: true
+            }]);
+          }
         }
       } catch (e) { console.log('Keywords not available for this campaign:', e.message); }
       
@@ -4369,34 +4381,68 @@ function CampaignDetailPage() {
           
           case 'keywords':
             if (keywords.length === 0) return null;
+            
+            // Check if we have actual keywords or just a summary
+            const hasActualKeywords = keywords.length > 0 && !keywords[0]?.isSummary;
+            const keywordCount = keywords[0]?.count || keywords.length;
+            
             return (
-              <DraggableReportSection {...sectionProps} title={`Keywords (${keywords.length})`} icon={Target} iconColor="#8b5cf6">
-                <KeywordsTable keywords={keywords} />
+              <DraggableReportSection {...sectionProps} title={`Keywords (${keywordCount})`} icon={Target} iconColor="#8b5cf6">
+                {hasActualKeywords ? (
+                  <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      {keywords.slice(0, 50).map((kw, i) => (
+                        <div 
+                          key={i} 
+                          style={{ 
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.375rem',
+                            padding: '0.5rem 0.75rem',
+                            background: '#f3f4f6',
+                            borderRadius: '9999px',
+                            fontSize: '0.875rem',
+                            color: '#374151'
+                          }}
+                        >
+                          <Target size={12} color="#8b5cf6" />
+                          <span>{kw.keyword}</span>
+                          {kw.max_bid && (
+                            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                              (${kw.max_bid.toFixed(2)})
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                      {keywords.length > 50 && (
+                        <div style={{ 
+                          padding: '0.5rem 0.75rem',
+                          background: '#e0e7ff',
+                          borderRadius: '9999px',
+                          fontSize: '0.875rem',
+                          color: '#4338ca',
+                          fontWeight: 500
+                        }}>
+                          +{keywords.length - 50} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '1.5rem', color: '#6b7280' }}>
+                    <Target size={32} style={{ marginBottom: '0.5rem', opacity: 0.3 }} />
+                    <p style={{ fontSize: '0.875rem' }}>
+                      {keywordCount} keywords configured for this campaign
+                    </p>
+                  </div>
+                )}
               </DraggableReportSection>
             );
           
           case 'keywordPerformance':
-            // Show for keyword campaigns - check campaign strategy
-            if (!isKeywordCampaign && keywordPerformance.length === 0) return null;
-            
-            // Show loading state for keyword campaigns
-            if (isKeywordCampaign && keywordPerformance.length === 0) {
-              return (
-                <DraggableReportSection {...sectionProps} title="Keyword Performance" icon={Target} iconColor="#8b5cf6">
-                  {enhancedDataLoading ? (
-                    <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                      <div className="spinner" style={{ margin: '0 auto 1rem' }} />
-                      <p style={{ fontSize: '0.875rem' }}>Loading keyword performance from Report Center...</p>
-                    </div>
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                      <Target size={32} style={{ marginBottom: '0.5rem', opacity: 0.3 }} />
-                      <p style={{ fontSize: '0.875rem' }}>No keyword performance data available for this date range</p>
-                    </div>
-                  )}
-                </DraggableReportSection>
-              );
-            }
+            // Only show if we have actual performance data with impressions/clicks
+            // Don't show empty "loading" or "no data" states - just hide the section
+            if (keywordPerformance.length === 0) return null;
             
             // Check if spend data is actually available
             const hasKwSpendData = keywordPerformance.some(kw => (kw.spend || 0) > 0);
