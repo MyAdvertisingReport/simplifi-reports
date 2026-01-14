@@ -3737,27 +3737,57 @@ function CampaignDetailPage() {
       const clientData = await api.get(`/api/clients/slug/${slug}`);
       setClient(clientData);
 
-      // Get campaign details WITH ADS INCLUDED
-      const campaignsData = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns-with-ads`);
+      // Get campaign details (without ads - we'll fetch those separately)
+      const campaignsData = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns`);
       const campaignData = (campaignsData.campaigns || []).find(c => c.id === parseInt(campaignId));
       setCampaign(campaignData);
 
-      // Build ad details map from the campaign's nested ads
+      // Fetch ads directly from the Ads endpoint to get full details including primary_creative_url
+      let adsFromApi = [];
+      try {
+        const adsResponse = await api.get(`/api/simplifi/campaigns/${campaignId}/ads`);
+        adsFromApi = adsResponse.ads || [];
+        console.log('Ads fetched directly from Ads endpoint:', adsFromApi.length, 'ads');
+        console.log('First ad sample:', adsFromApi[0]);
+      } catch (adsErr) {
+        console.error('Failed to fetch ads from dedicated endpoint:', adsErr);
+      }
+
+      // Build ad details map from the fetched ads
       const adDetailsMap = {};
-      (campaignData?.ads || []).forEach(ad => {
-        const width = ad.original_width ? parseInt(ad.original_width) : null;
-        const height = ad.original_height ? parseInt(ad.original_height) : null;
-        const adFileType = ad.ad_file_types?.[0]?.name || '';
+      adsFromApi.forEach(ad => {
+        // Parse dimensions from ad_sizes resource URL or use defaults
+        let width = null;
+        let height = null;
+        
+        // Try to get dimensions from the ad name (e.g., "300x250_banner.jpg")
+        const sizeMatch = ad.name?.match(/(\d{2,4})x(\d{2,4})/i);
+        if (sizeMatch) {
+          width = parseInt(sizeMatch[1]);
+          height = parseInt(sizeMatch[2]);
+        }
+        
+        // The API returns primary_creative_url directly
+        const previewUrl = ad.primary_creative_url;
+        
+        // Determine if video based on file type or name
+        const isVideo = ad.name?.toLowerCase().includes('.mp4') || 
+                       ad.name?.toLowerCase().includes('.mov') ||
+                       ad.name?.toLowerCase().includes('video');
+        
+        console.log(`Ad ${ad.id} "${ad.name}": primary_creative_url = ${previewUrl}`);
         
         adDetailsMap[ad.id] = {
           ...ad,
-          preview_url: ad.primary_creative_url,
+          preview_url: previewUrl,
           width: width,
           height: height,
-          is_video: adFileType.toLowerCase() === 'video' || ad.name?.toLowerCase().includes('.mp4'),
-          file_type: adFileType
+          is_video: isVideo,
+          file_type: isVideo ? 'Video' : 'Image'
         };
       });
+      console.log('Ad details map built:', Object.keys(adDetailsMap).length, 'ads with', 
+                  Object.values(adDetailsMap).filter(a => a.preview_url).length, 'having preview URLs');
 
       // Get campaign stats
       const statsData = await api.get(
@@ -3781,8 +3811,35 @@ function CampaignDetailPage() {
         `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byAd=true`
       );
       
+      console.log('Raw ad stats from API:', adData.campaign_stats?.length, 'entries');
+      
+      // Deduplicate ad stats - API might return multiple entries per ad (e.g., by day)
+      const adStatsMap = new Map();
+      (adData.campaign_stats || []).forEach(stat => {
+        const adId = stat.ad_id;
+        if (adStatsMap.has(adId)) {
+          // Aggregate stats for same ad
+          const existing = adStatsMap.get(adId);
+          existing.impressions = (existing.impressions || 0) + (stat.impressions || 0);
+          existing.clicks = (existing.clicks || 0) + (stat.clicks || 0);
+          existing.total_spend = (parseFloat(existing.total_spend) || 0) + (parseFloat(stat.total_spend) || 0);
+        } else {
+          adStatsMap.set(adId, { ...stat });
+        }
+      });
+      
+      // Convert back to array and calculate derived metrics
+      const deduplicatedStats = Array.from(adStatsMap.values()).map(stat => ({
+        ...stat,
+        ctr: stat.impressions > 0 ? stat.clicks / stat.impressions : 0,
+        cpm: stat.impressions > 0 ? (stat.total_spend / stat.impressions) * 1000 : 0,
+        cpc: stat.clicks > 0 ? stat.total_spend / stat.clicks : 0
+      }));
+      
+      console.log('Deduplicated ad stats:', deduplicatedStats.length, 'unique ads');
+      
       // Merge ad stats with details from campaign
-      const enrichedAds = (adData.campaign_stats || []).map(stat => {
+      const enrichedAds = deduplicatedStats.map(stat => {
         const details = adDetailsMap[stat.ad_id] || {};
         return {
           ...stat,
@@ -3794,6 +3851,8 @@ function CampaignDetailPage() {
           file_type: details.file_type
         };
       });
+      
+      console.log('Enriched ads with previews:', enrichedAds.filter(a => a.preview_url).length, 'have preview URLs');
       setAdStats(enrichedAds);
 
       // Note: Device stats removed from individual campaigns - shown only on main client page
