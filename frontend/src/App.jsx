@@ -3355,7 +3355,12 @@ function CampaignDetailPage() {
       const dailyData = await api.get(
         `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byDay=true`
       );
-      setDailyStats((dailyData.campaign_stats || []).sort((a, b) => new Date(a.stat_date) - new Date(b.stat_date)));
+      console.log('Daily stats raw response:', dailyData);
+      if (dailyData.campaign_stats && dailyData.campaign_stats.length > 0) {
+        console.log('Daily stats sample record keys:', Object.keys(dailyData.campaign_stats[0]));
+        console.log('Daily stats sample record:', dailyData.campaign_stats[0]);
+      }
+      setDailyStats((dailyData.campaign_stats || []).sort((a, b) => new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)));
 
       // Get ad stats for this campaign
       const adData = await api.get(
@@ -4096,15 +4101,23 @@ function CampaignDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {dailyStats.map((d, i) => (
-                        <tr key={d.stat_date || i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '0.75rem', fontWeight: 500 }}>{new Date(d.stat_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(d.impressions)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(d.clicks)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(d.ctr)}</td>
-                          {showSpendData && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(d.total_spend)}</td>}
-                        </tr>
-                      ))}
+                      {dailyStats.map((d, i) => {
+                        // Handle different field names from Simpli.fi API
+                        const clicks = d.clicks || d.click_count || d.total_clicks || 0;
+                        const impressions = d.impressions || d.impression_count || d.total_impressions || 0;
+                        const ctr = d.ctr || (impressions > 0 ? clicks / impressions : 0);
+                        const spend = d.total_spend || d.spend || d.cost || 0;
+                        
+                        return (
+                          <tr key={d.stat_date || d.date || i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                            <td style={{ padding: '0.75rem', fontWeight: 500 }}>{new Date(d.stat_date || d.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(impressions)}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(clicks)}</td>
+                            <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(ctr)}</td>
+                            {showSpendData && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(spend)}</td>}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
