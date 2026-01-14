@@ -57,8 +57,9 @@ function AuthProvider({ children }) {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        const userData = await res.json();
-        setUser(userData);
+        const data = await res.json();
+        // API returns { user: {...} }, extract the user object
+        setUser(data.user || data);
       } else {
         localStorage.removeItem('token');
       }
