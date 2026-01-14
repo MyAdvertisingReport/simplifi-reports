@@ -510,7 +510,10 @@ function DashboardPage() {
         return 'Display';
       };
 
-      // Load data for all clients
+      // Helper to delay between requests (for rate limiting)
+      const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+      // Load data for all clients - THROTTLED to avoid rate limiting
       let totalImpressions = 0;
       let totalClicks = 0;
       let totalSpend = 0;
@@ -524,14 +527,22 @@ function DashboardPage() {
       const pixelsNeedingAttention = [];
       const lowCTRCampaigns = [];
 
-      const clientPromises = clientsData.filter(c => c.simplifi_org_id).map(async (client) => {
+      // Process clients in batches of 3 with delay between batches
+      const BATCH_SIZE = 3;
+      const BATCH_DELAY = 500; // 500ms between batches
+      
+      const clientsWithOrg = clientsData.filter(c => c.simplifi_org_id);
+      
+      for (let i = 0; i < clientsWithOrg.length; i += BATCH_SIZE) {
+        const batch = clientsWithOrg.slice(i, i + BATCH_SIZE);
+        
+        await Promise.all(batch.map(async (client) => {
         try {
-          const [stats, dailyStats, campaigns, pixelData] = await Promise.all([
-            api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byCampaign=true`),
-            api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byDay=true`),
-            api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/campaigns`),
-            api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/pixels`).catch(() => ({ first_party_segments: [] }))
-          ]);
+          // Load stats and campaigns sequentially per client to reduce concurrent calls
+          const stats = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byCampaign=true`);
+          const dailyStats = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${startDate}&endDate=${endDate}&byDay=true`);
+          const campaigns = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/campaigns`);
+          const pixelData = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/pixels`).catch(() => ({ first_party_segments: [] }));
 
           // Check pixel status
           const pixels = pixelData.first_party_segments || pixelData.retargeting_segments || [];
@@ -662,9 +673,13 @@ function DashboardPage() {
         } catch (err) {
           console.error(`Failed to load data for ${client.name}:`, err);
         }
-      });
-
-      await Promise.all(clientPromises);
+      }));
+      
+        // Add delay between batches to avoid rate limiting
+        if (i + BATCH_SIZE < clientsWithOrg.length) {
+          await delay(BATCH_DELAY);
+        }
+      }
 
       // Sort daily totals
       const sortedDaily = Object.values(dailyTotals).sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -1455,8 +1470,26 @@ function ClientsPage() {
 
   const loadOrganizations = async () => {
     try {
-      const data = await api.get('/api/simplifi/organizations');
-      setOrganizations(data.organizations || []);
+      const [orgsData, clientsData] = await Promise.all([
+        api.get('/api/simplifi/organizations'),
+        api.get('/api/clients')
+      ]);
+      
+      const orgs = orgsData.organizations || [];
+      
+      // Mark which orgs are already synced as clients
+      const syncedOrgIds = new Set(clientsData.map(c => c.simplifi_org_id).filter(Boolean));
+      
+      const orgsWithStatus = orgs.map(org => {
+        const matchingClient = clientsData.find(c => c.simplifi_org_id === org.id);
+        return {
+          ...org,
+          isSynced: syncedOrgIds.has(org.id),
+          clientId: matchingClient?.id || null
+        };
+      });
+      
+      setOrganizations(orgsWithStatus);
     } catch (err) {
       console.error('Failed to load orgs:', err);
       alert('Failed to load Simpli.fi organizations: ' + err.message);
