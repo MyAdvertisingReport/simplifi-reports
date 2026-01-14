@@ -77,7 +77,8 @@ app.get('/api/health', (req, res) => {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    simplifiConfigured: !!(simplifiClient && process.env.SIMPLIFI_APP_KEY && process.env.SIMPLIFI_USER_KEY)
   });
 });
 
