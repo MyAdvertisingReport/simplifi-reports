@@ -511,27 +511,78 @@ class SimplifiClient {
    */
   async downloadCampaignKeywords(orgId, campaignId) {
     try {
+      console.log(`[SIMPLIFI CLIENT] Downloading keywords for org ${orgId}, campaign ${campaignId}`);
+      
       const response = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}/keywords/download`, {
-        responseType: 'text'
+        responseType: 'text',
+        headers: {
+          'Accept': 'text/csv, text/plain, */*'
+        }
       });
       
+      console.log(`[SIMPLIFI CLIENT] Keywords download response type: ${typeof response.data}`);
+      console.log(`[SIMPLIFI CLIENT] Keywords download response (first 500 chars): ${String(response.data).substring(0, 500)}`);
+      
+      // Handle different response types
+      let csvText = response.data;
+      
+      // If response is not a string, try to convert it
+      if (typeof csvText !== 'string') {
+        if (Buffer.isBuffer(csvText)) {
+          csvText = csvText.toString('utf8');
+        } else if (typeof csvText === 'object') {
+          // API might return JSON instead of CSV in some cases
+          console.log(`[SIMPLIFI CLIENT] Response is object, not CSV:`, csvText);
+          throw new Error('API returned JSON instead of CSV');
+        } else {
+          csvText = String(csvText);
+        }
+      }
+      
       // Parse CSV - format is: keyword,max_bid (max_bid is optional)
-      const csvText = response.data;
-      const lines = csvText.split('\n').filter(line => line.trim());
+      // Also handle potential header row
+      const lines = csvText.split(/[\r\n]+/).filter(line => line.trim());
       
-      const keywords = lines.map((line, index) => {
-        const parts = line.split(',');
-        return {
-          id: index + 1,
-          keyword: parts[0]?.trim() || '',
-          max_bid: parts[1] ? parseFloat(parts[1].trim()) : null
-        };
-      }).filter(kw => kw.keyword); // Filter out empty lines
+      // Check if first line is a header
+      const firstLine = lines[0]?.toLowerCase() || '';
+      const startIndex = (firstLine.includes('keyword') || firstLine.includes('name')) ? 1 : 0;
       
-      console.log(`[SIMPLIFI CLIENT] Downloaded ${keywords.length} keywords for campaign ${campaignId}`);
+      const keywords = [];
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // Handle CSV with possible quoted values
+        let keyword, maxBid;
+        if (line.includes('"')) {
+          // Parse quoted CSV
+          const match = line.match(/^"?([^"]*)"?,?(.*)$/);
+          keyword = match?.[1]?.trim() || line;
+          maxBid = match?.[2] ? parseFloat(match[2].trim()) : null;
+        } else {
+          const parts = line.split(',');
+          keyword = parts[0]?.trim() || '';
+          maxBid = parts[1] ? parseFloat(parts[1].trim()) : null;
+        }
+        
+        if (keyword) {
+          keywords.push({
+            id: keywords.length + 1,
+            keyword: keyword,
+            max_bid: isNaN(maxBid) ? null : maxBid
+          });
+        }
+      }
+      
+      console.log(`[SIMPLIFI CLIENT] Parsed ${keywords.length} keywords for campaign ${campaignId}`);
+      if (keywords.length > 0) {
+        console.log(`[SIMPLIFI CLIENT] Sample keywords:`, keywords.slice(0, 3));
+      }
+      
       return { keywords };
     } catch (error) {
       console.error(`[SIMPLIFI CLIENT] Error downloading keywords for org ${orgId}, campaign ${campaignId}:`, error.message);
+      console.error(`[SIMPLIFI CLIENT] Full error:`, error);
       throw this._handleError(error);
     }
   }

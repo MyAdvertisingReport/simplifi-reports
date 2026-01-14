@@ -1211,10 +1211,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keywords', aut
 app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keywords/download', authenticateToken, async (req, res) => {
   try {
     const { orgId, campaignId } = req.params;
+    console.log(`[SERVER] Downloading keywords for org ${orgId}, campaign ${campaignId}`);
     const keywords = await simplifiClient.downloadCampaignKeywords(orgId, campaignId);
+    console.log(`[SERVER] Successfully downloaded ${keywords?.keywords?.length || 0} keywords`);
     res.json(keywords);
   } catch (error) {
-    console.error('Download keywords error:', error);
+    console.error('Download keywords error:', error.message);
+    console.error('Download keywords full error:', error);
     res.status(500).json({ error: 'Failed to download keywords', details: error.message });
   }
 });
