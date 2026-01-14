@@ -3864,9 +3864,8 @@ function CampaignDetailPage() {
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/location-performance?startDate=${startDate}&endDate=${endDate}`)
           .then(data => {
-            // Handle null response, data returned as array directly
-            if (!data) return;
-            const locations = Array.isArray(data) ? data : [];
+            // Server wraps in location_performance property
+            const locations = data.location_performance || [];
             const locationMap = new Map();
             locations.forEach(loc => {
               const key = `${loc.city || ''}-${loc.metro || ''}-${loc.region || ''}-${loc.country || ''}`;
@@ -3887,19 +3886,19 @@ function CampaignDetailPage() {
       
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/conversions?startDate=${startDate}&endDate=${endDate}`)
-          .then(data => { if (data) setConversionData(Array.isArray(data) ? data : (data.conversions || [])); })
+          .then(data => setConversionData(data.conversions || []))
           .catch(e => console.log('Conversion data not available:', e.message))
       );
       
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/device-breakdown?startDate=${startDate}&endDate=${endDate}`)
-          .then(data => { if (data) setEnhancedDeviceStats(Array.isArray(data) ? data : []); })
+          .then(data => setEnhancedDeviceStats(data.device_breakdown || []))
           .catch(e => console.log('Device breakdown not available:', e.message))
       );
       
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/viewability?startDate=${startDate}&endDate=${endDate}`)
-          .then(data => { if (data) setViewabilityData(Array.isArray(data) ? data : (data.viewability || null)); })
+          .then(data => setViewabilityData(data.viewability || null))
           .catch(e => console.log('Viewability data not available:', e.message))
       );
       
@@ -3907,7 +3906,7 @@ function CampaignDetailPage() {
       if (isGeoFence) {
         promises.push(
           api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/geo-fence-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => { if (data) setGeoFencePerformance(Array.isArray(data) ? data : []); })
+            .then(data => setGeoFencePerformance(data.geofence_performance || []))
             .catch(e => console.log('Geo-fence performance not available:', e.message))
         );
       }
@@ -3916,7 +3915,7 @@ function CampaignDetailPage() {
       if (isOTT) {
         promises.push(
           api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/domain-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => { if (data) setDomainPerformance(Array.isArray(data) ? data : []); })
+            .then(data => setDomainPerformance(data.domain_performance || []))
             .catch(e => console.log('Domain performance not available:', e.message))
         );
       }
@@ -3925,7 +3924,7 @@ function CampaignDetailPage() {
       if (isKeyword) {
         promises.push(
           api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/keyword-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => { if (data) setKeywordPerformance(Array.isArray(data) ? data : []); })
+            .then(data => setKeywordPerformance(data.keyword_performance || []))
             .catch(e => console.log('Keyword performance not available:', e.message))
         );
       }

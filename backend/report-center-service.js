@@ -22,12 +22,30 @@ const TEMPLATES = {
 };
 
 class ReportCenterService {
-  constructor(appKey, userKey) {
+  /**
+   * Constructor - accepts either a SimplifiClient instance OR separate keys
+   * @param {SimplifiClient|string} clientOrAppKey - SimplifiClient instance or App Key
+   * @param {string} [userKey] - User Key (only needed if first param is appKey)
+   */
+  constructor(clientOrAppKey, userKey) {
+    let appKey, userKeyFinal;
+    
+    // Check if first argument is a SimplifiClient instance
+    if (clientOrAppKey && typeof clientOrAppKey === 'object' && clientOrAppKey.appKey) {
+      // It's a SimplifiClient instance
+      appKey = clientOrAppKey.appKey;
+      userKeyFinal = clientOrAppKey.userKey;
+    } else {
+      // It's separate keys
+      appKey = clientOrAppKey;
+      userKeyFinal = userKey;
+    }
+    
     this.client = axios.create({
       baseURL: BASE_URL,
       headers: {
         'X-App-Key': appKey,
-        'X-User-Key': userKey,
+        'X-User-Key': userKeyFinal,
         'Content-Type': 'application/json'
       }
     });
@@ -142,7 +160,7 @@ class ReportCenterService {
         'Geo-Fence Performance'
       );
       
-      if (!reportId) return null;
+      if (!reportId) return [];
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
@@ -180,7 +198,7 @@ class ReportCenterService {
         'Location Performance'
       );
       
-      if (!reportId) return null;
+      if (!reportId) return [];
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
@@ -191,28 +209,16 @@ class ReportCenterService {
       
       if (!data || !Array.isArray(data)) return [];
       
-      // Log first row to see actual field names
-      if (data.length > 0) {
-        console.log('Location performance sample row keys:', Object.keys(data[0]));
-      }
-      
-      return data.map(row => {
-        const impressions = parseInt(row['summary_delivery_events.impressions'] || 0);
-        const ecpm = parseFloat(row['summary_delivery_events.ecpm'] || 0);
-        // Calculate spend from impressions and eCPM
-        const calculatedSpend = (impressions / 1000) * ecpm;
-        
-        return {
-          city: row['summary_delivery_events.location_city_name'],
-          metro: row['summary_delivery_events.location_dma_name'],
-          region: row['summary_delivery_events.location_region_name'],
-          country: row['summary_delivery_events.location_country_name'],
-          impressions: impressions,
-          clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
-          ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-          spend: calculatedSpend
-        };
-      }).filter(r => r.city || r.metro || r.region);
+      return data.map(row => ({
+        city: row['summary_delivery_events.location_city_name'],
+        metro: row['summary_delivery_events.location_dma_name'],
+        region: row['summary_delivery_events.location_region_name'],
+        country: row['summary_delivery_events.location_country_name'],
+        impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
+        clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
+        ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
+        spend: parseFloat(row['summary_delivery_events.spend'] || 0)
+      })).filter(r => r.city || r.metro || r.region);
       
     } catch (error) {
       console.error('Error getting location performance:', error.message);
@@ -222,6 +228,7 @@ class ReportCenterService {
 
   /**
    * Get conversion data by campaign
+   * Note: This method is called as both getConversionData and getConversions by server
    */
   async getConversionData(orgId, campaignId, startDate, endDate) {
     try {
@@ -231,7 +238,7 @@ class ReportCenterService {
         'Conversion Performance'
       );
       
-      if (!reportId) return null;
+      if (!reportId) return [];
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
@@ -240,7 +247,7 @@ class ReportCenterService {
 
       const data = await this.runSnapshotAndWait(orgId, reportId, filters);
       
-      if (!data || !Array.isArray(data)) return null;
+      if (!data || !Array.isArray(data)) return [];
       
       // Aggregate conversion data
       let totalConversions = 0;
@@ -252,32 +259,39 @@ class ReportCenterService {
         totalViewConversions += parseInt(row['summary_delivery_events.view_conversions'] || 0);
         totalClickConversions += parseInt(row['summary_delivery_events.click_conversions'] || 0);
       });
-      
+
       return {
-        totalConversions,
-        viewConversions: totalViewConversions,
-        clickConversions: totalClickConversions,
-        conversionRate: data[0] ? parseFloat(data[0]['summary_delivery_events.conversion_rate'] || 0) : 0
+        total: totalConversions,
+        viewThrough: totalViewConversions,
+        clickThrough: totalClickConversions,
+        raw: data
       };
       
     } catch (error) {
       console.error('Error getting conversion data:', error.message);
-      return null;
+      return [];
     }
   }
 
   /**
-   * Get device type breakdown
+   * Alias for getConversionData - server calls this as getConversions
+   */
+  async getConversions(orgId, campaignId, startDate, endDate) {
+    return this.getConversionData(orgId, campaignId, startDate, endDate);
+  }
+
+  /**
+   * Get device breakdown by campaign
    */
   async getDeviceBreakdown(orgId, campaignId, startDate, endDate) {
     try {
       const reportId = await this.getOrCreateReportModel(
         orgId,
         TEMPLATES.DEVICE_BY_CAMPAIGN,
-        'Device Performance'
+        'Device Breakdown'
       );
       
-      if (!reportId) return null;
+      if (!reportId) return [];
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
@@ -349,7 +363,7 @@ class ReportCenterService {
         'Domain Performance'
       );
       
-      if (!reportId) return null;
+      if (!reportId) return [];
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
@@ -385,7 +399,7 @@ class ReportCenterService {
         'Keyword Performance'
       );
       
-      if (!reportId) return null;
+      if (!reportId) return [];
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
@@ -396,26 +410,13 @@ class ReportCenterService {
       
       if (!data || !Array.isArray(data)) return [];
       
-      // Log first row to see actual field names
-      if (data.length > 0) {
-        console.log('Keyword performance sample row keys:', Object.keys(data[0]));
-      }
-      
-      return data.map(row => {
-        const impressions = parseInt(row['summary_delivery_events.impressions'] || 0);
-        const ecpm = parseFloat(row['summary_delivery_events.ecpm'] || 0);
-        // Calculate spend from impressions and eCPM
-        const calculatedSpend = (impressions / 1000) * ecpm;
-        
-        return {
-          // Use keyword_reporting_name which is the actual field name
-          keyword: row['summary_delivery_events.keyword_reporting_name'] || row['dim_keyword.keyword'] || row['summary_delivery_events.keyword'],
-          impressions: impressions,
-          clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
-          ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-          spend: calculatedSpend
-        };
-      }).filter(r => r.keyword).sort((a, b) => b.impressions - a.impressions);
+      return data.map(row => ({
+        keyword: row['dim_keyword.keyword'] || row['summary_delivery_events.keyword'],
+        impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
+        clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
+        ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
+        spend: parseFloat(row['summary_delivery_events.spend'] || 0)
+      })).filter(r => r.keyword).sort((a, b) => b.impressions - a.impressions);
       
     } catch (error) {
       console.error('Error getting keyword performance:', error.message);
@@ -504,9 +505,11 @@ if (require.main === module) {
     console.log('  - getGeoFencePerformance(orgId, campaignId, startDate, endDate)');
     console.log('  - getLocationPerformance(orgId, campaignId, startDate, endDate)');
     console.log('  - getConversionData(orgId, campaignId, startDate, endDate)');
+    console.log('  - getConversions(orgId, campaignId, startDate, endDate) [alias]');
     console.log('  - getDeviceBreakdown(orgId, campaignId, startDate, endDate)');
     console.log('  - getViewabilityMetrics(orgId, campaignId, startDate, endDate)');
     console.log('  - getDomainPerformance(orgId, campaignId, startDate, endDate)');
+    console.log('  - getKeywordPerformance(orgId, campaignId, startDate, endDate)');
     console.log('  - getEnhancedCampaignData(orgId, campaignId, startDate, endDate)');
     process.exit(0);
   }

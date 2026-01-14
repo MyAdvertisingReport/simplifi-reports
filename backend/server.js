@@ -689,19 +689,20 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
 
 // ============================================
 // PUBLIC REPORT CENTER ROUTES (No auth required)
+// These use the same response format as authenticated endpoints
 // ============================================
 
 app.get('/api/public/report-center/:orgId/campaigns/:campaignId/location-performance', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.json({ locations: [] });
+      return res.json({ location_performance: [] });
     }
     const data = await reportCenterService.getLocationPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ location_performance: data || [] });
   } catch (error) {
     console.error('Public location performance error:', error);
-    res.json({ locations: [] });
+    res.json({ location_performance: [] });
   }
 });
 
@@ -709,13 +710,13 @@ app.get('/api/public/report-center/:orgId/campaigns/:campaignId/geo-fence-perfor
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.json({ geoFences: [] });
+      return res.json({ geofence_performance: [] });
     }
     const data = await reportCenterService.getGeoFencePerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ geofence_performance: data || [] });
   } catch (error) {
     console.error('Public geo-fence performance error:', error);
-    res.json({ geoFences: [] });
+    res.json({ geofence_performance: [] });
   }
 });
 
@@ -723,13 +724,13 @@ app.get('/api/public/report-center/:orgId/campaigns/:campaignId/keyword-performa
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.json({ keywords: [] });
+      return res.json({ keyword_performance: [] });
     }
     const data = await reportCenterService.getKeywordPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ keyword_performance: data || [] });
   } catch (error) {
     console.error('Public keyword performance error:', error);
-    res.json({ keywords: [] });
+    res.json({ keyword_performance: [] });
   }
 });
 
@@ -737,13 +738,58 @@ app.get('/api/public/report-center/:orgId/campaigns/:campaignId/domain-performan
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.json({ domains: [] });
+      return res.json({ domain_performance: [] });
     }
     const data = await reportCenterService.getDomainPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ domain_performance: data || [] });
   } catch (error) {
     console.error('Public domain performance error:', error);
-    res.json({ domains: [] });
+    res.json({ domain_performance: [] });
+  }
+});
+
+// Public conversions endpoint
+app.get('/api/public/report-center/:orgId/campaigns/:campaignId/conversions', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json({ conversions: [] });
+    }
+    const data = await reportCenterService.getConversions(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json({ conversions: data || [] });
+  } catch (error) {
+    console.error('Public conversions error:', error);
+    res.json({ conversions: [] });
+  }
+});
+
+// Public device breakdown endpoint
+app.get('/api/public/report-center/:orgId/campaigns/:campaignId/device-breakdown', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json({ device_breakdown: [] });
+    }
+    const data = await reportCenterService.getDeviceBreakdown(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json({ device_breakdown: data || [] });
+  } catch (error) {
+    console.error('Public device breakdown error:', error);
+    res.json({ device_breakdown: [] });
+  }
+});
+
+// Public viewability endpoint
+app.get('/api/public/report-center/:orgId/campaigns/:campaignId/viewability', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json({ viewability: null });
+    }
+    const data = await reportCenterService.getViewabilityMetrics(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json({ viewability: data });
+  } catch (error) {
+    console.error('Public viewability error:', error);
+    res.json({ viewability: null });
   }
 });
 
@@ -1156,13 +1202,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/location-perfo
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.status(503).json({ error: 'Report Center not initialized' });
+      return res.json({ location_performance: [] });
     }
     const data = await reportCenterService.getLocationPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ location_performance: data || [] });
   } catch (error) {
     console.error('Location performance error:', error);
-    res.status(500).json({ error: 'Failed to get location performance' });
+    res.json({ location_performance: [] });
   }
 });
 
@@ -1170,13 +1216,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/geo-fence-perf
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.status(503).json({ error: 'Report Center not initialized' });
+      return res.json({ geofence_performance: [] });
     }
     const data = await reportCenterService.getGeoFencePerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ geofence_performance: data || [] });
   } catch (error) {
     console.error('Geo-fence performance error:', error);
-    res.status(500).json({ error: 'Failed to get geo-fence performance' });
+    res.json({ geofence_performance: [] });
   }
 });
 
@@ -1184,13 +1230,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keyword-perfor
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.status(503).json({ error: 'Report Center not initialized' });
+      return res.json({ keyword_performance: [] });
     }
     const data = await reportCenterService.getKeywordPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ keyword_performance: data || [] });
   } catch (error) {
     console.error('Keyword performance error:', error);
-    res.status(500).json({ error: 'Failed to get keyword performance' });
+    res.json({ keyword_performance: [] });
   }
 });
 
@@ -1198,13 +1244,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/conversions', 
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.status(503).json({ error: 'Report Center not initialized' });
+      return res.json({ conversions: [] });
     }
     const data = await reportCenterService.getConversions(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ conversions: data || [] });
   } catch (error) {
     console.error('Conversions error:', error);
-    res.status(500).json({ error: 'Failed to get conversions' });
+    res.json({ conversions: [] });
   }
 });
 
@@ -1212,13 +1258,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/domain-perform
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.status(503).json({ error: 'Report Center not initialized' });
+      return res.json({ domain_performance: [] });
     }
     const data = await reportCenterService.getDomainPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ domain_performance: data || [] });
   } catch (error) {
     console.error('Domain performance error:', error);
-    res.status(500).json({ error: 'Failed to get domain performance' });
+    res.json({ domain_performance: [] });
   }
 });
 
@@ -1227,13 +1273,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/device-breakdo
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.json([]); // Return empty array if not initialized
+      return res.json({ device_breakdown: [] });
     }
     const data = await reportCenterService.getDeviceBreakdown(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data || []);
+    res.json({ device_breakdown: data || [] });
   } catch (error) {
     console.error('Device breakdown error:', error);
-    res.json([]); // Return empty on error
+    res.json({ device_breakdown: [] });
   }
 });
 
@@ -1242,13 +1288,13 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/viewability', 
   try {
     const { startDate, endDate } = req.query;
     if (!reportCenterService) {
-      return res.json(null); // Return null if not initialized
+      return res.json({ viewability: null });
     }
     const data = await reportCenterService.getViewabilityMetrics(req.params.orgId, req.params.campaignId, startDate, endDate);
-    res.json(data);
+    res.json({ viewability: data });
   } catch (error) {
     console.error('Viewability error:', error);
-    res.json(null); // Return null on error
+    res.json({ viewability: null });
   }
 });
 
