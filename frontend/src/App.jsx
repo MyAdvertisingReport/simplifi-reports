@@ -2626,7 +2626,6 @@ function ClientDetailPage({ publicMode = false }) {
     const allGeoFences = [];
     const allKeywords = [];
     const allDomains = [];
-    let totalConversions = { visits: 0, conversions: 0 };
     
     // Fetch data for each active campaign and aggregate
     for (const campaign of activeCamps.slice(0, 5)) { // Limit to 5 campaigns to avoid rate limits
@@ -2638,20 +2637,23 @@ function ClientDetailPage({ publicMode = false }) {
             : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/location-performance`;
           
           const locData = publicMode 
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : { locations: [] })
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          (locData.locations || []).forEach(loc => {
-            const existing = allLocations.find(l => l.location === loc.location);
+          // API returns array directly
+          const locations = Array.isArray(locData) ? locData : (locData.locations || locData || []);
+          locations.forEach(loc => {
+            const locName = loc.city || loc.metro || loc.location || 'Unknown';
+            const existing = allLocations.find(l => (l.city || l.location) === locName);
             if (existing) {
               existing.impressions += loc.impressions || 0;
               existing.clicks += loc.clicks || 0;
               existing.spend += loc.spend || 0;
             } else {
-              allLocations.push({ ...loc });
+              allLocations.push({ ...loc, location: locName });
             }
           });
-        } catch (e) { /* skip */ }
+        } catch (e) { console.log('Location fetch error:', e.message); }
         
         // Geo fence performance  
         try {
@@ -2660,10 +2662,12 @@ function ClientDetailPage({ publicMode = false }) {
             : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/geo-fence-performance`;
           
           const geoData = publicMode
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : { geoFences: [] })
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          (geoData.geoFences || []).forEach(gf => {
+          // API returns array directly
+          const geoFences = Array.isArray(geoData) ? geoData : (geoData.geoFences || geoData || []);
+          geoFences.forEach(gf => {
             const existing = allGeoFences.find(g => g.name === gf.name);
             if (existing) {
               existing.impressions += gf.impressions || 0;
@@ -2672,7 +2676,7 @@ function ClientDetailPage({ publicMode = false }) {
               allGeoFences.push({ ...gf });
             }
           });
-        } catch (e) { /* skip */ }
+        } catch (e) { console.log('GeoFence fetch error:', e.message); }
         
         // Keyword performance
         try {
@@ -2681,10 +2685,12 @@ function ClientDetailPage({ publicMode = false }) {
             : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/keyword-performance`;
           
           const kwData = publicMode
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : { keywords: [] })
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          (kwData.keywords || []).forEach(kw => {
+          // API returns array directly
+          const keywords = Array.isArray(kwData) ? kwData : (kwData.keywords || kwData || []);
+          keywords.forEach(kw => {
             const existing = allKeywords.find(k => k.keyword === kw.keyword);
             if (existing) {
               existing.impressions += kw.impressions || 0;
@@ -2693,7 +2699,7 @@ function ClientDetailPage({ publicMode = false }) {
               allKeywords.push({ ...kw });
             }
           });
-        } catch (e) { /* skip */ }
+        } catch (e) { console.log('Keyword fetch error:', e.message); }
         
         // Domain performance
         try {
@@ -2702,10 +2708,12 @@ function ClientDetailPage({ publicMode = false }) {
             : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/domain-performance`;
           
           const domData = publicMode
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : { domains: [] })
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          (domData.domains || []).forEach(d => {
+          // API returns array directly
+          const domains = Array.isArray(domData) ? domData : (domData.domains || domData || []);
+          domains.forEach(d => {
             const existing = allDomains.find(dom => dom.domain === d.domain);
             if (existing) {
               existing.impressions += d.impressions || 0;
@@ -2714,7 +2722,7 @@ function ClientDetailPage({ publicMode = false }) {
               allDomains.push({ ...d });
             }
           });
-        } catch (e) { /* skip */ }
+        } catch (e) { console.log('Domain fetch error:', e.message); }
         
       } catch (err) {
         console.error(`Failed to load enhanced data for campaign ${campaign.id}:`, err);
@@ -2722,6 +2730,7 @@ function ClientDetailPage({ publicMode = false }) {
     }
     
     // Sort and set aggregated data
+    console.log(`Loaded enhanced data: ${allLocations.length} locations, ${allGeoFences.length} geofences, ${allKeywords.length} keywords, ${allDomains.length} domains`);
     setLocationPerformance(allLocations.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
     setGeoFencePerformance(allGeoFences.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
     setKeywordPerformance(allKeywords.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
@@ -3385,10 +3394,32 @@ function ClientDetailPage({ publicMode = false }) {
                         <p style={{ fontSize: '0.875rem' }}>Loading location data...</p>
                       </div>
                     ) : (
-                      <LocationPerformanceTable 
-                        locations={locationPerformance} 
-                        showSpend={showSpendData}
-                      />
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Location</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
+                            {showSpendData && <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Spend</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {locationPerformance.slice(0, 15).map((loc, i) => {
+                            const locName = loc.city || loc.metro || loc.location || 'Unknown';
+                            const ctr = loc.impressions > 0 ? (loc.clicks / loc.impressions * 100) : 0;
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{locName}{loc.region ? `, ${loc.region}` : ''}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(loc.impressions)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(loc.clicks)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
+                                {showSpendData && <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatCurrency(loc.spend || 0)}</td>}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     )}
                   </DraggableReportSection>
                 );
