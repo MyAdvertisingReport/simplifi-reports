@@ -487,12 +487,31 @@ app.delete('/api/clients/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // ============================================
+// CLIENT REPORT PDF ROUTES
+// ============================================
+
+// PDF report generation endpoint
+app.get('/api/clients/:clientId/report/pdf', authenticateToken, async (req, res) => {
+  try {
+    // For now, return a message that PDF generation needs to be configured
+    // Full implementation requires puppeteer or similar
+    res.status(501).json({ 
+      error: 'PDF generation not yet configured',
+      message: 'PDF report generation requires additional server setup'
+    });
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// ============================================
 // CLIENT NOTES ROUTES
 // ============================================
 
 app.get('/api/clients/:clientId/notes', authenticateToken, (req, res) => {
   try {
-    const notes = dbHelper.getClientNotes(req.params.clientId);
+    const notes = dbHelper.getNotesByClient(req.params.clientId);
     res.json(notes || []);
   } catch (error) {
     console.error('Get notes error:', error);
@@ -635,18 +654,39 @@ app.get('/api/simplifi/organizations/:orgId/campaigns', authenticateToken, async
   }
 });
 
+// Get organization campaigns with ads included
+app.get('/api/simplifi/organizations/:orgId/campaigns-with-ads', authenticateToken, async (req, res) => {
+  try {
+    const campaigns = await simplifiClient.getCampaignsWithAds(req.params.orgId);
+    res.json(campaigns);
+  } catch (error) {
+    console.error('Get campaigns with ads error:', error);
+    res.status(500).json({ error: 'Failed to get campaigns with ads' });
+  }
+});
+
 // Get organization stats
 app.get('/api/simplifi/organizations/:orgId/stats', authenticateToken, async (req, res) => {
   try {
-    const { startDate, endDate, byDay, byCampaign } = req.query;
-    const stats = await simplifiClient.getOrganizationStats(
-      req.params.orgId,
-      startDate,
-      endDate,
-      byDay === 'true',
-      byCampaign === 'true'
-    );
-    res.json(stats);
+    const { startDate, endDate, byDay, byCampaign, byAd } = req.query;
+    
+    // If byAd is requested, use a different method
+    if (byAd === 'true') {
+      const stats = await simplifiClient.getAdStats(req.params.orgId, {
+        startDate,
+        endDate
+      });
+      res.json(stats);
+    } else {
+      const stats = await simplifiClient.getOrganizationStats(
+        req.params.orgId,
+        startDate,
+        endDate,
+        byDay === 'true',
+        byCampaign === 'true'
+      );
+      res.json(stats);
+    }
   } catch (error) {
     console.error('Get stats error:', error);
     res.status(500).json({ error: 'Failed to get stats' });
