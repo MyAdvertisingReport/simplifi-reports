@@ -2581,10 +2581,11 @@ function ClientDetailPage() {
   };
 
   const copyLink = () => {
-    // Prefer slug-based URL if available
+    // Use custom domain for public report links
+    const domain = 'https://myadvertisingreport.com';
     const url = client?.slug 
-      ? `${window.location.origin}/client/${client.slug}/report`
-      : `${window.location.origin}/report/${client?.share_token || reportLink?.token}`;
+      ? `${domain}/client/${client.slug}/report`
+      : `${domain}/report/${client?.share_token || reportLink?.token}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -2879,8 +2880,8 @@ function ClientDetailPage() {
           <Check size={18} color="#10b981" />
           <code style={{ flex: 1, fontSize: '0.8125rem', color: '#065f46' }}>
             {client?.slug 
-              ? `${window.location.origin}/client/${client.slug}/report`
-              : `${window.location.origin}/report/${reportLink.token}`}
+              ? `https://myadvertisingreport.com/client/${client.slug}/report`
+              : `https://myadvertisingreport.com/report/${reportLink.token}`}
           </code>
           <button onClick={copyLink} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.375rem 0.75rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.8125rem', cursor: 'pointer' }}>
             {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied!' : 'Copy'}
