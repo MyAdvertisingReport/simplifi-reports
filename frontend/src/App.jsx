@@ -4489,7 +4489,16 @@ function CampaignDetailPage() {
             );
           
           case 'conversions':
-            if (!conversionData || conversionData.totalConversions === 0) return null;
+            // Only show conversion tracking if campaign has actual conversion data
+            // Check for: totalConversions > 0, or clickConversions > 0, or viewConversions > 0
+            const hasConversionData = conversionData && (
+              (conversionData.totalConversions && conversionData.totalConversions > 0) ||
+              (conversionData.clickConversions && conversionData.clickConversions > 0) ||
+              (conversionData.viewConversions && conversionData.viewConversions > 0)
+            );
+            
+            if (!hasConversionData) return null;
+            
             return (
               <DraggableReportSection {...sectionProps} title="Conversion Tracking" icon={Target} iconColor="#10b981">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
