@@ -5660,7 +5660,7 @@ function ExpandableLocationTable({ locations, showSpend, formatNumber, formatCur
 }
 
 // ============================================
-// EXPANDABLE KEYWORDS LIST - Visual keyword display with categories
+// EXPANDABLE KEYWORDS LIST - Visual keyword display
 // ============================================
 function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
   const [expanded, setExpanded] = useState(false);
@@ -5693,62 +5693,57 @@ function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
         <div style={{ fontSize: '0.875rem', color: '#7c3aed' }}>
           Keywords Targeting This Campaign
         </div>
-        <div style={{ fontSize: '0.75rem', color: '#a78bfa', marginTop: '0.5rem' }}>
-          Keyword list download not available
-        </div>
       </div>
     );
   }
   
-  // Group keywords by first letter for better organization
-  const groupedKeywords = keywords.reduce((acc, kw) => {
-    const firstLetter = (kw.keyword || '').charAt(0).toUpperCase() || '#';
-    if (!acc[firstLetter]) acc[firstLetter] = [];
-    acc[firstLetter].push(kw);
-    return acc;
-  }, {});
-  
-  const sortedGroups = Object.keys(groupedKeywords).sort();
+  // Calculate stats
+  const keywordsWithBids = keywords.filter(kw => kw.max_bid && kw.max_bid > 0);
+  const avgBid = keywordsWithBids.length > 0 
+    ? keywordsWithBids.reduce((sum, kw) => sum + kw.max_bid, 0) / keywordsWithBids.length 
+    : 0;
+  const maxBid = keywordsWithBids.length > 0 
+    ? Math.max(...keywordsWithBids.map(kw => kw.max_bid))
+    : 0;
   
   // Filter keywords based on search
   const filteredKeywords = searchTerm 
     ? keywords.filter(kw => kw.keyword?.toLowerCase().includes(searchTerm.toLowerCase()))
     : keywords;
   
-  // Get keywords with max bids set
-  const keywordsWithBids = keywords.filter(kw => kw.max_bid && kw.max_bid > 0);
-  
   // Display keywords (limited when collapsed)
-  const displayKeywords = expanded ? filteredKeywords : filteredKeywords.slice(0, 10);
+  const displayKeywords = expanded ? filteredKeywords : filteredKeywords.slice(0, 8);
   
   return (
     <div>
-      {/* Summary stats */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(3, 1fr)', 
-        gap: '1rem', 
-        marginBottom: '1.25rem',
-        padding: '1rem',
-        background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
-        borderRadius: '0.75rem'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Total Keywords</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{keywords.length}</div>
+      {/* Summary stats - only show if there are custom bids */}
+      {keywordsWithBids.length > 0 && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(3, 1fr)', 
+          gap: '1rem', 
+          marginBottom: '1.25rem',
+          padding: '1rem',
+          background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
+          borderRadius: '0.75rem'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Total Keywords</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{keywords.length}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Avg Max Bid</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>${avgBid.toFixed(2)}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Highest Bid</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>${maxBid.toFixed(2)}</div>
+          </div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Letter Groups</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{sortedGroups.length}</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Custom Bids</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{keywordsWithBids.length}</div>
-        </div>
-      </div>
+      )}
       
-      {/* Search box when expanded */}
-      {expanded && keywords.length > 10 && (
+      {/* Search box when expanded or many keywords */}
+      {(expanded || keywords.length > 10) && (
         <div style={{ marginBottom: '1rem' }}>
           <div style={{ 
             display: 'flex', 
@@ -5791,9 +5786,6 @@ function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
       )}
       
       {/* Keyword tags */}
-      <div style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>
-        {expanded ? 'All Keywords' : 'Top Keywords'}
-      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
         {displayKeywords.map((kw, i) => (
           <div 
@@ -5801,8 +5793,8 @@ function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
             style={{ 
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.375rem',
-              padding: '0.5rem 0.875rem',
+              gap: '0.5rem',
+              padding: '0.625rem 1rem',
               background: kw.max_bid ? '#fef3c7' : '#f3f4f6',
               border: kw.max_bid ? '1px solid #fcd34d' : '1px solid #e5e7eb',
               borderRadius: '9999px',
@@ -5811,15 +5803,12 @@ function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
               transition: 'all 0.15s'
             }}
           >
-            <Target size={12} color="#8b5cf6" />
+            <Target size={14} color="#8b5cf6" />
             <span style={{ fontWeight: 500 }}>{kw.keyword}</span>
             {kw.max_bid && (
               <span style={{ 
-                fontSize: '0.6875rem', 
+                fontSize: '0.75rem', 
                 color: '#92400e',
-                background: '#fef3c7',
-                padding: '0.125rem 0.375rem',
-                borderRadius: '0.25rem',
                 fontWeight: 600
               }}>
                 ${kw.max_bid.toFixed(2)}
@@ -5830,7 +5819,7 @@ function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
       </div>
       
       {/* Show more/less button */}
-      {filteredKeywords.length > 10 && (
+      {filteredKeywords.length > 8 && (
         <button
           onClick={() => setExpanded(!expanded)}
           style={{
@@ -5841,10 +5830,10 @@ function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
             width: '100%',
             marginTop: '1rem',
             padding: '0.75rem',
-            background: '#f5f3ff',
-            border: '1px solid #c4b5fd',
+            background: expanded ? '#f3f4f6' : '#f5f3ff',
+            border: expanded ? '1px solid #e5e7eb' : '1px solid #c4b5fd',
             borderRadius: '0.5rem',
-            color: '#5b21b6',
+            color: expanded ? '#374151' : '#5b21b6',
             fontSize: '0.875rem',
             fontWeight: 600,
             cursor: 'pointer',
@@ -5859,22 +5848,22 @@ function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
         </button>
       )}
       
-      {/* Legend */}
-      {keywordsWithBids.length > 0 && (
+      {/* Legend - only show if there are keywords with bids */}
+      {keywordsWithBids.length > 0 && keywordsWithBids.length < keywords.length && (
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: '1rem',
           marginTop: '1rem',
           padding: '0.75rem',
-          background: '#fffbeb',
+          background: '#f9fafb',
           borderRadius: '0.5rem',
           fontSize: '0.75rem',
-          color: '#92400e'
+          color: '#6b7280'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
             <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#fcd34d' }} />
-            <span>Keywords with custom max bid</span>
+            <span>Custom max bid</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
             <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#e5e7eb' }} />

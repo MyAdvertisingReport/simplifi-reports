@@ -393,33 +393,65 @@ class ReportCenterService {
    */
   async getKeywordPerformance(orgId, campaignId, startDate, endDate) {
     try {
+      console.log(`[REPORT CENTER] Getting keyword performance for org ${orgId}, campaign ${campaignId}, ${startDate} to ${endDate}`);
+      
       const reportId = await this.getOrCreateReportModel(
         orgId,
         TEMPLATES.KEYWORD_BY_CAMPAIGN,
         'Keyword Performance'
       );
       
-      if (!reportId) return [];
+      console.log(`[REPORT CENTER] Keyword report model ID: ${reportId}`);
+      
+      if (!reportId) {
+        console.log('[REPORT CENTER] No report ID returned for keyword performance');
+        return [];
+      }
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
         'summary_delivery_events.campaign_id': campaignId.toString()
       };
+      
+      console.log(`[REPORT CENTER] Running keyword snapshot with filters:`, JSON.stringify(filters));
 
       const data = await this.runSnapshotAndWait(orgId, reportId, filters);
       
+      console.log(`[REPORT CENTER] Keyword snapshot response type: ${typeof data}`);
+      console.log(`[REPORT CENTER] Keyword snapshot is array: ${Array.isArray(data)}`);
+      console.log(`[REPORT CENTER] Keyword snapshot length: ${data?.length || 0}`);
+      
+      if (data && data.length > 0) {
+        console.log(`[REPORT CENTER] Keyword snapshot first row keys:`, Object.keys(data[0]));
+        console.log(`[REPORT CENTER] Keyword snapshot first row:`, JSON.stringify(data[0]));
+      }
+      
       if (!data || !Array.isArray(data)) return [];
       
-      return data.map(row => ({
-        keyword: row['dim_keyword.keyword'] || row['summary_delivery_events.keyword'],
-        impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
-        clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
-        ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-        spend: parseFloat(row['summary_delivery_events.spend'] || 0)
+      // Map the data - try multiple possible field names
+      const result = data.map(row => ({
+        keyword: row['dim_keyword.keyword'] || 
+                 row['summary_delivery_events.keyword'] || 
+                 row['dim_keyword.keyword_name'] ||
+                 row['keyword'] ||
+                 row['Keyword'] ||
+                 Object.values(row).find(v => typeof v === 'string' && v.length > 0 && v.length < 100),
+        impressions: parseInt(row['summary_delivery_events.impressions'] || row['impressions'] || row['Impressions'] || 0),
+        clicks: parseInt(row['summary_delivery_events.clicks'] || row['clicks'] || row['Clicks'] || 0),
+        ctr: parseFloat(row['summary_delivery_events.ctr'] || row['ctr'] || row['CTR'] || 0),
+        spend: parseFloat(row['summary_delivery_events.spend'] || row['spend'] || row['Spend'] || 0)
       })).filter(r => r.keyword).sort((a, b) => b.impressions - a.impressions);
       
+      console.log(`[REPORT CENTER] Processed ${result.length} keywords`);
+      if (result.length > 0) {
+        console.log(`[REPORT CENTER] First keyword result:`, JSON.stringify(result[0]));
+      }
+      
+      return result;
+      
     } catch (error) {
-      console.error('Error getting keyword performance:', error.message);
+      console.error('[REPORT CENTER] Error getting keyword performance:', error.message);
+      console.error('[REPORT CENTER] Full error:', error);
       return [];
     }
   }
