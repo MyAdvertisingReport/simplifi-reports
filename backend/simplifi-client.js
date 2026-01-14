@@ -286,31 +286,30 @@ class SimplifiClient {
   }
 
   /**
-   * Get first party segments (retargeting pixels) for an organization
+   * Get retargeting segments (pixels) for an organization
    * @param {number} orgId - Organization ID
    */
   async getRetargetingSegments(orgId) {
     try {
-      // The correct endpoint is first_party_segments, not retargeting_segments
-      const url = `/organizations/${orgId}/first_party_segments`;
-      console.log('Fetching first party segments:', url);
+      const url = `/organizations/${orgId}/retargeting_segments`;
+      console.log('Fetching retargeting segments:', url);
       const response = await this.client.get(url);
-      console.log('First party segments response:', JSON.stringify(response.data, null, 2).substring(0, 2000));
+      console.log('Retargeting segments response:', JSON.stringify(response.data, null, 2).substring(0, 2000));
       return response.data;
     } catch (error) {
-      console.log('First party segments error:', error.message);
+      console.log('Retargeting segments error:', error.message);
       throw this._handleError(error);
     }
   }
 
   /**
-   * Get a specific first party segment details (includes pixel code)
+   * Get a specific retargeting segment details (includes pixel code)
    * @param {number} orgId - Organization ID
    * @param {number} segmentId - Segment ID
    */
   async getRetargetingSegmentDetails(orgId, segmentId) {
     try {
-      const url = `/first_party_segments/${segmentId}`;
+      const url = `/organizations/${orgId}/retargeting_segments/${segmentId}`;
       console.log('Fetching segment details:', url);
       const response = await this.client.get(url);
       console.log('Segment details:', JSON.stringify(response.data, null, 2).substring(0, 2000));
@@ -438,303 +437,75 @@ class SimplifiClient {
   }
 
   // ============================================
-  // REPORT CENTER API METHODS
+  // WRAPPER METHODS FOR SERVER COMPATIBILITY
   // ============================================
 
   /**
-   * Get a specific report template details
-   * @param {number} orgId - Organization ID
-   * @param {number} templateId - Template ID
+   * Get organization stats (wrapper for getCampaignStats)
+   * This method is called by the server with a different signature
    */
-  async getReportTemplate(orgId, templateId) {
+  async getOrganizationStats(orgId, startDate, endDate, byDay = false, byCampaign = false) {
     try {
-      const response = await this.client.get(`/organizations/${orgId}/report_center/templates/${templateId}`);
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Create a report model from a template
-   * @param {number} orgId - Organization ID
-   * @param {number} templateId - Template ID to base report on
-   * @param {string} title - Optional custom title for the report
-   */
-  async createReportModel(orgId, templateId, title = null) {
-    try {
-      const body = { template_id: templateId };
-      if (title) body.title = title;
-      
-      const response = await this.client.post(`/organizations/${orgId}/report_center/reports`, body);
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Get a specific report model
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   */
-  async getReportModel(orgId, reportId) {
-    try {
-      const response = await this.client.get(`/organizations/${orgId}/report_center/reports/${reportId}`);
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Update a report model (title, fields, filters)
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {object} updates - { title, fields, filters }
-   */
-  async updateReportModel(orgId, reportId, updates) {
-    try {
-      const response = await this.client.put(`/organizations/${orgId}/report_center/reports/${reportId}`, updates);
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Delete a report model
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   */
-  async deleteReportModel(orgId, reportId) {
-    try {
-      const response = await this.client.delete(`/organizations/${orgId}/report_center/reports/${reportId}`);
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Create a report snapshot (one-time async report run)
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {object} options - { filters, format, webhookUrls, recipients }
-   */
-  async createReportSnapshot(orgId, reportId, options = {}) {
-    try {
-      const body = {
-        scheduled_plan: {},
-        destination_format: options.format || 'json',
-        filters: options.filters || {}
+      const options = {
+        startDate,
+        endDate,
+        byDay,
+        byCampaign
       };
+      return await this.getCampaignStats(orgId, options);
+    } catch (error) {
+      throw this._handleError(error);
+    }
+  }
+
+  /**
+   * Get retargeting pixels (wrapper for getRetargetingSegments)
+   */
+  async getRetargetingPixels(orgId) {
+    try {
+      return await this.getRetargetingSegments(orgId);
+    } catch (error) {
+      throw this._handleError(error);
+    }
+  }
+
+  /**
+   * Get campaign details by campaign ID
+   */
+  async getCampaignDetails(campaignId) {
+    try {
+      const response = await this.client.get(`/campaigns/${campaignId}`);
+      return response.data;
+    } catch (error) {
+      throw this._handleError(error);
+    }
+  }
+
+  /**
+   * Get ad stats for a campaign (for the server's getCampaignAdStats call)
+   */
+  async getCampaignAdStats(campaignId, startDate, endDate) {
+    try {
+      // Need to get the org ID first, then call ad stats
+      // For now, return empty - this endpoint needs the orgId
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      params.append('by_ad', 'true');
+      params.append('campaign_id', campaignId);
       
-      if (options.webhookUrls) body.webhook_urls = options.webhookUrls;
-      if (options.recipients) body.recipients = options.recipients;
+      // Try to get campaign first to find orgId
+      const campaignResponse = await this.client.get(`/campaigns/${campaignId}`);
+      const campaign = campaignResponse.data?.campaigns?.[0] || campaignResponse.data;
+      const orgId = campaign?.organization_id;
       
-      const response = await this.client.post(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/create_snapshot`,
-        body
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Get all snapshots for a report (last 7 days)
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   */
-  async getReportSnapshots(orgId, reportId) {
-    try {
-      const response = await this.client.get(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/snapshots`
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Get a specific snapshot
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {number} snapshotId - Snapshot ID
-   */
-  async getReportSnapshot(orgId, reportId, snapshotId) {
-    try {
-      const response = await this.client.get(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/snapshots/${snapshotId}`
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Download a snapshot report
-   * @param {string} downloadUrl - Full download URL with code parameter
-   */
-  async downloadSnapshot(downloadUrl) {
-    try {
-      // Download URL already includes auth code, but we still need headers
-      const response = await this.client.get(downloadUrl.replace(BASE_URL, ''));
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Create a scheduled report
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {object} options - { interval, onDay, format, filters, webhookUrls, recipients }
-   */
-  async createReportSchedule(orgId, reportId, options = {}) {
-    try {
-      const body = {
-        scheduled_plan: {
-          enabled: true,
-          run_interval: options.interval || 'daily',
-          on_day: options.onDay || (options.interval === 'weekly' ? 1 : 1)
-        },
-        destination_format: options.format || 'json'
-      };
-      
-      if (options.filters) body.filters = options.filters;
-      if (options.webhookUrls) body.webhook_urls = options.webhookUrls;
-      if (options.recipients) body.recipients = options.recipients;
-      
-      const response = await this.client.post(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/`,
-        body
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Get all schedules for a report
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {boolean} includeChildren - Include child org schedules
-   */
-  async getReportSchedules(orgId, reportId, includeChildren = false) {
-    try {
-      const params = includeChildren ? '?children=true' : '';
-      const response = await this.client.get(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/${params}`
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Get a specific schedule with download history
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {number} scheduleId - Schedule ID
-   */
-  async getReportSchedule(orgId, reportId, scheduleId) {
-    try {
-      const response = await this.client.get(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/${scheduleId}`
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Update a report schedule
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {number} scheduleId - Schedule ID
-   * @param {object} options - { interval, onDay, format, filters, webhookUrls, recipients, enabled }
-   */
-  async updateReportSchedule(orgId, reportId, scheduleId, options = {}) {
-    try {
-      const body = {};
-      
-      if (options.interval || options.onDay || options.enabled !== undefined) {
-        body.scheduled_plan = {};
-        if (options.interval) body.scheduled_plan.run_interval = options.interval;
-        if (options.onDay) body.scheduled_plan.on_day = options.onDay;
-        if (options.enabled !== undefined) body.scheduled_plan.enabled = options.enabled;
+      if (orgId) {
+        const url = `/organizations/${orgId}/campaign_stats?${params.toString()}`;
+        const response = await this.client.get(url);
+        return response.data;
       }
       
-      if (options.format) body.destination_format = options.format;
-      if (options.filters) body.filters = options.filters;
-      if (options.webhookUrls) body.webhook_urls = options.webhookUrls;
-      if (options.recipients) body.recipients = options.recipients;
-      
-      const response = await this.client.put(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/${scheduleId}`,
-        body
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Delete a report schedule
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {number} scheduleId - Schedule ID
-   */
-  async deleteReportSchedule(orgId, reportId, scheduleId) {
-    try {
-      const response = await this.client.delete(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/${scheduleId}`
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Enable a report schedule
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {number} scheduleId - Schedule ID
-   */
-  async enableReportSchedule(orgId, reportId, scheduleId) {
-    try {
-      const response = await this.client.get(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/${scheduleId}/enable`
-      );
-      return response.data;
-    } catch (error) {
-      throw this._handleError(error);
-    }
-  }
-
-  /**
-   * Disable a report schedule
-   * @param {number} orgId - Organization ID
-   * @param {number} reportId - Report Model ID
-   * @param {number} scheduleId - Schedule ID
-   */
-  async disableReportSchedule(orgId, reportId, scheduleId) {
-    try {
-      const response = await this.client.get(
-        `/organizations/${orgId}/report_center/reports/${reportId}/schedules/${scheduleId}/disable`
-      );
-      return response.data;
+      return { campaign_stats: [] };
     } catch (error) {
       throw this._handleError(error);
     }
