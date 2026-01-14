@@ -7,7 +7,7 @@ import {
   Tablet, Tv, MapPin, Image, Percent, Play, Pause, StopCircle, ChevronRight,
   GripVertical, Save, MessageSquare, Pin, Trash2, Edit3, Video, Radio, Code,
   CheckCircle, AlertCircle, Clock, Bookmark, Flag, Download, History, Award,
-  TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe
+  TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -4380,62 +4380,27 @@ function CampaignDetailPage() {
             );
           
           case 'keywords':
-            if (keywords.length === 0) return null;
-            
-            // Check if we have actual keywords or just a summary
-            const hasActualKeywords = keywords.length > 0 && keywords[0]?.keyword && !keywords[0]?.isSummary;
-            const keywordCount = hasActualKeywords ? keywords.length : (keywords[0]?.count || keywords.length);
-            
-            return (
-              <DraggableReportSection {...sectionProps} title={`Keywords (${keywordCount})`} icon={Target} iconColor="#8b5cf6">
-                <ExpandableKeywordsList 
-                  keywords={hasActualKeywords ? keywords : []}
-                  keywordCount={keywordCount}
-                  hasActualKeywords={hasActualKeywords}
-                />
-              </DraggableReportSection>
-            );
+            // Skip this - we'll show everything in keywordPerformance
+            return null;
           
           case 'keywordPerformance':
-            // Only show if we have actual performance data with impressions/clicks
-            // Don't show empty "loading" or "no data" states - just hide the section
-            if (keywordPerformance.length === 0) return null;
+            // Combined Keywords section - show keyword list + performance data
+            if (keywords.length === 0 && keywordPerformance.length === 0) return null;
             
-            // Check if spend data is actually available
+            // Check if spend data is actually available and user is admin
             const hasKwSpendData = keywordPerformance.some(kw => (kw.spend || 0) > 0);
             const showKwSpend = showSpendData && hasKwSpendData;
             
             return (
-              <DraggableReportSection {...sectionProps} title={`Keyword Performance (${keywordPerformance.length})`} icon={Target} iconColor="#8b5cf6">
-                <div style={{ maxHeight: '400px', overflow: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead style={{ position: 'sticky', top: 0, background: 'white' }}>
-                      <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                        <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Keyword</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>
-                        {showKwSpend && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {keywordPerformance.map((kw, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '0.75rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <Target size={14} color="#8b5cf6" />
-                              <span style={{ fontWeight: 500 }}>{kw.keyword}</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(kw.impressions)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(kw.clicks)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{kw.ctr?.toFixed(2) || '0.00'}%</td>
-                          {showKwSpend && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(kw.spend)}</td>}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+              <DraggableReportSection {...sectionProps} title={`Keyword Performance (${keywordPerformance.length || keywords.length})`} icon={Target} iconColor="#8b5cf6">
+                <ExpandableKeywordPerformance 
+                  keywords={keywords}
+                  keywordPerformance={keywordPerformance}
+                  showSpend={showKwSpend}
+                  formatNumber={formatNumberFull}
+                  formatCurrency={formatCurrency}
+                  isAdmin={user?.role === 'admin'}
+                />
               </DraggableReportSection>
             );
           
@@ -5660,215 +5625,312 @@ function ExpandableLocationTable({ locations, showSpend, formatNumber, formatCur
 }
 
 // ============================================
-// EXPANDABLE KEYWORDS LIST - Visual keyword display
+// EXPANDABLE KEYWORD PERFORMANCE - Combined keywords + performance with charts
 // ============================================
-function ExpandableKeywordsList({ keywords, keywordCount, hasActualKeywords }) {
+function ExpandableKeywordPerformance({ keywords, keywordPerformance, showSpend, formatNumber, formatCurrency, isAdmin }) {
   const [expanded, setExpanded] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('chart'); // 'chart' or 'table'
   
-  if (!hasActualKeywords) {
-    // Fallback when we only have the count
+  // Use performance data if available, otherwise fall back to just keyword list
+  const hasPerformanceData = keywordPerformance && keywordPerformance.length > 0;
+  const displayData = hasPerformanceData ? keywordPerformance : keywords;
+  
+  if (!displayData || displayData.length === 0) {
     return (
-      <div style={{ 
-        padding: '2rem',
-        background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
-        borderRadius: '0.75rem',
-        textAlign: 'center'
-      }}>
-        <div style={{
-          width: '64px',
-          height: '64px',
-          borderRadius: '50%',
-          background: '#8b5cf6',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          margin: '0 auto 1rem'
-        }}>
-          <Target size={32} color="white" />
-        </div>
-        <div style={{ fontSize: '2rem', fontWeight: 700, color: '#5b21b6', marginBottom: '0.25rem' }}>
-          {keywordCount}
-        </div>
-        <div style={{ fontSize: '0.875rem', color: '#7c3aed' }}>
-          Keywords Targeting This Campaign
-        </div>
+      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+        <Target size={32} style={{ marginBottom: '0.5rem', opacity: 0.3 }} />
+        <p>No keyword data available</p>
       </div>
     );
   }
   
-  // Calculate stats
-  const keywordsWithBids = keywords.filter(kw => kw.max_bid && kw.max_bid > 0);
-  const avgBid = keywordsWithBids.length > 0 
-    ? keywordsWithBids.reduce((sum, kw) => sum + kw.max_bid, 0) / keywordsWithBids.length 
-    : 0;
-  const maxBid = keywordsWithBids.length > 0 
-    ? Math.max(...keywordsWithBids.map(kw => kw.max_bid))
-    : 0;
+  // Calculate totals for performance data
+  const totalImpressions = hasPerformanceData ? keywordPerformance.reduce((sum, kw) => sum + (kw.impressions || 0), 0) : 0;
+  const totalClicks = hasPerformanceData ? keywordPerformance.reduce((sum, kw) => sum + (kw.clicks || 0), 0) : 0;
+  const totalSpend = hasPerformanceData ? keywordPerformance.reduce((sum, kw) => sum + (kw.spend || 0), 0) : 0;
+  const avgCTR = totalImpressions > 0 ? (totalClicks / totalImpressions * 100) : 0;
   
-  // Filter keywords based on search
-  const filteredKeywords = searchTerm 
-    ? keywords.filter(kw => kw.keyword?.toLowerCase().includes(searchTerm.toLowerCase()))
-    : keywords;
+  // Get top keywords by impressions for chart
+  const topKeywords = hasPerformanceData 
+    ? [...keywordPerformance].sort((a, b) => b.impressions - a.impressions).slice(0, 8)
+    : [];
   
-  // Display keywords (limited when collapsed)
-  const displayKeywords = expanded ? filteredKeywords : filteredKeywords.slice(0, 8);
+  // Calculate max impressions for bar scaling
+  const maxImpressions = topKeywords.length > 0 ? Math.max(...topKeywords.map(k => k.impressions)) : 1;
+  
+  // Colors for the bars
+  const barColors = ['#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe', '#ede9fe', '#f5f3ff', '#faf5ff', '#fdf4ff'];
   
   return (
     <div>
-      {/* Summary stats - only show if there are custom bids */}
-      {keywordsWithBids.length > 0 && (
+      {/* Summary Stats */}
+      {hasPerformanceData && (
         <div style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(3, 1fr)', 
+          gridTemplateColumns: showSpend && isAdmin ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', 
           gap: '1rem', 
-          marginBottom: '1.25rem',
-          padding: '1rem',
+          marginBottom: '1.5rem',
+          padding: '1.25rem',
           background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)',
           borderRadius: '0.75rem'
         }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Total Keywords</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{keywords.length}</div>
+            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Total Impressions</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{formatNumber(totalImpressions)}</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Avg Max Bid</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>${avgBid.toFixed(2)}</div>
+            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Total Clicks</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{formatNumber(totalClicks)}</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600 }}>Highest Bid</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>${maxBid.toFixed(2)}</div>
+            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Avg CTR</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{avgCTR.toFixed(2)}%</div>
           </div>
-        </div>
-      )}
-      
-      {/* Search box when expanded or many keywords */}
-      {(expanded || keywords.length > 10) && (
-        <div style={{ marginBottom: '1rem' }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem',
-            padding: '0.5rem 0.75rem',
-            background: '#f9fafb',
-            borderRadius: '0.5rem',
-            border: '1px solid #e5e7eb'
-          }}>
-            <Search size={16} color="#9ca3af" />
-            <input
-              type="text"
-              placeholder="Search keywords..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                outline: 'none',
-                flex: 1,
-                fontSize: '0.875rem'
-              }}
-            />
-            {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px' }}
-              >
-                <X size={14} color="#9ca3af" />
-              </button>
-            )}
-          </div>
-          {searchTerm && (
-            <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
-              Found {filteredKeywords.length} keywords matching "{searchTerm}"
+          {showSpend && isAdmin && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>Total Spend</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#5b21b6' }}>{formatCurrency(totalSpend)}</div>
             </div>
           )}
         </div>
       )}
       
-      {/* Keyword tags */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-        {displayKeywords.map((kw, i) => (
-          <div 
-            key={i} 
-            style={{ 
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.625rem 1rem',
-              background: kw.max_bid ? '#fef3c7' : '#f3f4f6',
-              border: kw.max_bid ? '1px solid #fcd34d' : '1px solid #e5e7eb',
-              borderRadius: '9999px',
-              fontSize: '0.875rem',
-              color: '#374151',
-              transition: 'all 0.15s'
-            }}
-          >
-            <Target size={14} color="#8b5cf6" />
-            <span style={{ fontWeight: 500 }}>{kw.keyword}</span>
-            {kw.max_bid && (
-              <span style={{ 
-                fontSize: '0.75rem', 
-                color: '#92400e',
-                fontWeight: 600
-              }}>
-                ${kw.max_bid.toFixed(2)}
-              </span>
-            )}
+      {/* View Toggle */}
+      {hasPerformanceData && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+          <div style={{ 
+            display: 'inline-flex', 
+            background: '#f3f4f6', 
+            borderRadius: '0.5rem', 
+            padding: '0.25rem'
+          }}>
+            <button
+              onClick={() => setViewMode('chart')}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '0.375rem',
+                border: 'none',
+                background: viewMode === 'chart' ? 'white' : 'transparent',
+                boxShadow: viewMode === 'chart' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                color: viewMode === 'chart' ? '#5b21b6' : '#6b7280',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.375rem'
+              }}
+            >
+              <BarChart3 size={16} /> Chart
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '0.375rem',
+                border: 'none',
+                background: viewMode === 'table' ? 'white' : 'transparent',
+                boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
+                color: viewMode === 'table' ? '#5b21b6' : '#6b7280',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.375rem'
+              }}
+            >
+              <List size={16} /> Table
+            </button>
           </div>
-        ))}
-      </div>
-      
-      {/* Show more/less button */}
-      {filteredKeywords.length > 8 && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            width: '100%',
-            marginTop: '1rem',
-            padding: '0.75rem',
-            background: expanded ? '#f3f4f6' : '#f5f3ff',
-            border: expanded ? '1px solid #e5e7eb' : '1px solid #c4b5fd',
-            borderRadius: '0.5rem',
-            color: expanded ? '#374151' : '#5b21b6',
-            fontSize: '0.875rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.2s'
-          }}
-        >
-          {expanded ? (
-            <>Show Less <ChevronUp size={18} /></>
-          ) : (
-            <>View All {filteredKeywords.length} Keywords <ChevronDown size={18} /></>
-          )}
-        </button>
+        </div>
       )}
       
-      {/* Legend - only show if there are keywords with bids */}
-      {keywordsWithBids.length > 0 && keywordsWithBids.length < keywords.length && (
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: '1rem',
-          marginTop: '1rem',
-          padding: '0.75rem',
-          background: '#f9fafb',
-          borderRadius: '0.5rem',
-          fontSize: '0.75rem',
-          color: '#6b7280'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#fcd34d' }} />
-            <span>Custom max bid</span>
+      {/* Chart View */}
+      {hasPerformanceData && viewMode === 'chart' && (
+        <div>
+          <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '1rem' }}>
+            Top Keywords by Impressions
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-            <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#e5e7eb' }} />
-            <span>Standard bidding</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {topKeywords.map((kw, i) => {
+              const barWidth = (kw.impressions / maxImpressions) * 100;
+              const impressionShare = totalImpressions > 0 ? (kw.impressions / totalImpressions * 100) : 0;
+              
+              return (
+                <div key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 0 }}>
+                      <Target size={14} color={barColors[i] || '#8b5cf6'} />
+                      <span style={{ 
+                        fontWeight: 500, 
+                        fontSize: '0.875rem',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {kw.keyword}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+                      <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                        {formatNumber(kw.impressions)} impr
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#059669', fontWeight: 500 }}>
+                        {kw.clicks} clicks
+                      </span>
+                      <span style={{ 
+                        fontSize: '0.6875rem', 
+                        color: '#8b5cf6',
+                        background: '#f5f3ff',
+                        padding: '0.125rem 0.5rem',
+                        borderRadius: '9999px',
+                        fontWeight: 600
+                      }}>
+                        {impressionShare.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ 
+                    height: '8px', 
+                    background: '#f3f4f6', 
+                    borderRadius: '4px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ 
+                      width: `${barWidth}%`, 
+                      height: '100%', 
+                      background: `linear-gradient(90deg, ${barColors[i] || '#8b5cf6'} 0%, ${barColors[Math.min(i+1, 7)]} 100%)`,
+                      borderRadius: '4px',
+                      transition: 'width 0.5s ease'
+                    }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
+          
+          {keywordPerformance.length > 8 && (
+            <div style={{ 
+              marginTop: '1rem', 
+              padding: '0.75rem', 
+              background: '#f9fafb', 
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              fontSize: '0.875rem',
+              color: '#6b7280'
+            }}>
+              +{keywordPerformance.length - 8} more keywords • Switch to table view to see all
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Table View */}
+      {hasPerformanceData && viewMode === 'table' && (
+        <div style={{ maxHeight: expanded ? 'none' : '400px', overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0, background: 'white' }}>
+              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Keyword</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>
+                {showSpend && isAdmin && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {keywordPerformance.map((kw, i) => {
+                const impressionShare = totalImpressions > 0 ? (kw.impressions / totalImpressions * 100) : 0;
+                return (
+                  <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td style={{ padding: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ 
+                          width: '8px', 
+                          height: '8px', 
+                          borderRadius: '50%', 
+                          background: barColors[Math.min(i, 7)]
+                        }} />
+                        <span style={{ fontWeight: 500 }}>{kw.keyword}</span>
+                        <span style={{ 
+                          fontSize: '0.6875rem', 
+                          color: '#8b5cf6',
+                          background: '#f5f3ff',
+                          padding: '0.125rem 0.375rem',
+                          borderRadius: '9999px'
+                        }}>
+                          {impressionShare.toFixed(1)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumber(kw.impressions)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumber(kw.clicks)}</td>
+                    <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{kw.ctr?.toFixed(2) || '0.00'}%</td>
+                    {showSpend && isAdmin && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(kw.spend)}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      
+      {/* Fallback: Just show keyword list if no performance data */}
+      {!hasPerformanceData && keywords.length > 0 && (
+        <div>
+          <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: '#374151', marginBottom: '1rem' }}>
+            Campaign Keywords ({keywords.length})
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {(expanded ? keywords : keywords.slice(0, 12)).map((kw, i) => (
+              <div 
+                key={i} 
+                style={{ 
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.5rem 0.875rem',
+                  background: '#f5f3ff',
+                  border: '1px solid #e9d5ff',
+                  borderRadius: '9999px',
+                  fontSize: '0.875rem',
+                  color: '#5b21b6'
+                }}
+              >
+                <Target size={12} color="#8b5cf6" />
+                <span style={{ fontWeight: 500 }}>{kw.keyword}</span>
+              </div>
+            ))}
+          </div>
+          
+          {keywords.length > 12 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                width: '100%',
+                marginTop: '1rem',
+                padding: '0.75rem',
+                background: '#f5f3ff',
+                border: '1px solid #c4b5fd',
+                borderRadius: '0.5rem',
+                color: '#5b21b6',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                cursor: 'pointer'
+              }}
+            >
+              {expanded ? (
+                <>Show Less <ChevronUp size={18} /></>
+              ) : (
+                <>View All {keywords.length} Keywords <ChevronDown size={18} /></>
+              )}
+            </button>
+          )}
         </div>
       )}
     </div>
