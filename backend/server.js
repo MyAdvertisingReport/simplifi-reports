@@ -485,9 +485,10 @@ app.post('/api/clients/sync', authenticateToken, requireAdmin, async (req, res) 
 // Sync a single client from Simpli.fi
 app.post('/api/clients/sync-one', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { orgId, name } = req.body;
+    const { orgId, name, orgName } = req.body;
+    const clientName = name || orgName;  // Accept either name or orgName
     
-    if (!orgId || !name) {
+    if (!orgId || !clientName) {
       return res.status(400).json({ error: 'Organization ID and name required' });
     }
     
@@ -504,7 +505,7 @@ app.post('/api/clients/sync-one', authenticateToken, requireAdmin, async (req, r
     }
     
     const client = dbHelper.createClient({
-      name: name,
+      name: clientName,
       simplifi_org_id: orgId,
       brand_id: brand.id,
       status: 'active'
