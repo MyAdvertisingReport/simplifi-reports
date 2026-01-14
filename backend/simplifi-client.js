@@ -534,7 +534,7 @@ class SimplifiClient {
         throw new Error('No download URL found in keywords response');
       }
       
-      // Use native https to make the download request
+      // Use native https with the correct Accept header (Simpli.fi requires html, csv, and json)
       const url = new URL(downloadUrl);
       
       const keywords = await new Promise((resolve, reject) => {
@@ -545,8 +545,8 @@ class SimplifiClient {
           headers: {
             'X-App-Key': this.appKey,
             'X-User-Key': this.userKey,
+            'Accept': 'text/html, text/csv, application/json, */*',
             'Content-Type': 'application/json'
-            // Note: NOT setting Accept header - let the server decide
           }
         };
         
@@ -572,39 +572,10 @@ class SimplifiClient {
               return;
             }
             
-            // Check if response is JSON or CSV
+            // Check content type to determine how to parse
             const contentType = res.headers['content-type'] || '';
             
-            if (contentType.includes('application/json')) {
-              // Parse as JSON
-              try {
-                const jsonData = JSON.parse(data);
-                console.log(`[SIMPLIFI CLIENT] Response is JSON:`, JSON.stringify(jsonData).substring(0, 500));
-                
-                // Handle different JSON formats
-                let keywordList = [];
-                if (Array.isArray(jsonData)) {
-                  keywordList = jsonData.map((kw, i) => ({
-                    id: i + 1,
-                    keyword: typeof kw === 'string' ? kw : (kw.name || kw.keyword || String(kw)),
-                    max_bid: kw.max_bid || null
-                  }));
-                } else if (jsonData.keywords && Array.isArray(jsonData.keywords)) {
-                  keywordList = jsonData.keywords.map((kw, i) => ({
-                    id: i + 1,
-                    keyword: typeof kw === 'string' ? kw : (kw.name || kw.keyword || String(kw)),
-                    max_bid: kw.max_bid || null
-                  }));
-                }
-                
-                resolve(keywordList);
-                return;
-              } catch (e) {
-                console.log(`[SIMPLIFI CLIENT] JSON parse failed, treating as CSV`);
-              }
-            }
-            
-            // Parse as CSV - format is: keyword,max_bid (max_bid is optional)
+            // Try to parse as CSV (most likely format for download)
             const lines = data.split(/[\r\n]+/).filter(line => line.trim());
             
             // Check if first line is a header
@@ -617,6 +588,7 @@ class SimplifiClient {
               if (!line) continue;
               
               let keyword, maxBid;
+              // Handle quoted CSV values
               if (line.includes('"')) {
                 const match = line.match(/^"?([^"]*)"?,?(.*)$/);
                 keyword = match?.[1]?.trim() || line;
@@ -636,9 +608,9 @@ class SimplifiClient {
               }
             }
             
-            console.log(`[SIMPLIFI CLIENT] Parsed ${keywordList.length} keywords from CSV`);
+            console.log(`[SIMPLIFI CLIENT] Parsed ${keywordList.length} keywords`);
             if (keywordList.length > 0) {
-              console.log(`[SIMPLIFI CLIENT] Sample:`, keywordList.slice(0, 5));
+              console.log(`[SIMPLIFI CLIENT] First 5 keywords:`, keywordList.slice(0, 5));
             }
             
             resolve(keywordList);
