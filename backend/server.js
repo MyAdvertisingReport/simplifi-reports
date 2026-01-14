@@ -445,6 +445,79 @@ app.delete('/api/notes/:id', authenticateToken, (req, res) => {
 });
 
 // ============================================
+// CLIENT SYNC ROUTES
+// ============================================
+
+// Sync all clients from Simpli.fi
+app.post('/api/clients/sync', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const orgs = await simplifiClient.getOrganizations();
+    const organizations = orgs.organizations || [];
+    
+    // Get default brand
+    let brand = dbHelper.getAllBrands()[0];
+    if (!brand) {
+      brand = dbHelper.createBrand({ name: 'Default', primary_color: '#3b82f6' });
+    }
+    
+    let synced = 0;
+    for (const org of organizations) {
+      // Check if client already exists
+      const existing = dbHelper.getClientByOrgId(org.id);
+      if (!existing) {
+        dbHelper.createClient({
+          name: org.name,
+          simplifi_org_id: org.id,
+          brand_id: brand.id,
+          status: 'active'
+        });
+        synced++;
+      }
+    }
+    
+    res.json({ success: true, synced, total: organizations.length });
+  } catch (error) {
+    console.error('Sync clients error:', error);
+    res.status(500).json({ error: 'Failed to sync clients' });
+  }
+});
+
+// Sync a single client from Simpli.fi
+app.post('/api/clients/sync-one', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { orgId, name } = req.body;
+    
+    if (!orgId || !name) {
+      return res.status(400).json({ error: 'Organization ID and name required' });
+    }
+    
+    // Get default brand
+    let brand = dbHelper.getAllBrands()[0];
+    if (!brand) {
+      brand = dbHelper.createBrand({ name: 'Default', primary_color: '#3b82f6' });
+    }
+    
+    // Check if already exists
+    const existing = dbHelper.getClientByOrgId(orgId);
+    if (existing) {
+      return res.json({ success: true, client: existing, existed: true });
+    }
+    
+    const client = dbHelper.createClient({
+      name: name,
+      simplifi_org_id: orgId,
+      brand_id: brand.id,
+      status: 'active'
+    });
+    
+    res.json({ success: true, client });
+  } catch (error) {
+    console.error('Sync one client error:', error);
+    res.status(500).json({ error: 'Failed to sync client' });
+  }
+});
+
+// ============================================
 // SIMPLI.FI PROXY ROUTES
 // ============================================
 

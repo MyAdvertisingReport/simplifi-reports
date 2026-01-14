@@ -336,19 +336,36 @@ class DatabaseHelper {
     return getOne(result);
   }
 
-  createClient(name, brandId, simplifiOrgId, logoPath, primaryColor, secondaryColor, extraFields = {}) {
+  getClientByOrgId(orgId) {
+    const result = db.exec(`
+      SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
+      FROM clients c
+      JOIN brands b ON c.brand_id = b.id
+      WHERE c.simplifi_org_id = ?
+    `, [orgId]);
+    return getOne(result);
+  }
+
+  createClient(data) {
     const id = uuidv4();
     const shareToken = uuidv4().replace(/-/g, ''); // Generate a static share token for this client
+    const name = data.name;
+    const brandId = data.brand_id;
+    const simplifiOrgId = data.simplifi_org_id;
+    const logoPath = data.logo_path;
+    const primaryColor = data.primary_color || '#3b82f6';
+    const secondaryColor = data.secondary_color || '#1e40af';
+    
     db.run(`
       INSERT INTO clients (id, name, brand_id, simplifi_org_id, logo_path, primary_color, secondary_color, monthly_budget, campaign_goal, contact_name, contact_email, start_date, share_token)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id, name, brandId, simplifiOrgId || null, logoPath || null, primaryColor, secondaryColor,
-      extraFields.monthlyBudget || null,
-      extraFields.campaignGoal || null,
-      extraFields.contactName || null,
-      extraFields.contactEmail || null,
-      extraFields.startDate || null,
+      data.monthly_budget || null,
+      data.campaign_goal || null,
+      data.contact_name || null,
+      data.contact_email || null,
+      data.start_date || null,
       shareToken
     ]);
     saveDatabase();
