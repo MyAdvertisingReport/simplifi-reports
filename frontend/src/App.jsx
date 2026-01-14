@@ -3745,10 +3745,13 @@ function CampaignDetailPage() {
       // Fetch ads directly from the Ads endpoint to get full details including primary_creative_url
       let adsFromApi = [];
       try {
-        const adsResponse = await api.get(`/api/simplifi/campaigns/${campaignId}/ads`);
+        // Use the full org/campaign path - the short path doesn't work
+        const adsResponse = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/ads`);
         adsFromApi = adsResponse.ads || [];
         console.log('Ads fetched directly from Ads endpoint:', adsFromApi.length, 'ads');
-        console.log('First ad sample:', adsFromApi[0]);
+        if (adsFromApi[0]) {
+          console.log('First ad sample:', adsFromApi[0]);
+        }
       } catch (adsErr) {
         console.error('Failed to fetch ads from dedicated endpoint:', adsErr);
       }

@@ -170,19 +170,23 @@ class SimplifiClient {
 
   /**
    * Get ads for a campaign
+   * @param {number} orgId - Organization ID
    * @param {number} campaignId - Campaign ID
    */
-  async getCampaignAds(campaignId) {
+  async getCampaignAds(orgId, campaignId) {
     try {
-      // Simpli.fi API endpoint for ads - using shorter syntax per API docs
-      const url = `/campaigns/${campaignId}/ads`;
+      // Use full URL with org context - the short syntax doesn't always work
+      const url = `/organizations/${orgId}/campaigns/${campaignId}/ads`;
       console.log(`[SIMPLIFI CLIENT] Fetching ads from: ${url}`);
       const response = await this.client.get(url);
       console.log(`[SIMPLIFI CLIENT] Ads response status: ${response.status}`);
       console.log(`[SIMPLIFI CLIENT] Ads count: ${response.data?.ads?.length || 0}`);
+      if (response.data?.ads?.[0]) {
+        console.log(`[SIMPLIFI CLIENT] First ad sample:`, JSON.stringify(response.data.ads[0], null, 2).substring(0, 500));
+      }
       return response.data;
     } catch (error) {
-      console.error(`[SIMPLIFI CLIENT] Error fetching ads for campaign ${campaignId}:`, error.response?.status, error.response?.data || error.message);
+      console.error(`[SIMPLIFI CLIENT] Error fetching ads for org ${orgId}, campaign ${campaignId}:`, error.response?.status, error.response?.data || error.message);
       throw this._handleError(error);
     }
   }

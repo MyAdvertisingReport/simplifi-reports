@@ -1151,18 +1151,25 @@ app.get('/api/debug/org/:orgId/campaign/:campaignId/ads', authenticateToken, asy
   }
 });
 
-// Get campaign ads
-app.get('/api/simplifi/campaigns/:campaignId/ads', authenticateToken, async (req, res) => {
+// Get campaign ads - requires orgId for full API path
+app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/ads', authenticateToken, async (req, res) => {
   try {
-    console.log(`[ADS ENDPOINT] Fetching ads for campaign ${req.params.campaignId}`);
-    const ads = await simplifiClient.getCampaignAds(req.params.campaignId);
+    const { orgId, campaignId } = req.params;
+    console.log(`[ADS ENDPOINT] Fetching ads for org ${orgId}, campaign ${campaignId}`);
+    const ads = await simplifiClient.getCampaignAds(orgId, campaignId);
     console.log(`[ADS ENDPOINT] Success - got ${ads?.ads?.length || 0} ads`);
     res.json(ads);
   } catch (error) {
     console.error('[ADS ENDPOINT] Error fetching ads:', error.message);
-    console.error('[ADS ENDPOINT] Full error:', error);
     res.status(500).json({ error: 'Failed to get ads', details: error.message });
   }
+});
+
+// Legacy endpoint - redirect to new format (kept for backward compatibility)
+app.get('/api/simplifi/campaigns/:campaignId/ads', authenticateToken, async (req, res) => {
+  res.status(400).json({ 
+    error: 'This endpoint requires organization ID. Use /api/simplifi/organizations/:orgId/campaigns/:campaignId/ads instead' 
+  });
 });
 
 // Get campaign ad stats
