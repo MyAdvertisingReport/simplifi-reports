@@ -261,8 +261,33 @@ class DatabaseHelper {
   }
 
   getUserById(id) {
-    const result = db.exec("SELECT id, email, name, role, created_at FROM users WHERE id = ?", [id]);
+    const result = db.exec("SELECT id, email, password_hash, name, role, created_at FROM users WHERE id = ?", [id]);
     return getOne(result);
+  }
+
+  updateUser(id, updates) {
+    const user = this.getUserById(id);
+    if (!user) return null;
+    
+    const newEmail = updates.email || user.email;
+    const newName = updates.name || user.name;
+    const newRole = updates.role || user.role;
+    
+    if (updates.password) {
+      const newPasswordHash = bcrypt.hashSync(updates.password, 10);
+      db.run("UPDATE users SET email = ?, name = ?, role = ?, password_hash = ? WHERE id = ?",
+        [newEmail, newName, newRole, newPasswordHash, id]);
+    } else {
+      db.run("UPDATE users SET email = ?, name = ?, role = ? WHERE id = ?",
+        [newEmail, newName, newRole, id]);
+    }
+    saveDatabase();
+    return this.getUserById(id);
+  }
+
+  deleteUser(id) {
+    db.run("DELETE FROM users WHERE id = ?", [id]);
+    saveDatabase();
   }
 
   createUser(email, password, name, role) {

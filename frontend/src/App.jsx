@@ -6242,31 +6242,331 @@ function PublicReportPage() {
 }
 
 function SettingsPage() {
+  const { user } = useAuth();
   const [status, setStatus] = useState(null);
-  useEffect(() => { api.get('/api/health').then(setStatus).catch(() => setStatus({ simplifiConfigured: false })); }, []);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Password change state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  
+  // Edit user state
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({ email: '', name: '', role: '', password: '' });
+  const [editError, setEditError] = useState('');
+  
+  // Delete confirmation
+  const [deletingUser, setDeletingUser] = useState(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [statusData, usersData] = await Promise.all([
+        api.get('/api/health').catch(() => ({ simplifiConfigured: false })),
+        user?.role === 'admin' ? api.get('/api/users').catch(() => []) : Promise.resolve([])
+      ]);
+      setStatus(statusData);
+      setUsers(usersData);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+    
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    
+    try {
+      await api.put('/api/auth/change-password', { currentPassword, newPassword });
+      setPasswordSuccess('Password changed successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPasswordSuccess('');
+      }, 2000);
+    } catch (err) {
+      setPasswordError(err.message || 'Failed to change password');
+    }
+  };
+
+  const handleEditUser = (u) => {
+    setEditingUser(u);
+    setEditForm({ email: u.email, name: u.name, role: u.role, password: '' });
+    setEditError('');
+  };
+
+  const handleSaveUser = async (e) => {
+    e.preventDefault();
+    setEditError('');
+    
+    try {
+      const updates = {
+        email: editForm.email,
+        name: editForm.name,
+        role: editForm.role
+      };
+      if (editForm.password) {
+        updates.password = editForm.password;
+      }
+      
+      await api.put(`/api/users/${editingUser.id}`, updates);
+      setEditingUser(null);
+      loadData();
+    } catch (err) {
+      setEditError(err.message || 'Failed to update user');
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    try {
+      await api.delete(`/api/users/${deletingUser.id}`);
+      setDeletingUser(null);
+      loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to delete user');
+    }
+  };
 
   return (
     <div>
       <h1>Settings</h1>
-      <p style={{ color: '#6b7280', marginBottom: '2rem' }}>Configure your reporting tool</p>
-      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+      <p style={{ color: '#6b7280', marginBottom: '2rem' }}>Configure your account and manage users</p>
+      
+      {/* My Account Section */}
+      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
+        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f3f4f6' }}>
+          <h3 style={{ margin: 0 }}>My Account</h3>
+        </div>
+        <div style={{ padding: '1.5rem' }}>
+          <div style={{ display: 'grid', gap: '1rem', maxWidth: '400px' }}>
+            <div>
+              <label style={{ fontSize: '0.875rem', color: '#6b7280' }}>Email</label>
+              <p style={{ margin: '0.25rem 0 0', fontWeight: 500 }}>{user?.email}</p>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.875rem', color: '#6b7280' }}>Name</label>
+              <p style={{ margin: '0.25rem 0 0', fontWeight: 500 }}>{user?.name}</p>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.875rem', color: '#6b7280' }}>Role</label>
+              <p style={{ margin: '0.25rem 0 0', fontWeight: 500, textTransform: 'capitalize' }}>{user?.role}</p>
+            </div>
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              style={{ marginTop: '0.5rem', padding: '0.625rem 1.25rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 500, width: 'fit-content' }}
+            >
+              Change Password
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Simpli.fi Connection */}
+      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
         <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f3f4f6' }}><h3 style={{ margin: 0 }}>Simpli.fi Connection</h3></div>
         <div style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{ width: 12, height: 12, borderRadius: '50%', background: status?.simplifiConfigured ? '#10b981' : '#ef4444' }} />
             <span style={{ fontWeight: 500 }}>{status?.simplifiConfigured ? 'Connected' : 'Not Connected'}</span>
           </div>
-          {!status?.simplifiConfigured && (
-            <div style={{ marginTop: '1rem', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
-              <p style={{ fontSize: '0.875rem', marginBottom: '0.5rem' }}>Add your Simpli.fi API keys to the <code style={{ background: '#e5e7eb', padding: '2px 6px', borderRadius: '4px' }}>.env</code> file:</p>
-              <pre style={{ background: '#111827', color: '#f9fafb', padding: '1rem', borderRadius: '0.5rem', fontSize: '0.8125rem', overflow: 'auto' }}>
-{`SIMPLIFI_APP_KEY=your-app-key
-SIMPLIFI_USER_KEY=your-user-key`}
-              </pre>
-            </div>
-          )}
         </div>
       </div>
+
+      {/* User Management (Admin only) */}
+      {user?.role === 'admin' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f3f4f6' }}>
+            <h3 style={{ margin: 0 }}>User Management</h3>
+          </div>
+          <div style={{ padding: '1.5rem' }}>
+            {loading ? (
+              <p>Loading users...</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Name</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Email</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Role</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '0.75rem', fontWeight: 500 }}>{u.name}</td>
+                      <td style={{ padding: '0.75rem', color: '#6b7280' }}>{u.email}</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <span style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500, background: u.role === 'admin' ? '#dbeafe' : '#f3f4f6', color: u.role === 'admin' ? '#1d4ed8' : '#374151' }}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                        <button
+                          onClick={() => handleEditUser(u)}
+                          style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', marginRight: '0.5rem', fontSize: '0.875rem' }}
+                        >
+                          Edit
+                        </button>
+                        {u.id !== user.id && (
+                          <button
+                            onClick={() => setDeletingUser(u)}
+                            style={{ padding: '0.375rem 0.75rem', background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ margin: '0 0 1rem' }}>Change Password</h3>
+            <form onSubmit={handleChangePassword}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Current Password</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              {passwordError && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '1rem' }}>{passwordError}</p>}
+              {passwordSuccess && <p style={{ color: '#10b981', fontSize: '0.875rem', marginBottom: '1rem' }}>{passwordSuccess}</p>}
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setShowPasswordModal(false)} style={{ padding: '0.625rem 1.25rem', background: '#f3f4f6', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" style={{ padding: '0.625rem 1.25rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 500 }}>Change Password</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ margin: '0 0 1rem' }}>Edit User</h3>
+            <form onSubmit={handleSaveUser}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Name</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Email</label>
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Role</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                >
+                  <option value="admin">Admin</option>
+                  <option value="sales">Sales</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>New Password (leave blank to keep current)</label>
+                <input
+                  type="password"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  placeholder="Leave blank to keep current"
+                />
+              </div>
+              {editError && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '1rem' }}>{editError}</p>}
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => setEditingUser(null)} style={{ padding: '0.625rem 1.25rem', background: '#f3f4f6', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
+                <button type="submit" style={{ padding: '0.625rem 1.25rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 500 }}>Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingUser && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ margin: '0 0 1rem', color: '#dc2626' }}>Delete User</h3>
+            <p style={{ marginBottom: '1.5rem', color: '#6b7280' }}>
+              Are you sure you want to delete <strong>{deletingUser.name}</strong> ({deletingUser.email})? This action cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeletingUser(null)} style={{ padding: '0.625rem 1.25rem', background: '#f3f4f6', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleDeleteUser} style={{ padding: '0.625rem 1.25rem', background: '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 500 }}>Delete User</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
