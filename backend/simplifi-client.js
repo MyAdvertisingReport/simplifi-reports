@@ -4,6 +4,7 @@
  */
 
 const axios = require('axios');
+const https = require('https');
 
 const BASE_URL = 'https://app.simpli.fi/api';
 
@@ -517,7 +518,7 @@ class SimplifiClient {
       const summaryResponse = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}/keywords`);
       const keywordInfo = summaryResponse.data?.keywords?.[0];
       
-      console.log(`[SIMPLIFI CLIENT] Keywords summary:`, JSON.stringify(keywordInfo).substring(0, 500));
+      console.log(`[SIMPLIFI CLIENT] Keywords summary:`, JSON.stringify(keywordInfo));
       
       if (!keywordInfo) {
         throw new Error('No keyword information found');
@@ -533,78 +534,124 @@ class SimplifiClient {
         throw new Error('No download URL found in keywords response');
       }
       
-      // Extract the path from the full URL
-      const urlPath = downloadUrl.replace('https://app.simpli.fi/api', '');
-      console.log(`[SIMPLIFI CLIENT] Download URL path: ${urlPath}`);
+      // Use native https to make the download request
+      const url = new URL(downloadUrl);
       
-      // Download the CSV
-      const response = await this.client.get(urlPath);
-      
-      console.log(`[SIMPLIFI CLIENT] Download response type: ${typeof response.data}`);
-      console.log(`[SIMPLIFI CLIENT] Download response (first 500 chars): ${JSON.stringify(response.data).substring(0, 500)}`);
-      
-      // Handle different response types
-      let csvText = response.data;
-      
-      // If response is not a string, try to convert it
-      if (typeof csvText !== 'string') {
-        if (Buffer.isBuffer(csvText)) {
-          csvText = csvText.toString('utf8');
-        } else if (typeof csvText === 'object') {
-          // API might return JSON - check if it has keywords array
-          if (Array.isArray(csvText)) {
-            // It's already an array of keywords
-            const keywords = csvText.map((kw, i) => ({
-              id: i + 1,
-              keyword: typeof kw === 'string' ? kw : (kw.name || kw.keyword || String(kw)),
-              max_bid: kw.max_bid || null
-            }));
-            console.log(`[SIMPLIFI CLIENT] Response was JSON array with ${keywords.length} keywords`);
-            return { keywords };
+      const keywords = await new Promise((resolve, reject) => {
+        const options = {
+          hostname: url.hostname,
+          path: url.pathname,
+          method: 'GET',
+          headers: {
+            'X-App-Key': this.appKey,
+            'X-User-Key': this.userKey,
+            'Content-Type': 'application/json'
+            // Note: NOT setting Accept header - let the server decide
           }
-          csvText = String(csvText);
-        } else {
-          csvText = String(csvText);
-        }
-      }
-      
-      // Parse CSV - format is: keyword,max_bid (max_bid is optional)
-      const lines = csvText.split(/[\r\n]+/).filter(line => line.trim());
-      
-      // Check if first line is a header
-      const firstLine = lines[0]?.toLowerCase() || '';
-      const startIndex = (firstLine.includes('keyword') || firstLine.includes('name')) ? 1 : 0;
-      
-      const keywords = [];
-      for (let i = startIndex; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+        };
         
-        // Handle CSV with possible quoted values
-        let keyword, maxBid;
-        if (line.includes('"')) {
-          const match = line.match(/^"?([^"]*)"?,?(.*)$/);
-          keyword = match?.[1]?.trim() || line;
-          maxBid = match?.[2] ? parseFloat(match[2].trim()) : null;
-        } else {
-          const parts = line.split(',');
-          keyword = parts[0]?.trim() || '';
-          maxBid = parts[1] ? parseFloat(parts[1].trim()) : null;
-        }
+        console.log(`[SIMPLIFI CLIENT] Making HTTPS request to: ${url.hostname}${url.pathname}`);
+        console.log(`[SIMPLIFI CLIENT] Headers:`, JSON.stringify(options.headers));
         
-        if (keyword) {
-          keywords.push({
-            id: keywords.length + 1,
-            keyword: keyword,
-            max_bid: isNaN(maxBid) ? null : maxBid
+        const req = https.request(options, (res) => {
+          let data = '';
+          
+          console.log(`[SIMPLIFI CLIENT] Response status: ${res.statusCode}`);
+          console.log(`[SIMPLIFI CLIENT] Response content-type:`, res.headers['content-type']);
+          
+          res.on('data', chunk => {
+            data += chunk;
           });
-        }
-      }
-      
-      console.log(`[SIMPLIFI CLIENT] Parsed ${keywords.length} keywords`);
-      if (keywords.length > 0) {
-        console.log(`[SIMPLIFI CLIENT] Sample:`, keywords.slice(0, 3));
-      }
+          
+          res.on('end', () => {
+            console.log(`[SIMPLIFI CLIENT] Raw response (first 1000 chars): ${data.substring(0, 1000)}`);
+            console.log(`[SIMPLIFI CLIENT] Response length: ${data.length} chars`);
+            
+            if (res.statusCode !== 200) {
+              reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+              return;
+            }
+            
+            // Check if response is JSON or CSV
+            const contentType = res.headers['content-type'] || '';
+            
+            if (contentType.includes('application/json')) {
+              // Parse as JSON
+              try {
+                const jsonData = JSON.parse(data);
+                console.log(`[SIMPLIFI CLIENT] Response is JSON:`, JSON.stringify(jsonData).substring(0, 500));
+                
+                // Handle different JSON formats
+                let keywordList = [];
+                if (Array.isArray(jsonData)) {
+                  keywordList = jsonData.map((kw, i) => ({
+                    id: i + 1,
+                    keyword: typeof kw === 'string' ? kw : (kw.name || kw.keyword || String(kw)),
+                    max_bid: kw.max_bid || null
+                  }));
+                } else if (jsonData.keywords && Array.isArray(jsonData.keywords)) {
+                  keywordList = jsonData.keywords.map((kw, i) => ({
+                    id: i + 1,
+                    keyword: typeof kw === 'string' ? kw : (kw.name || kw.keyword || String(kw)),
+                    max_bid: kw.max_bid || null
+                  }));
+                }
+                
+                resolve(keywordList);
+                return;
+              } catch (e) {
+                console.log(`[SIMPLIFI CLIENT] JSON parse failed, treating as CSV`);
+              }
+            }
+            
+            // Parse as CSV - format is: keyword,max_bid (max_bid is optional)
+            const lines = data.split(/[\r\n]+/).filter(line => line.trim());
+            
+            // Check if first line is a header
+            const firstLine = lines[0]?.toLowerCase() || '';
+            const startIndex = (firstLine.includes('keyword') || firstLine.includes('name') || firstLine === 'keyword,max_bid') ? 1 : 0;
+            
+            const keywordList = [];
+            for (let i = startIndex; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (!line) continue;
+              
+              let keyword, maxBid;
+              if (line.includes('"')) {
+                const match = line.match(/^"?([^"]*)"?,?(.*)$/);
+                keyword = match?.[1]?.trim() || line;
+                maxBid = match?.[2] ? parseFloat(match[2].trim()) : null;
+              } else {
+                const parts = line.split(',');
+                keyword = parts[0]?.trim() || '';
+                maxBid = parts[1] ? parseFloat(parts[1].trim()) : null;
+              }
+              
+              if (keyword) {
+                keywordList.push({
+                  id: keywordList.length + 1,
+                  keyword: keyword,
+                  max_bid: isNaN(maxBid) ? null : maxBid
+                });
+              }
+            }
+            
+            console.log(`[SIMPLIFI CLIENT] Parsed ${keywordList.length} keywords from CSV`);
+            if (keywordList.length > 0) {
+              console.log(`[SIMPLIFI CLIENT] Sample:`, keywordList.slice(0, 5));
+            }
+            
+            resolve(keywordList);
+          });
+        });
+        
+        req.on('error', (e) => {
+          console.error(`[SIMPLIFI CLIENT] HTTPS request error:`, e.message);
+          reject(e);
+        });
+        
+        req.end();
+      });
       
       return { keywords };
     } catch (error) {
