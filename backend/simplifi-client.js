@@ -287,19 +287,57 @@ class SimplifiClient {
 
   /**
    * Get retargeting segments (pixels) for an organization
+   * Tries multiple endpoints as the API structure varies
    * @param {number} orgId - Organization ID
    */
   async getRetargetingSegments(orgId) {
+    // Try first_party_segments endpoint first (more common for pixels)
     try {
-      const url = `/organizations/${orgId}/retargeting_segments`;
-      console.log('Fetching retargeting segments:', url);
+      const url = `/organizations/${orgId}/first_party_segments`;
+      console.log('Trying first_party_segments:', url);
       const response = await this.client.get(url);
-      console.log('Retargeting segments response:', JSON.stringify(response.data, null, 2).substring(0, 2000));
+      console.log('First party segments response:', JSON.stringify(response.data, null, 2).substring(0, 500));
       return response.data;
     } catch (error) {
-      console.log('Retargeting segments error:', error.message);
-      throw this._handleError(error);
+      console.log('first_party_segments failed:', error.message);
     }
+    
+    // Try retargeting_segments
+    try {
+      const url = `/organizations/${orgId}/retargeting_segments`;
+      console.log('Trying retargeting_segments:', url);
+      const response = await this.client.get(url);
+      console.log('Retargeting segments response:', JSON.stringify(response.data, null, 2).substring(0, 500));
+      return response.data;
+    } catch (error) {
+      console.log('retargeting_segments failed:', error.message);
+    }
+    
+    // Try segments endpoint
+    try {
+      const url = `/organizations/${orgId}/segments`;
+      console.log('Trying segments:', url);
+      const response = await this.client.get(url);
+      console.log('Segments response:', JSON.stringify(response.data, null, 2).substring(0, 500));
+      return response.data;
+    } catch (error) {
+      console.log('segments failed:', error.message);
+    }
+    
+    // Try audiences endpoint
+    try {
+      const url = `/organizations/${orgId}/audiences`;
+      console.log('Trying audiences:', url);
+      const response = await this.client.get(url);
+      console.log('Audiences response:', JSON.stringify(response.data, null, 2).substring(0, 500));
+      return response.data;
+    } catch (error) {
+      console.log('audiences failed:', error.message);
+    }
+    
+    // Return empty if none work
+    console.log('No pixel endpoints available for org', orgId);
+    return { first_party_segments: [], retargeting_segments: [] };
   }
 
   /**

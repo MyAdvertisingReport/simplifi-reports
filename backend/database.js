@@ -1,38 +1,47 @@
 /**
  * Database initialization and management
- * Uses sql.js - a pure JavaScript SQLite implementation (no native compilation required)
+ * Uses PostgreSQL for persistent storage
  */
 
-const initSqlJs = require('sql.js');
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 
-const DB_PATH = path.join(__dirname, 'data', 'reports.db');
+let pool = null;
 
-let db = null;
+// Generate URL-friendly slug from name
+function generateSlug(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')  // Replace non-alphanumeric with hyphens
+    .replace(/^-|-$/g, '')        // Remove leading/trailing hyphens
+    .substring(0, 50);            // Limit length
+}
 
 async function initializeDatabase() {
-  // Ensure data directory exists
-  const dataDir = path.join(__dirname, 'data');
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  // Use DATABASE_URL from Railway
+  const connectionString = process.env.DATABASE_URL;
+  
+  if (!connectionString) {
+    throw new Error('DATABASE_URL environment variable is required');
   }
 
-  // Initialize SQL.js
-  const SQL = await initSqlJs();
+  pool = new Pool({
+    connectionString,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  });
 
-  // Load existing database or create new one
-  if (fs.existsSync(DB_PATH)) {
-    const fileBuffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(fileBuffer);
-  } else {
-    db = new SQL.Database();
+  // Test connection
+  try {
+    await pool.query('SELECT NOW()');
+    console.log('✓ Connected to PostgreSQL');
+  } catch (err) {
+    console.error('Failed to connect to PostgreSQL:', err.message);
+    throw err;
   }
 
   // Create tables
-  db.run(`
+  await pool.query(`
     -- Users table (admins and sales associates)
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -40,12 +49,12 @@ async function initializeDatabase() {
       password_hash TEXT NOT NULL,
       name TEXT NOT NULL,
       role TEXT NOT NULL CHECK (role IN ('admin', 'sales')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Your brands (WSIC, Lake Norman Woman, etc.)
     CREATE TABLE IF NOT EXISTS brands (
       id TEXT PRIMARY KEY,
@@ -53,16 +62,17 @@ async function initializeDatabase() {
       logo_path TEXT,
       primary_color TEXT DEFAULT '#1a56db',
       secondary_color TEXT DEFAULT '#7c3aed',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Clients (advertisers)
     CREATE TABLE IF NOT EXISTS clients (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      brand_id TEXT NOT NULL,
+      slug TEXT UNIQUE,
+      brand_id TEXT NOT NULL REFERENCES brands(id),
       simplifi_org_id INTEGER,
       logo_path TEXT,
       primary_color TEXT DEFAULT '#1a56db',
@@ -73,72 +83,74 @@ async function initializeDatabase() {
       contact_email TEXT,
       start_date TEXT,
       share_token TEXT UNIQUE,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (brand_id) REFERENCES brands(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  // Add slug column if it doesn't exist (for existing databases)
+  try {
+    await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS slug TEXT UNIQUE`);
+  } catch (e) {
+    // Column might already exist
+  }
+
+  await pool.query(`
     -- Report configurations (templates for each client)
     CREATE TABLE IF NOT EXISTS report_configs (
       id TEXT PRIMARY KEY,
-      client_id TEXT NOT NULL,
+      client_id TEXT NOT NULL REFERENCES clients(id),
       name TEXT NOT NULL,
       description TEXT,
       campaign_ids TEXT,
       metrics_config TEXT,
       layout_config TEXT,
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (client_id) REFERENCES clients(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Public report links (shareable URLs)
     CREATE TABLE IF NOT EXISTS report_links (
       id TEXT PRIMARY KEY,
       token TEXT UNIQUE NOT NULL,
-      report_config_id TEXT NOT NULL,
-      expires_at DATETIME,
+      report_config_id TEXT NOT NULL REFERENCES report_configs(id),
+      expires_at TIMESTAMP,
       is_active INTEGER DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (report_config_id) REFERENCES report_configs(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Cached stats (to reduce API calls)
     CREATE TABLE IF NOT EXISTS stats_cache (
       id TEXT PRIMARY KEY,
       cache_key TEXT UNIQUE NOT NULL,
       data TEXT NOT NULL,
-      expires_at DATETIME NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Internal notes (staff only, not visible to clients)
     CREATE TABLE IF NOT EXISTS internal_notes (
       id TEXT PRIMARY KEY,
-      client_id TEXT NOT NULL,
+      client_id TEXT NOT NULL REFERENCES clients(id),
       campaign_id INTEGER,
-      user_id TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id),
       user_name TEXT NOT NULL,
       note TEXT NOT NULL,
       note_type TEXT DEFAULT 'general' CHECK (note_type IN ('general', 'strategy', 'issue', 'milestone', 'billing')),
       is_pinned INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (client_id) REFERENCES clients(id),
-      FOREIGN KEY (user_id) REFERENCES users(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Report Center webhook notifications
     CREATE TABLE IF NOT EXISTS webhook_notifications (
       id TEXT PRIMARY KEY,
@@ -149,85 +161,78 @@ async function initializeDatabase() {
       filename TEXT,
       status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'downloaded', 'processed', 'failed')),
       data TEXT,
-      received_at DATETIME NOT NULL,
-      processed_at DATETIME,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      received_at TIMESTAMP NOT NULL,
+      processed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Report Center report models (store created models for reuse)
     CREATE TABLE IF NOT EXISTS report_models (
       id TEXT PRIMARY KEY,
-      client_id TEXT NOT NULL,
+      client_id TEXT NOT NULL REFERENCES clients(id),
       simplifi_org_id INTEGER NOT NULL,
       simplifi_report_id INTEGER NOT NULL,
       template_id INTEGER NOT NULL,
       title TEXT NOT NULL,
       category TEXT,
       filters TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (client_id) REFERENCES clients(id)
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 
-  db.run(`
+  await pool.query(`
     -- Client assignments (which sales reps can see which clients)
     CREATE TABLE IF NOT EXISTS client_assignments (
       id TEXT PRIMARY KEY,
-      client_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (client_id) REFERENCES clients(id),
-      FOREIGN KEY (user_id) REFERENCES users(id),
+      client_id TEXT NOT NULL REFERENCES clients(id),
+      user_id TEXT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(client_id, user_id)
     );
   `);
 
-  // Save to file
-  saveDatabase();
-
-  return db;
+  console.log('✓ Database tables initialized');
+  return pool;
 }
 
-function saveDatabase() {
-  if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_PATH, buffer);
-  }
-}
-
-function seedInitialData() {
+async function seedInitialData() {
   // Check if brands exist
-  const brandCount = db.exec("SELECT COUNT(*) as count FROM brands")[0];
-  const count = brandCount ? brandCount.values[0][0] : 0;
+  const brandResult = await pool.query("SELECT COUNT(*) as count FROM brands");
+  const brandCount = parseInt(brandResult.rows[0].count);
   
-  if (count === 0) {
+  if (brandCount === 0) {
     // Insert your brands
-    db.run(`INSERT INTO brands (id, name, logo_path, primary_color, secondary_color) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'WSIC', '/wsic-logo.png', '#1e3a8a', '#dc2626']);
+    await pool.query(
+      `INSERT INTO brands (id, name, logo_path, primary_color, secondary_color) VALUES ($1, $2, $3, $4, $5)`,
+      [uuidv4(), 'WSIC', '/wsic-logo.png', '#1e3a8a', '#dc2626']
+    );
     
-    db.run(`INSERT INTO brands (id, name, logo_path, primary_color, secondary_color) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'Lake Norman Woman', '/lnw-logo.png', '#0d9488', '#0d9488']);
+    await pool.query(
+      `INSERT INTO brands (id, name, logo_path, primary_color, secondary_color) VALUES ($1, $2, $3, $4, $5)`,
+      [uuidv4(), 'Lake Norman Woman', '/lnw-logo.png', '#0d9488', '#0d9488']
+    );
 
     console.log('✓ Seeded initial brands');
   }
 
   // Check if admin exists
-  const userCount = db.exec("SELECT COUNT(*) as count FROM users")[0];
-  const uCount = userCount ? userCount.values[0][0] : 0;
+  const userResult = await pool.query("SELECT COUNT(*) as count FROM users");
+  const userCount = parseInt(userResult.rows[0].count);
   
-  if (uCount === 0) {
+  if (userCount === 0) {
     // Create default admin - use environment variables if set, otherwise use defaults
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123';
     const adminName = process.env.ADMIN_NAME || 'Admin User';
     
     const passwordHash = bcrypt.hashSync(adminPassword, 10);
-    db.run(`INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), adminEmail, passwordHash, adminName, 'admin']);
+    await pool.query(
+      `INSERT INTO users (id, email, password_hash, name, role) VALUES ($1, $2, $3, $4, $5)`,
+      [uuidv4(), adminEmail, passwordHash, adminName, 'admin']
+    );
 
     console.log('✓ Created default admin user');
     console.log('  Email:', adminEmail);
@@ -238,48 +243,26 @@ function seedInitialData() {
       console.log('  Password: [set via environment variable]');
     }
   }
-
-  saveDatabase();
-}
-
-// Helper to convert sql.js results to objects
-function rowsToObjects(result) {
-  if (!result || result.length === 0) return [];
-  const columns = result[0].columns;
-  const values = result[0].values;
-  return values.map(row => {
-    const obj = {};
-    columns.forEach((col, i) => {
-      obj[col] = row[i];
-    });
-    return obj;
-  });
-}
-
-function getOne(result) {
-  const rows = rowsToObjects(result);
-  return rows.length > 0 ? rows[0] : null;
-}
-
-function getAll(result) {
-  return rowsToObjects(result);
 }
 
 // Database helper class
 class DatabaseHelper {
   // Users
-  getUserByEmail(email) {
-    const result = db.exec("SELECT * FROM users WHERE email = ?", [email]);
-    return getOne(result);
+  async getUserByEmail(email) {
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    return result.rows[0] || null;
   }
 
-  getUserById(id) {
-    const result = db.exec("SELECT id, email, password_hash, name, role, created_at FROM users WHERE id = ?", [id]);
-    return getOne(result);
+  async getUserById(id) {
+    const result = await pool.query(
+      "SELECT id, email, password_hash, name, role, created_at FROM users WHERE id = $1", 
+      [id]
+    );
+    return result.rows[0] || null;
   }
 
-  updateUser(id, updates) {
-    const user = this.getUserById(id);
+  async updateUser(id, updates) {
+    const user = await this.getUserById(id);
     if (!user) return null;
     
     const newEmail = updates.email || user.email;
@@ -288,92 +271,106 @@ class DatabaseHelper {
     
     if (updates.password) {
       const newPasswordHash = bcrypt.hashSync(updates.password, 10);
-      db.run("UPDATE users SET email = ?, name = ?, role = ?, password_hash = ? WHERE id = ?",
-        [newEmail, newName, newRole, newPasswordHash, id]);
+      await pool.query(
+        "UPDATE users SET email = $1, name = $2, role = $3, password_hash = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5",
+        [newEmail, newName, newRole, newPasswordHash, id]
+      );
     } else {
-      db.run("UPDATE users SET email = ?, name = ?, role = ? WHERE id = ?",
-        [newEmail, newName, newRole, id]);
+      await pool.query(
+        "UPDATE users SET email = $1, name = $2, role = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4",
+        [newEmail, newName, newRole, id]
+      );
     }
-    saveDatabase();
     return this.getUserById(id);
   }
 
-  deleteUser(id) {
-    db.run("DELETE FROM users WHERE id = ?", [id]);
-    saveDatabase();
+  async deleteUser(id) {
+    await pool.query("DELETE FROM users WHERE id = $1", [id]);
   }
 
-  createUser(email, password, name, role) {
+  async createUser(email, password, name, role) {
     const id = uuidv4();
     const passwordHash = bcrypt.hashSync(password, 10);
-    db.run("INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)",
-      [id, email, passwordHash, name, role]);
-    saveDatabase();
+    await pool.query(
+      "INSERT INTO users (id, email, password_hash, name, role) VALUES ($1, $2, $3, $4, $5)",
+      [id, email, passwordHash, name, role]
+    );
     return this.getUserById(id);
   }
 
-  getAllUsers() {
-    const result = db.exec("SELECT id, email, name, role, created_at FROM users");
-    return rowsToObjects(result);
+  async getAllUsers() {
+    const result = await pool.query("SELECT id, email, name, role, created_at FROM users");
+    return result.rows;
   }
 
   // Brands
-  getAllBrands() {
-    const result = db.exec("SELECT * FROM brands");
-    return rowsToObjects(result);
+  async getAllBrands() {
+    const result = await pool.query("SELECT * FROM brands");
+    return result.rows;
   }
 
-  getBrandById(id) {
-    const result = db.exec("SELECT * FROM brands WHERE id = ?", [id]);
-    return getOne(result);
+  async getBrandById(id) {
+    const result = await pool.query("SELECT * FROM brands WHERE id = $1", [id]);
+    return result.rows[0] || null;
   }
 
   // Clients
-  getAllClients() {
-    const result = db.exec(`
+  async getAllClients() {
+    const result = await pool.query(`
       SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
       FROM clients c
       JOIN brands b ON c.brand_id = b.id
       ORDER BY c.name
     `);
-    return rowsToObjects(result);
+    return result.rows;
   }
 
-  getClientById(id) {
-    const result = db.exec(`
+  async getClientById(id) {
+    const result = await pool.query(`
       SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
       FROM clients c
       JOIN brands b ON c.brand_id = b.id
-      WHERE c.id = ?
+      WHERE c.id = $1
     `, [id]);
-    return getOne(result);
+    return result.rows[0] || null;
   }
 
-  getClientByOrgId(orgId) {
-    const result = db.exec(`
+  async getClientBySlug(slug) {
+    const result = await pool.query(`
       SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
       FROM clients c
       JOIN brands b ON c.brand_id = b.id
-      WHERE c.simplifi_org_id = ?
-    `, [orgId]);
-    return getOne(result);
+      WHERE c.slug = $1
+    `, [slug]);
+    return result.rows[0] || null;
   }
 
-  createClient(data) {
+  async getClientByOrgId(orgId) {
+    const result = await pool.query(`
+      SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
+      FROM clients c
+      JOIN brands b ON c.brand_id = b.id
+      WHERE c.simplifi_org_id = $1
+    `, [orgId]);
+    return result.rows[0] || null;
+  }
+
+  async createClient(data) {
     const id = uuidv4();
-    const shareToken = uuidv4().replace(/-/g, ''); // Generate a static share token for this client
+    const shareToken = uuidv4().replace(/-/g, '');
     const name = data.name;
+    const slug = await this.generateUniqueSlug(name);
     const brandId = data.brand_id;
     const simplifiOrgId = data.simplifi_org_id;
     const logoPath = data.logo_path;
     const primaryColor = data.primary_color || '#3b82f6';
     const secondaryColor = data.secondary_color || '#1e40af';
     
-    db.run(`
-      INSERT INTO clients (id, name, brand_id, simplifi_org_id, logo_path, primary_color, secondary_color, monthly_budget, campaign_goal, contact_name, contact_email, start_date, share_token)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    await pool.query(`
+      INSERT INTO clients (id, name, slug, brand_id, simplifi_org_id, logo_path, primary_color, secondary_color, monthly_budget, campaign_goal, contact_name, contact_email, start_date, share_token)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     `, [
-      id, name, brandId, simplifiOrgId || null, logoPath || null, primaryColor, secondaryColor,
+      id, name, slug, brandId, simplifiOrgId || null, logoPath || null, primaryColor, secondaryColor,
       data.monthly_budget || null,
       data.campaign_goal || null,
       data.contact_name || null,
@@ -381,99 +378,123 @@ class DatabaseHelper {
       data.start_date || null,
       shareToken
     ]);
-    saveDatabase();
     return this.getClientById(id);
   }
 
+  // Generate unique slug, adding number suffix if needed
+  async generateUniqueSlug(name) {
+    let baseSlug = generateSlug(name);
+    let slug = baseSlug;
+    let counter = 1;
+    
+    while (true) {
+      const existing = await pool.query("SELECT id FROM clients WHERE slug = $1", [slug]);
+      if (existing.rows.length === 0) {
+        return slug;
+      }
+      slug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+  }
+
   // Get client by share token (for public reports)
-  getClientByShareToken(token) {
-    const result = db.exec(`
+  async getClientByShareToken(token) {
+    const result = await pool.query(`
       SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
       FROM clients c
       LEFT JOIN brands b ON c.brand_id = b.id
-      WHERE c.share_token = ?
+      WHERE c.share_token = $1
     `, [token]);
-    return getOne(result);
+    return result.rows[0] || null;
   }
 
-  updateClient(id, updates) {
+  async updateClient(id, updates) {
     const fields = [];
     const values = [];
+    let paramCount = 1;
     
-    if (updates.name) { fields.push('name = ?'); values.push(updates.name); }
-    if (updates.brandId) { fields.push('brand_id = ?'); values.push(updates.brandId); }
-    if (updates.simplifiOrgId !== undefined) { fields.push('simplifi_org_id = ?'); values.push(updates.simplifiOrgId); }
-    if (updates.logoPath !== undefined) { fields.push('logo_path = ?'); values.push(updates.logoPath); }
-    if (updates.primaryColor) { fields.push('primary_color = ?'); values.push(updates.primaryColor); }
-    if (updates.secondaryColor) { fields.push('secondary_color = ?'); values.push(updates.secondaryColor); }
-    if (updates.monthlyBudget !== undefined) { fields.push('monthly_budget = ?'); values.push(updates.monthlyBudget); }
-    if (updates.campaignGoal !== undefined) { fields.push('campaign_goal = ?'); values.push(updates.campaignGoal); }
-    if (updates.contactName !== undefined) { fields.push('contact_name = ?'); values.push(updates.contactName); }
-    if (updates.contactEmail !== undefined) { fields.push('contact_email = ?'); values.push(updates.contactEmail); }
-    if (updates.startDate !== undefined) { fields.push('start_date = ?'); values.push(updates.startDate); }
+    if (updates.name) { 
+      fields.push(`name = $${paramCount++}`); 
+      values.push(updates.name); 
+      // Also update slug if name changes
+      const newSlug = await this.generateUniqueSlug(updates.name);
+      fields.push(`slug = $${paramCount++}`);
+      values.push(newSlug);
+    }
+    if (updates.brandId) { fields.push(`brand_id = $${paramCount++}`); values.push(updates.brandId); }
+    if (updates.simplifiOrgId !== undefined) { fields.push(`simplifi_org_id = $${paramCount++}`); values.push(updates.simplifiOrgId); }
+    if (updates.logoPath !== undefined) { fields.push(`logo_path = $${paramCount++}`); values.push(updates.logoPath); }
+    if (updates.primaryColor) { fields.push(`primary_color = $${paramCount++}`); values.push(updates.primaryColor); }
+    if (updates.secondaryColor) { fields.push(`secondary_color = $${paramCount++}`); values.push(updates.secondaryColor); }
+    if (updates.monthlyBudget !== undefined) { fields.push(`monthly_budget = $${paramCount++}`); values.push(updates.monthlyBudget); }
+    if (updates.campaignGoal !== undefined) { fields.push(`campaign_goal = $${paramCount++}`); values.push(updates.campaignGoal); }
+    if (updates.contactName !== undefined) { fields.push(`contact_name = $${paramCount++}`); values.push(updates.contactName); }
+    if (updates.contactEmail !== undefined) { fields.push(`contact_email = $${paramCount++}`); values.push(updates.contactEmail); }
+    if (updates.startDate !== undefined) { fields.push(`start_date = $${paramCount++}`); values.push(updates.startDate); }
     
     if (fields.length > 0) {
       fields.push('updated_at = CURRENT_TIMESTAMP');
       values.push(id);
-      db.run(`UPDATE clients SET ${fields.join(', ')} WHERE id = ?`, values);
-      saveDatabase();
+      await pool.query(`UPDATE clients SET ${fields.join(', ')} WHERE id = $${paramCount}`, values);
     }
     return this.getClientById(id);
   }
 
-  deleteClient(id) {
+  async deleteClient(id) {
     // Delete associated data first
-    db.run(`DELETE FROM internal_notes WHERE client_id = ?`, [id]);
-    db.run(`DELETE FROM report_links WHERE report_config_id IN (SELECT id FROM report_configs WHERE client_id = ?)`, [id]);
-    db.run(`DELETE FROM report_configs WHERE client_id = ?`, [id]);
+    await pool.query(`DELETE FROM client_assignments WHERE client_id = $1`, [id]);
+    await pool.query(`DELETE FROM internal_notes WHERE client_id = $1`, [id]);
+    await pool.query(`DELETE FROM report_links WHERE report_config_id IN (SELECT id FROM report_configs WHERE client_id = $1)`, [id]);
+    await pool.query(`DELETE FROM report_configs WHERE client_id = $1`, [id]);
+    await pool.query(`DELETE FROM report_models WHERE client_id = $1`, [id]);
     // Delete the client
-    db.run(`DELETE FROM clients WHERE id = ?`, [id]);
-    saveDatabase();
+    await pool.query(`DELETE FROM clients WHERE id = $1`, [id]);
   }
 
   // Report Configs
-  getReportConfigsByClient(clientId) {
-    const result = db.exec("SELECT * FROM report_configs WHERE client_id = ? AND is_active = 1", [clientId]);
-    return rowsToObjects(result);
+  async getReportConfigsByClient(clientId) {
+    const result = await pool.query(
+      "SELECT * FROM report_configs WHERE client_id = $1 AND is_active = 1", 
+      [clientId]
+    );
+    return result.rows;
   }
 
-  getReportConfigById(id) {
-    const result = db.exec(`
+  async getReportConfigById(id) {
+    const result = await pool.query(`
       SELECT rc.*, c.name as client_name, c.logo_path as client_logo,
              c.primary_color, c.secondary_color, c.simplifi_org_id,
              b.name as brand_name, b.logo_path as brand_logo
       FROM report_configs rc
       JOIN clients c ON rc.client_id = c.id
       JOIN brands b ON c.brand_id = b.id
-      WHERE rc.id = ?
+      WHERE rc.id = $1
     `, [id]);
-    return getOne(result);
+    return result.rows[0] || null;
   }
 
-  createReportConfig(clientId, name, description, campaignIds, metricsConfig, layoutConfig) {
+  async createReportConfig(clientId, name, description, campaignIds, metricsConfig, layoutConfig) {
     const id = uuidv4();
-    db.run(`
+    await pool.query(`
       INSERT INTO report_configs (id, client_id, name, description, campaign_ids, metrics_config, layout_config)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
     `, [id, clientId, name, description, JSON.stringify(campaignIds), JSON.stringify(metricsConfig), JSON.stringify(layoutConfig)]);
-    saveDatabase();
     return this.getReportConfigById(id);
   }
 
   // Report Links
-  createReportLink(reportConfigId, expiresAt = null) {
+  async createReportLink(reportConfigId, expiresAt = null) {
     const id = uuidv4();
     const token = uuidv4().replace(/-/g, '') + uuidv4().replace(/-/g, '');
-    db.run(`
+    await pool.query(`
       INSERT INTO report_links (id, token, report_config_id, expires_at)
-      VALUES (?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4)
     `, [id, token, reportConfigId, expiresAt]);
-    saveDatabase();
     return { id, token, reportConfigId, expiresAt };
   }
 
-  getReportLinkByToken(token) {
-    const result = db.exec(`
+  async getReportLinkByToken(token) {
+    const result = await pool.query(`
       SELECT rl.*, rc.client_id, rc.name as report_name, rc.campaign_ids,
              rc.metrics_config, rc.layout_config,
              c.name as client_name, c.logo_path as client_logo,
@@ -483,35 +504,33 @@ class DatabaseHelper {
       JOIN report_configs rc ON rl.report_config_id = rc.id
       JOIN clients c ON rc.client_id = c.id
       JOIN brands b ON c.brand_id = b.id
-      WHERE rl.token = ? AND rl.is_active = 1
+      WHERE rl.token = $1 AND rl.is_active = 1
     `, [token]);
-    return getOne(result);
+    return result.rows[0] || null;
   }
 
   // Stats Cache
-  getCachedStats(cacheKey) {
-    const result = db.exec(`
+  async getCachedStats(cacheKey) {
+    const result = await pool.query(`
       SELECT data FROM stats_cache 
-      WHERE cache_key = ? AND expires_at > datetime('now')
+      WHERE cache_key = $1 AND expires_at > CURRENT_TIMESTAMP
     `, [cacheKey]);
-    const row = getOne(result);
+    const row = result.rows[0];
     return row ? JSON.parse(row.data) : null;
   }
 
-  setCachedStats(cacheKey, data, ttlMinutes = 15) {
+  async setCachedStats(cacheKey, data, ttlMinutes = 15) {
     const id = uuidv4();
     // Delete existing cache entry if exists
-    db.run("DELETE FROM stats_cache WHERE cache_key = ?", [cacheKey]);
-    db.run(`
+    await pool.query("DELETE FROM stats_cache WHERE cache_key = $1", [cacheKey]);
+    await pool.query(`
       INSERT INTO stats_cache (id, cache_key, data, expires_at)
-      VALUES (?, ?, ?, datetime('now', '+' || ? || ' minutes'))
-    `, [id, cacheKey, JSON.stringify(data), ttlMinutes]);
-    saveDatabase();
+      VALUES ($1, $2, $3, CURRENT_TIMESTAMP + INTERVAL '${ttlMinutes} minutes')
+    `, [id, cacheKey, JSON.stringify(data)]);
   }
 
-  cleanExpiredCache() {
-    db.run("DELETE FROM stats_cache WHERE expires_at < datetime('now')");
-    saveDatabase();
+  async cleanExpiredCache() {
+    await pool.query("DELETE FROM stats_cache WHERE expires_at < CURRENT_TIMESTAMP");
   }
 
   // ============================================
@@ -519,85 +538,89 @@ class DatabaseHelper {
   // ============================================
   
   // Get all notes for a client
-  getNotesByClient(clientId) {
-    const result = db.exec(`
+  async getNotesByClient(clientId) {
+    const result = await pool.query(`
       SELECT * FROM internal_notes 
-      WHERE client_id = ? 
+      WHERE client_id = $1 
       ORDER BY is_pinned DESC, created_at DESC
     `, [clientId]);
-    return getAll(result);
+    return result.rows;
   }
 
   // Get notes for a specific campaign
-  getNotesByCampaign(clientId, campaignId) {
-    const result = db.exec(`
+  async getNotesByCampaign(clientId, campaignId) {
+    const result = await pool.query(`
       SELECT * FROM internal_notes 
-      WHERE client_id = ? AND (campaign_id = ? OR campaign_id IS NULL)
+      WHERE client_id = $1 AND (campaign_id = $2 OR campaign_id IS NULL)
       ORDER BY is_pinned DESC, created_at DESC
     `, [clientId, campaignId]);
-    return getAll(result);
+    return result.rows;
   }
 
   // Create a new note
-  createNote(clientId, userId, userName, note, options = {}) {
+  async createNote(clientId, userId, userName, note, options = {}) {
     const id = uuidv4();
     const { campaignId = null, noteType = 'general', isPinned = false } = options;
     
-    db.run(`
+    await pool.query(`
       INSERT INTO internal_notes (id, client_id, campaign_id, user_id, user_name, note, note_type, is_pinned)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `, [id, clientId, campaignId, userId, userName, note, noteType, isPinned ? 1 : 0]);
     
-    saveDatabase();
-    
-    const result = db.exec("SELECT * FROM internal_notes WHERE id = ?", [id]);
-    return getOne(result);
+    const result = await pool.query("SELECT * FROM internal_notes WHERE id = $1", [id]);
+    return result.rows[0];
   }
 
   // Update a note
-  updateNote(noteId, updates) {
+  async updateNote(noteId, updates) {
     const { note, noteType, isPinned } = updates;
     const setClauses = [];
     const params = [];
+    let paramCount = 1;
     
     if (note !== undefined) {
-      setClauses.push('note = ?');
+      setClauses.push(`note = $${paramCount++}`);
       params.push(note);
     }
     if (noteType !== undefined) {
-      setClauses.push('note_type = ?');
+      setClauses.push(`note_type = $${paramCount++}`);
       params.push(noteType);
     }
     if (isPinned !== undefined) {
-      setClauses.push('is_pinned = ?');
+      setClauses.push(`is_pinned = $${paramCount++}`);
       params.push(isPinned ? 1 : 0);
     }
     
     if (setClauses.length > 0) {
-      setClauses.push("updated_at = datetime('now')");
+      setClauses.push('updated_at = CURRENT_TIMESTAMP');
       params.push(noteId);
       
-      db.run(`UPDATE internal_notes SET ${setClauses.join(', ')} WHERE id = ?`, params);
-      saveDatabase();
+      await pool.query(
+        `UPDATE internal_notes SET ${setClauses.join(', ')} WHERE id = $${paramCount}`, 
+        params
+      );
     }
     
-    const result = db.exec("SELECT * FROM internal_notes WHERE id = ?", [noteId]);
-    return getOne(result);
+    const result = await pool.query("SELECT * FROM internal_notes WHERE id = $1", [noteId]);
+    return result.rows[0];
   }
 
   // Delete a note
-  deleteNote(noteId) {
-    db.run("DELETE FROM internal_notes WHERE id = ?", [noteId]);
-    saveDatabase();
+  async deleteNote(noteId) {
+    await pool.query("DELETE FROM internal_notes WHERE id = $1", [noteId]);
     return true;
   }
 
   // Toggle pin status
-  toggleNotePin(noteId) {
-    db.run("UPDATE internal_notes SET is_pinned = NOT is_pinned, updated_at = datetime('now') WHERE id = ?", [noteId]);
-    saveDatabase();
-    const result = db.exec("SELECT * FROM internal_notes WHERE id = ?", [noteId]);
-    return getOne(result);
+  async toggleNotePin(noteId) {
+    await pool.query(`
+      UPDATE internal_notes 
+      SET is_pinned = CASE WHEN is_pinned = 1 THEN 0 ELSE 1 END, 
+          updated_at = CURRENT_TIMESTAMP 
+      WHERE id = $1
+    `, [noteId]);
+    const result = await pool.query("SELECT * FROM internal_notes WHERE id = $1", [noteId]);
+    return result.rows[0];
   }
 
   // ============================================
@@ -605,41 +628,42 @@ class DatabaseHelper {
   // ============================================
 
   // Store a webhook notification
-  storeWebhookNotification(data) {
+  async storeWebhookNotification(data) {
     const id = uuidv4();
-    db.run(`
+    await pool.query(`
       INSERT INTO webhook_notifications (id, report_id, schedule_id, snapshot_id, download_link, filename, received_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
     `, [id, data.reportId, data.scheduleId, data.snapshotId, data.downloadLink, data.filename, data.receivedAt]);
-    saveDatabase();
     return { id, ...data };
   }
 
   // Get pending webhook notifications
-  getPendingWebhookNotifications() {
-    const result = db.exec("SELECT * FROM webhook_notifications WHERE status = 'pending' ORDER BY received_at ASC");
-    return getAll(result);
+  async getPendingWebhookNotifications() {
+    const result = await pool.query(
+      "SELECT * FROM webhook_notifications WHERE status = 'pending' ORDER BY received_at ASC"
+    );
+    return result.rows;
   }
 
   // Update webhook notification status
-  updateWebhookNotificationStatus(id, status, data = null) {
+  async updateWebhookNotificationStatus(id, status, data = null) {
+    let sql = "UPDATE webhook_notifications SET status = $1";
     const params = [status];
-    let sql = "UPDATE webhook_notifications SET status = ?";
+    let paramCount = 2;
     
     if (data) {
-      sql += ", data = ?";
+      sql += `, data = $${paramCount++}`;
       params.push(JSON.stringify(data));
     }
     
     if (status === 'downloaded' || status === 'processed') {
-      sql += ", processed_at = datetime('now')";
+      sql += ", processed_at = CURRENT_TIMESTAMP";
     }
     
-    sql += " WHERE id = ?";
+    sql += ` WHERE id = $${paramCount}`;
     params.push(id);
     
-    db.run(sql, params);
-    saveDatabase();
+    await pool.query(sql, params);
   }
 
   // ============================================
@@ -647,62 +671,46 @@ class DatabaseHelper {
   // ============================================
 
   // Store a report model reference
-  storeReportModel(clientId, orgId, simplifiReportId, templateId, title, category = null, filters = null) {
+  async storeReportModel(clientId, orgId, simplifiReportId, templateId, title, category = null, filters = null) {
     const id = uuidv4();
-    db.run(`
+    await pool.query(`
       INSERT INTO report_models (id, client_id, simplifi_org_id, simplifi_report_id, template_id, title, category, filters)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `, [id, clientId, orgId, simplifiReportId, templateId, title, category, filters ? JSON.stringify(filters) : null]);
-    saveDatabase();
-    
-    const result = db.exec("SELECT * FROM report_models WHERE id = ?", [id]);
-    const model = getOne(result);
-    if (model && model.filters) {
-      model.filters = JSON.parse(model.filters);
-    }
-    return model;
+    return { id, clientId, orgId, simplifiReportId, templateId, title, category, filters };
   }
 
   // Get report models for a client
-  getReportModelsByClient(clientId) {
-    const result = db.exec("SELECT * FROM report_models WHERE client_id = ? ORDER BY created_at DESC", [clientId]);
-    const models = getAll(result);
-    return models.map(m => ({
-      ...m,
-      filters: m.filters ? JSON.parse(m.filters) : null
-    }));
+  async getReportModelsByClient(clientId) {
+    const result = await pool.query(
+      "SELECT * FROM report_models WHERE client_id = $1 ORDER BY created_at DESC",
+      [clientId]
+    );
+    return result.rows;
   }
 
   // Get report model by Simpli.fi report ID
-  getReportModelBySimplifiId(simplifiReportId) {
-    const result = db.exec("SELECT * FROM report_models WHERE simplifi_report_id = ?", [simplifiReportId]);
-    const model = getOne(result);
-    if (model && model.filters) {
-      model.filters = JSON.parse(model.filters);
-    }
-    return model;
-  }
-
-  // Delete a report model
-  deleteReportModel(id) {
-    db.run("DELETE FROM report_models WHERE id = ?", [id]);
-    saveDatabase();
-    return true;
+  async getReportModelBySimplifiId(simplifiReportId) {
+    const result = await pool.query(
+      "SELECT * FROM report_models WHERE simplifi_report_id = $1",
+      [simplifiReportId]
+    );
+    return result.rows[0] || null;
   }
 
   // ============================================
   // CLIENT ASSIGNMENT METHODS
   // ============================================
 
-  // Assign a client to a user (sales rep)
-  assignClientToUser(clientId, userId) {
+  // Assign a client to a user
+  async assignClientToUser(clientId, userId) {
     const id = uuidv4();
     try {
-      db.run(`
-        INSERT OR IGNORE INTO client_assignments (id, client_id, user_id)
-        VALUES (?, ?, ?)
+      await pool.query(`
+        INSERT INTO client_assignments (id, client_id, user_id)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (client_id, user_id) DO NOTHING
       `, [id, clientId, userId]);
-      saveDatabase();
       return true;
     } catch (error) {
       console.error('Error assigning client:', error);
@@ -711,62 +719,63 @@ class DatabaseHelper {
   }
 
   // Remove client assignment
-  unassignClientFromUser(clientId, userId) {
-    db.run("DELETE FROM client_assignments WHERE client_id = ? AND user_id = ?", [clientId, userId]);
-    saveDatabase();
+  async unassignClientFromUser(clientId, userId) {
+    await pool.query(
+      "DELETE FROM client_assignments WHERE client_id = $1 AND user_id = $2", 
+      [clientId, userId]
+    );
     return true;
   }
 
   // Get all clients assigned to a user
-  getClientsByUserId(userId) {
-    const result = db.exec(`
+  async getClientsByUserId(userId) {
+    const result = await pool.query(`
       SELECT c.*, b.name as brand_name, b.logo_path as brand_logo
       FROM clients c
       JOIN brands b ON c.brand_id = b.id
       JOIN client_assignments ca ON c.id = ca.client_id
-      WHERE ca.user_id = ?
+      WHERE ca.user_id = $1
       ORDER BY c.name
     `, [userId]);
-    return rowsToObjects(result);
+    return result.rows;
   }
 
   // Get all users assigned to a client
-  getUsersByClientId(clientId) {
-    const result = db.exec(`
+  async getUsersByClientId(clientId) {
+    const result = await pool.query(`
       SELECT u.id, u.email, u.name, u.role
       FROM users u
       JOIN client_assignments ca ON u.id = ca.user_id
-      WHERE ca.client_id = ?
+      WHERE ca.client_id = $1
       ORDER BY u.name
     `, [clientId]);
-    return rowsToObjects(result);
+    return result.rows;
   }
 
   // Get all client assignments
-  getAllClientAssignments() {
-    const result = db.exec(`
+  async getAllClientAssignments() {
+    const result = await pool.query(`
       SELECT ca.*, c.name as client_name, u.name as user_name, u.email as user_email
       FROM client_assignments ca
       JOIN clients c ON ca.client_id = c.id
       JOIN users u ON ca.user_id = u.id
       ORDER BY c.name, u.name
     `);
-    return rowsToObjects(result);
+    return result.rows;
   }
 
   // Check if user has access to client
-  userHasAccessToClient(userId, clientId) {
-    const result = db.exec(`
+  async userHasAccessToClient(userId, clientId) {
+    const result = await pool.query(`
       SELECT COUNT(*) as count FROM client_assignments 
-      WHERE user_id = ? AND client_id = ?
+      WHERE user_id = $1 AND client_id = $2
     `, [userId, clientId]);
-    const row = getOne(result);
-    return row && row.count > 0;
+    return parseInt(result.rows[0].count) > 0;
   }
 }
 
 function getDatabase() {
-  return db;
+  return pool;
 }
 
-module.exports = { initializeDatabase, seedInitialData, DatabaseHelper, getDatabase, DB_PATH };
+module.exports = { initializeDatabase, seedInitialData, DatabaseHelper, getDatabase, generateSlug };

@@ -34,7 +34,10 @@ const corsOptions = {
       process.env.FRONTEND_URL
     ].filter(Boolean);
     
-    if (allowedOrigins.includes(origin) || origin.includes('vercel.app') || origin.includes('railway.app')) {
+    if (allowedOrigins.includes(origin) || 
+        origin.includes('vercel.app') || 
+        origin.includes('railway.app') ||
+        origin.includes('myadvertisingreport.com')) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
@@ -72,7 +75,7 @@ let reportCenterService = null;
 // HEALTH CHECK ENDPOINTS (for deployment)
 // ============================================
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -97,7 +100,7 @@ app.get('/api/health/detailed', async (req, res) => {
   // Check database
   try {
     if (dbHelper) {
-      const users = dbHelper.getAllUsers();
+      const users = await dbHelper.getAllUsers();
       health.checks.database = true;
       health.databaseUsers = users?.length || 0;
     }
@@ -160,11 +163,11 @@ if (!fs.existsSync(uploadsDir)) {
 // AUTH ROUTES
 // ============================================
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    const user = dbHelper.getUserByEmail(email);
+    const user = await dbHelper.getUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -190,10 +193,10 @@ app.post('/api/auth/login', (req, res) => {
   }
 });
 
-app.get('/api/auth/me', authenticateToken, (req, res) => {
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
     // Fetch fresh user data from database instead of using stale JWT data
-    const user = dbHelper.getUserById(req.user.id);
+    const user = await dbHelper.getUserById(req.user.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -216,9 +219,9 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 // USER MANAGEMENT ROUTES (Admin only)
 // ============================================
 
-app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const users = dbHelper.getAllUsers();
+    const users = await dbHelper.getAllUsers();
     res.json(users.map(u => ({ id: u.id, email: u.email, name: u.name, role: u.role, created_at: u.created_at })));
   } catch (error) {
     console.error('Get users error:', error);
@@ -226,7 +229,7 @@ app.get('/api/users', authenticateToken, requireAdmin, (req, res) => {
   }
 });
 
-app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { email, password, name, role } = req.body;
     
@@ -238,12 +241,12 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
-    const existingUser = dbHelper.getUserByEmail(email);
+    const existingUser = await dbHelper.getUserByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: 'Email already exists' });
     }
 
-    const user = dbHelper.createUser({ email, password, name, role });
+    const user = await dbHelper.createUser({ email, password, name, role });
     res.json({ id: user.id, email: user.email, name: user.name, role: user.role });
   } catch (error) {
     console.error('Create user error:', error);
@@ -251,13 +254,13 @@ app.post('/api/users', authenticateToken, requireAdmin, (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     if (req.user.id === req.params.id) {
       return res.status(400).json({ error: 'Cannot delete yourself' });
     }
     
-    dbHelper.deleteUser(req.params.id);
+    await dbHelper.deleteUser(req.params.id);
     res.json({ success: true });
   } catch (error) {
     console.error('Delete user error:', error);
@@ -266,20 +269,20 @@ app.delete('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Update user (admin only)
-app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
+app.put('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { email, name, role, password } = req.body;
     const userId = req.params.id;
     
     // Check if user exists
-    const existingUser = dbHelper.getUserById(userId);
+    const existingUser = await dbHelper.getUserById(userId);
     if (!existingUser) {
       return res.status(404).json({ error: 'User not found' });
     }
     
     // Check if email is taken by another user
     if (email && email !== existingUser.email) {
-      const emailUser = dbHelper.getUserByEmail(email);
+      const emailUser = await dbHelper.getUserByEmail(email);
       if (emailUser && emailUser.id !== userId) {
         return res.status(400).json({ error: 'Email already exists' });
       }
@@ -292,7 +295,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
     if (role && ['admin', 'sales'].includes(role)) updates.role = role;
     if (password) updates.password = password;
     
-    const updatedUser = dbHelper.updateUser(userId, updates);
+    const updatedUser = await dbHelper.updateUser(userId, updates);
     res.json({ id: updatedUser.id, email: updatedUser.email, name: updatedUser.name, role: updatedUser.role });
   } catch (error) {
     console.error('Update user error:', error);
@@ -301,7 +304,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Change own password (any logged in user)
-app.put('/api/auth/change-password', authenticateToken, (req, res) => {
+app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     
@@ -314,7 +317,7 @@ app.put('/api/auth/change-password', authenticateToken, (req, res) => {
     }
     
     // Get user and verify current password
-    const user = dbHelper.getUserById(req.user.id);
+    const user = await dbHelper.getUserById(req.user.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -325,7 +328,7 @@ app.put('/api/auth/change-password', authenticateToken, (req, res) => {
     }
     
     // Update password
-    dbHelper.updateUser(req.user.id, { password: newPassword });
+    await dbHelper.updateUser(req.user.id, { password: newPassword });
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     console.error('Change password error:', error);
@@ -337,9 +340,9 @@ app.put('/api/auth/change-password', authenticateToken, (req, res) => {
 // BRAND ROUTES
 // ============================================
 
-app.get('/api/brands', authenticateToken, (req, res) => {
+app.get('/api/brands', authenticateToken, async (req, res) => {
   try {
-    const brands = dbHelper.getAllBrands();
+    const brands = await dbHelper.getAllBrands();
     res.json(brands);
   } catch (error) {
     console.error('Get brands error:', error);
@@ -347,9 +350,9 @@ app.get('/api/brands', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/api/brands', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/brands', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const brand = dbHelper.createBrand(req.body);
+    const brand = await dbHelper.createBrand(req.body);
     res.json(brand);
   } catch (error) {
     console.error('Create brand error:', error);
@@ -361,14 +364,14 @@ app.post('/api/brands', authenticateToken, requireAdmin, (req, res) => {
 // CLIENT ROUTES
 // ============================================
 
-app.get('/api/clients', authenticateToken, (req, res) => {
+app.get('/api/clients', authenticateToken, async (req, res) => {
   try {
     let clients;
     // Admins see all clients, sales reps only see assigned clients
     if (req.user.role === 'admin') {
-      clients = dbHelper.getAllClients();
+      clients = await dbHelper.getAllClients();
     } else {
-      clients = dbHelper.getClientsByUserId(req.user.id);
+      clients = await dbHelper.getClientsByUserId(req.user.id);
     }
     res.json(clients);
   } catch (error) {
@@ -377,14 +380,14 @@ app.get('/api/clients', authenticateToken, (req, res) => {
   }
 });
 
-app.get('/api/clients/:id', authenticateToken, (req, res) => {
+app.get('/api/clients/:id', authenticateToken, async (req, res) => {
   try {
-    const client = dbHelper.getClientById(req.params.id);
+    const client = await dbHelper.getClientById(req.params.id);
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
     // Check access for non-admin users
-    if (req.user.role !== 'admin' && !dbHelper.userHasAccessToClient(req.user.id, req.params.id)) {
+    if (req.user.role !== 'admin' && !await dbHelper.userHasAccessToClient(req.user.id, req.params.id)) {
       return res.status(403).json({ error: 'Access denied to this client' });
     }
     res.json(client);
@@ -394,13 +397,36 @@ app.get('/api/clients/:id', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/api/clients', authenticateToken, (req, res) => {
+app.post('/api/clients', authenticateToken, async (req, res) => {
   try {
-    const client = dbHelper.createClient(req.body);
+    const client = await dbHelper.createClient(req.body);
     res.json(client);
   } catch (error) {
     console.error('Create client error:', error);
     res.status(500).json({ error: 'Failed to create client' });
+  }
+});
+
+// Get client by slug (for public/shareable URLs)
+app.get('/api/clients/slug/:slug', async (req, res) => {
+  try {
+    const client = await dbHelper.getClientBySlug(req.params.slug);
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    // Return limited public info
+    res.json({
+      id: client.id,
+      name: client.name,
+      slug: client.slug,
+      simplifi_org_id: client.simplifi_org_id,
+      primary_color: client.primary_color,
+      secondary_color: client.secondary_color,
+      logo_path: client.logo_path
+    });
+  } catch (error) {
+    console.error('Get client by slug error:', error);
+    res.status(500).json({ error: 'Failed to get client' });
   }
 });
 
@@ -409,9 +435,9 @@ app.post('/api/clients', authenticateToken, (req, res) => {
 // ============================================
 
 // Get all assignments
-app.get('/api/client-assignments', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/client-assignments', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const assignments = dbHelper.getAllClientAssignments();
+    const assignments = await dbHelper.getAllClientAssignments();
     res.json(assignments);
   } catch (error) {
     console.error('Get assignments error:', error);
@@ -420,9 +446,9 @@ app.get('/api/client-assignments', authenticateToken, requireAdmin, (req, res) =
 });
 
 // Get users assigned to a specific client
-app.get('/api/clients/:id/assignments', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/clients/:id/assignments', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const users = dbHelper.getUsersByClientId(req.params.id);
+    const users = await dbHelper.getUsersByClientId(req.params.id);
     res.json(users);
   } catch (error) {
     console.error('Get client assignments error:', error);
@@ -431,13 +457,13 @@ app.get('/api/clients/:id/assignments', authenticateToken, requireAdmin, (req, r
 });
 
 // Assign a user to a client
-app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { userId } = req.body;
     if (!userId) {
       return res.status(400).json({ error: 'User ID required' });
     }
-    dbHelper.assignClientToUser(req.params.id, userId);
+    await dbHelper.assignClientToUser(req.params.id, userId);
     res.json({ success: true });
   } catch (error) {
     console.error('Assign client error:', error);
@@ -446,9 +472,9 @@ app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, (req, 
 });
 
 // Remove user from client
-app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    dbHelper.unassignClientFromUser(req.params.id, req.params.userId);
+    await dbHelper.unassignClientFromUser(req.params.id, req.params.userId);
     res.json({ success: true });
   } catch (error) {
     console.error('Unassign client error:', error);
@@ -457,9 +483,9 @@ app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdm
 });
 
 // Get clients assigned to a specific user
-app.get('/api/users/:id/clients', authenticateToken, requireAdmin, (req, res) => {
+app.get('/api/users/:id/clients', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const clients = dbHelper.getClientsByUserId(req.params.id);
+    const clients = await dbHelper.getClientsByUserId(req.params.id);
     res.json(clients);
   } catch (error) {
     console.error('Get user clients error:', error);
@@ -467,9 +493,9 @@ app.get('/api/users/:id/clients', authenticateToken, requireAdmin, (req, res) =>
   }
 });
 
-app.put('/api/clients/:id', authenticateToken, (req, res) => {
+app.put('/api/clients/:id', authenticateToken, async (req, res) => {
   try {
-    const client = dbHelper.updateClient(req.params.id, req.body);
+    const client = await dbHelper.updateClient(req.params.id, req.body);
     res.json(client);
   } catch (error) {
     console.error('Update client error:', error);
@@ -477,9 +503,9 @@ app.put('/api/clients/:id', authenticateToken, (req, res) => {
   }
 });
 
-app.delete('/api/clients/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/clients/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    dbHelper.deleteClient(req.params.id);
+    await dbHelper.deleteClient(req.params.id);
     res.json({ success: true });
   } catch (error) {
     console.error('Delete client error:', error);
@@ -510,9 +536,9 @@ app.get('/api/clients/:clientId/report/pdf', authenticateToken, async (req, res)
 // CLIENT NOTES ROUTES
 // ============================================
 
-app.get('/api/clients/:clientId/notes', authenticateToken, (req, res) => {
+app.get('/api/clients/:clientId/notes', authenticateToken, async (req, res) => {
   try {
-    const notes = dbHelper.getNotesByClient(req.params.clientId);
+    const notes = await dbHelper.getNotesByClient(req.params.clientId);
     res.json(notes || []);
   } catch (error) {
     console.error('Get notes error:', error);
@@ -520,9 +546,9 @@ app.get('/api/clients/:clientId/notes', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/api/clients/:clientId/notes', authenticateToken, (req, res) => {
+app.post('/api/clients/:clientId/notes', authenticateToken, async (req, res) => {
   try {
-    const note = dbHelper.createNote({
+    const note = await dbHelper.createNote({
       client_id: req.params.clientId,
       user_id: req.user.id,
       user_name: req.user.name,
@@ -535,9 +561,9 @@ app.post('/api/clients/:clientId/notes', authenticateToken, (req, res) => {
   }
 });
 
-app.put('/api/notes/:id/pin', authenticateToken, (req, res) => {
+app.put('/api/notes/:id/pin', authenticateToken, async (req, res) => {
   try {
-    const note = dbHelper.toggleNotePin(req.params.id);
+    const note = await dbHelper.toggleNotePin(req.params.id);
     res.json(note);
   } catch (error) {
     console.error('Pin note error:', error);
@@ -545,9 +571,9 @@ app.put('/api/notes/:id/pin', authenticateToken, (req, res) => {
   }
 });
 
-app.delete('/api/notes/:id', authenticateToken, (req, res) => {
+app.delete('/api/notes/:id', authenticateToken, async (req, res) => {
   try {
-    dbHelper.deleteNote(req.params.id);
+    await dbHelper.deleteNote(req.params.id);
     res.json({ success: true });
   } catch (error) {
     console.error('Delete note error:', error);
@@ -566,17 +592,17 @@ app.post('/api/clients/sync', authenticateToken, requireAdmin, async (req, res) 
     const organizations = orgs.organizations || [];
     
     // Get default brand
-    let brand = dbHelper.getAllBrands()[0];
+    let brand = await dbHelper.getAllBrands()[0];
     if (!brand) {
-      brand = dbHelper.createBrand({ name: 'Default', primary_color: '#3b82f6' });
+      brand = await dbHelper.createBrand({ name: 'Default', primary_color: '#3b82f6' });
     }
     
     let synced = 0;
     for (const org of organizations) {
       // Check if client already exists
-      const existing = dbHelper.getClientByOrgId(org.id);
+      const existing = await dbHelper.getClientByOrgId(org.id);
       if (!existing) {
-        dbHelper.createClient({
+        await dbHelper.createClient({
           name: org.name,
           simplifi_org_id: org.id,
           brand_id: brand.id,
@@ -604,18 +630,18 @@ app.post('/api/clients/sync-one', authenticateToken, requireAdmin, async (req, r
     }
     
     // Get default brand
-    let brand = dbHelper.getAllBrands()[0];
+    let brand = await dbHelper.getAllBrands()[0];
     if (!brand) {
-      brand = dbHelper.createBrand({ name: 'Default', primary_color: '#3b82f6' });
+      brand = await dbHelper.createBrand({ name: 'Default', primary_color: '#3b82f6' });
     }
     
     // Check if already exists
-    const existing = dbHelper.getClientByOrgId(orgId);
+    const existing = await dbHelper.getClientByOrgId(orgId);
     if (existing) {
       return res.json({ success: true, client: existing, existed: true });
     }
     
-    const client = dbHelper.createClient({
+    const client = await dbHelper.createClient({
       name: clientName,
       simplifi_org_id: orgId,
       brand_id: brand.id,
