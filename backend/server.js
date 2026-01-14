@@ -407,23 +407,14 @@ app.post('/api/clients', authenticateToken, async (req, res) => {
   }
 });
 
-// Get client by slug (for public/shareable URLs)
-app.get('/api/clients/slug/:slug', async (req, res) => {
+// Get client by slug (authenticated - returns full data)
+app.get('/api/clients/slug/:slug', authenticateToken, async (req, res) => {
   try {
     const client = await dbHelper.getClientBySlug(req.params.slug);
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
-    // Return limited public info
-    res.json({
-      id: client.id,
-      name: client.name,
-      slug: client.slug,
-      simplifi_org_id: client.simplifi_org_id,
-      primary_color: client.primary_color,
-      secondary_color: client.secondary_color,
-      logo_path: client.logo_path
-    });
+    res.json(client);
   } catch (error) {
     console.error('Get client by slug error:', error);
     res.status(500).json({ error: 'Failed to get client' });

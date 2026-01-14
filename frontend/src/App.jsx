@@ -552,6 +552,7 @@ function DashboardPage() {
           if (!hasActivePixel) {
             pixelsNeedingAttention.push({
               clientId: client.id,
+              clientSlug: client.slug,
               clientName: client.name,
               pixelCount: pixels.length,
               hasPixels: pixels.length > 0,
@@ -593,6 +594,7 @@ function DashboardPage() {
                   ...camp,
                   clientName: client.name,
                   clientId: client.id,
+                  clientSlug: client.slug,
                   impressions: campStats.impressions,
                   clicks: campStats.clicks,
                   ctr: ctr,
@@ -632,6 +634,7 @@ function DashboardPage() {
                   ...camp,
                   clientName: client.name,
                   clientId: client.id,
+                  clientSlug: client.slug,
                   daysRemaining: Math.ceil((endDateObj - now) / (1000 * 60 * 60 * 24))
                 });
               }
@@ -661,6 +664,7 @@ function DashboardPage() {
 
           clientPerformance.push({
             id: client.id,
+            slug: client.slug,
             name: client.name,
             impressions: clientImpressions,
             clicks: clientClicks,
@@ -669,7 +673,7 @@ function DashboardPage() {
             primaryColor: client.primary_color
           });
 
-          allCampaigns = [...allCampaigns, ...clientCampaigns.map(c => ({ ...c, clientName: client.name, clientId: client.id }))];
+          allCampaigns = [...allCampaigns, ...clientCampaigns.map(c => ({ ...c, clientName: client.name, clientId: client.id, clientSlug: client.slug }))];
 
         } catch (err) {
           console.error(`Failed to load data for ${client.name}:`, err);
@@ -881,7 +885,7 @@ function DashboardPage() {
               dashboardData.topByCTR.map((client, i) => (
                 <Link 
                   key={client.id} 
-                  to={`/clients/${client.id}`}
+                  to={`/client/${client.slug}`}
                   style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -934,7 +938,7 @@ function DashboardPage() {
               dashboardData.topByImpressions.map((client, i) => (
                 <Link 
                   key={client.id} 
-                  to={`/clients/${client.id}`}
+                  to={`/client/${client.slug}`}
                   style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -984,7 +988,7 @@ function DashboardPage() {
               dashboardData.topBySpend.map((client, i) => (
                 <Link 
                   key={client.id} 
-                  to={`/clients/${client.id}`}
+                  to={`/client/${client.slug}`}
                   style={{ 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -1130,7 +1134,7 @@ function NeedsAttentionSection({ campaigns, pixelsNeedingAttention, lowCTRCampai
                             </div>
                           </div>
                           <Link 
-                            to={`/clients/${camp.clientId}/campaigns/${camp.id}`}
+                            to={`/client/${camp.clientSlug}/campaign/${camp.id}`}
                             style={{ color: '#3b82f6', fontSize: '0.875rem' }}
                           >
                             <ChevronRight size={18} />
@@ -1222,7 +1226,7 @@ function NeedsAttentionSection({ campaigns, pixelsNeedingAttention, lowCTRCampai
                             {client.hasPixels ? 'Inactive' : 'Not Set Up'}
                           </div>
                           <Link 
-                            to={`/clients/${client.clientId}`}
+                            to={`/client/${client.clientSlug}`}
                             style={{ color: '#3b82f6', fontSize: '0.875rem' }}
                           >
                             <ChevronRight size={18} />
@@ -1301,7 +1305,7 @@ function NeedsAttentionSection({ campaigns, pixelsNeedingAttention, lowCTRCampai
                             </div>
                           </div>
                           <Link 
-                            to={`/clients/${camp.clientId}/campaigns/${camp.id}`}
+                            to={`/client/${camp.clientSlug}/campaign/${camp.id}`}
                             style={{ color: '#3b82f6', fontSize: '0.875rem' }}
                           >
                             <ChevronRight size={18} />
@@ -1711,7 +1715,7 @@ function ClientsPage() {
                     </td>
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                       <Link 
-                        to={`/clients/${c.id}`} 
+                        to={`/client/${c.slug}`} 
                         style={{ 
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -2367,7 +2371,7 @@ function generatePDFHTML(data, client, campaigns, campaignStats, showSpendData) 
 // CLIENT DETAIL PAGE (Main Report View)
 // ============================================
 function ClientDetailPage() {
-  const { id } = useParams();
+  const { slug } = useParams();
   const [client, setClient] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
   const [campaignStats, setCampaignStats] = useState({});
@@ -2448,12 +2452,12 @@ function ClientDetailPage() {
     localStorage.setItem('clientMainSectionOrder', JSON.stringify(defaultMainSectionOrder));
   };
 
-  useEffect(() => { loadClient(); }, [id]);
+  useEffect(() => { loadClient(); }, [slug]);
   useEffect(() => { if (client?.simplifi_org_id) { loadData(); loadHistoryData(); } }, [client]);
 
   const loadClient = async () => {
     try {
-      const data = await api.get(`/api/clients/${id}`);
+      const data = await api.get(`/api/clients/slug/${slug}`);
       setClient(data);
     } catch (err) { console.error(err); }
     setLoading(false);
@@ -2877,7 +2881,7 @@ function ClientDetailPage() {
 
       {/* Collapsible Internal Notes - just below header for admins */}
       {user && !clientViewMode && (
-        <InternalNotesSection clientId={id} isCollapsible={true} />
+        <InternalNotesSection clientId={client?.id} isCollapsible={true} />
       )}
 
       {!client?.simplifi_org_id ? (
@@ -2955,7 +2959,7 @@ function ClientDetailPage() {
                                 <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(stats.ctr)}</td>
                                 {showSpendData && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(stats.total_spend)}</td>}
                                 <td style={{ padding: '0.75rem' }}>
-                                  <Link to={`/clients/${id}/campaigns/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
+                                  <Link to={`/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
                                     <ChevronRight size={18} />
                                   </Link>
                                 </td>
@@ -3165,7 +3169,7 @@ function ClientDetailPage() {
                               <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.impressions)}</td>
                               <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.clicks)}</td>
                               <td style={{ padding: '0.75rem' }}>
-                                <Link to={`/clients/${id}/campaigns/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
+                                <Link to={`/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
                                   <ChevronRight size={18} />
                                 </Link>
                               </td>
@@ -3219,7 +3223,7 @@ function ClientDetailPage() {
 // CAMPAIGN DETAIL PAGE (Sub-page for individual campaign)
 // ============================================
 function CampaignDetailPage() {
-  const { id, campaignId } = useParams();
+  const { slug, campaignId } = useParams();
   const [client, setClient] = useState(null);
   const [campaign, setCampaign] = useState(null);
   const [stats, setStats] = useState(null);
@@ -3356,13 +3360,13 @@ function CampaignDetailPage() {
     localStorage.setItem('campaignSectionOrder', JSON.stringify(defaultSectionOrder));
   };
 
-  useEffect(() => { loadData(); }, [id, campaignId]);
+  useEffect(() => { loadData(); }, [slug, campaignId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      // Get client
-      const clientData = await api.get(`/api/clients/${id}`);
+      // Get client by slug
+      const clientData = await api.get(`/api/clients/slug/${slug}`);
       setClient(clientData);
 
       // Get campaign details WITH ADS INCLUDED
@@ -3726,7 +3730,7 @@ function CampaignDetailPage() {
           justifyContent: 'space-between', 
           alignItems: 'center'
         }}>
-          <Link to={`/clients/${id}`} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
+          <Link to={`/client/${slug}`} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
             <ArrowLeft size={16} /> Back to {client?.name}
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -3791,7 +3795,7 @@ function CampaignDetailPage() {
       {/* Collapsible Internal Notes - just below header for admins */}
       {/* Notes are client-level only - same notes appear on client page and all campaign pages */}
       {user && !clientViewMode && (
-        <InternalNotesSection clientId={id} isCollapsible={true} />
+        <InternalNotesSection clientId={client?.id} isCollapsible={true} />
       )}
 
       {/* Render sections in order */}
@@ -6982,11 +6986,13 @@ function App() {
           <Route path="/client/:slug/report" element={<SlugReportPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/clients" element={<ProtectedRoute><ClientsPage /></ProtectedRoute>} />
-          <Route path="/clients/:id" element={<ProtectedRoute><ClientDetailPage /></ProtectedRoute>} />
-          <Route path="/clients/:id/campaigns/:campaignId" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
+          <Route path="/client/:slug" element={<ProtectedRoute><ClientDetailPage /></ProtectedRoute>} />
+          <Route path="/client/:slug/campaign/:campaignId" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Redirect old ID-based URLs to dashboard */}
+          <Route path="/clients/:id" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
