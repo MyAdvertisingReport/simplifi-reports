@@ -170,28 +170,13 @@ class SimplifiClient {
 
   /**
    * Get ads for a campaign
-   * @param {number} orgId - Organization ID (may be parent org - we'll find actual owner)
+   * @param {number} orgId - Organization ID
    * @param {number} campaignId - Campaign ID
    */
   async getCampaignAds(orgId, campaignId) {
     try {
-      // First, get the campaign to find its actual organization_id
-      // The passed orgId might be a parent org, but ads endpoint needs the campaign's direct org
-      let actualOrgId = orgId;
-      
-      try {
-        const campaignResponse = await this.client.get(`/campaigns/${campaignId}`);
-        const campaign = campaignResponse.data?.campaigns?.[0] || campaignResponse.data;
-        if (campaign?.organization_id) {
-          actualOrgId = campaign.organization_id;
-          console.log(`[SIMPLIFI CLIENT] Campaign ${campaignId} belongs to org ${actualOrgId} (requested org was ${orgId})`);
-        }
-      } catch (e) {
-        console.log(`[SIMPLIFI CLIENT] Could not fetch campaign details, using provided orgId: ${orgId}`);
-      }
-      
-      // Use the actual organization ID that owns this campaign
-      const url = `/organizations/${actualOrgId}/campaigns/${campaignId}/ads`;
+      // Use full URL with org context - the short syntax doesn't always work
+      const url = `/organizations/${orgId}/campaigns/${campaignId}/ads`;
       console.log(`[SIMPLIFI CLIENT] Fetching ads from: ${url}`);
       const response = await this.client.get(url);
       console.log(`[SIMPLIFI CLIENT] Ads response status: ${response.status}`);
@@ -471,11 +456,50 @@ class SimplifiClient {
    * Get keyword performance for a campaign
    * @param {number} campaignId - Campaign ID
    */
+  /**
+   * Get keywords for a campaign
+   * @param {number} campaignId - Campaign ID
+   */
   async getCampaignKeywords(campaignId) {
     try {
-      const response = await this.client.get(`/campaigns/${campaignId}/keywords`);
+      // First get the campaign to find its organization_id
+      // The keywords endpoint requires org context
+      let orgId = null;
+      try {
+        const campaignResponse = await this.client.get(`/campaigns/${campaignId}`);
+        const campaign = campaignResponse.data?.campaigns?.[0] || campaignResponse.data;
+        orgId = campaign?.organization_id;
+        console.log(`[SIMPLIFI CLIENT] Campaign ${campaignId} belongs to org ${orgId}`);
+      } catch (e) {
+        console.log(`[SIMPLIFI CLIENT] Could not fetch campaign details for keywords: ${e.message}`);
+      }
+      
+      if (orgId) {
+        // Use the full org/campaign path
+        const response = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}/keywords`);
+        return response.data;
+      } else {
+        // Fallback to campaign-only path (may not work for all orgs)
+        const response = await this.client.get(`/campaigns/${campaignId}/keywords`);
+        return response.data;
+      }
+    } catch (error) {
+      throw this._handleError(error);
+    }
+  }
+
+  /**
+   * Get keywords for a campaign (with org ID provided)
+   * @param {number} orgId - Organization ID
+   * @param {number} campaignId - Campaign ID
+   */
+  async getCampaignKeywordsWithOrg(orgId, campaignId) {
+    try {
+      const response = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}/keywords`);
+      console.log(`[SIMPLIFI CLIENT] Keywords response for campaign ${campaignId}:`, JSON.stringify(response.data).substring(0, 500));
       return response.data;
     } catch (error) {
+      console.error(`[SIMPLIFI CLIENT] Error fetching keywords for org ${orgId}, campaign ${campaignId}:`, error.message);
       throw this._handleError(error);
     }
   }

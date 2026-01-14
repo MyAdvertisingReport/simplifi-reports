@@ -3900,15 +3900,18 @@ function CampaignDetailPage() {
         } catch (e) { console.error('Could not fetch geo-fences:', e); }
       }
 
-      // Get keywords if this is a keyword campaign - improved detection
-      const isKeyword = campNameLower.includes('keyword') || campNameLower.includes('_kw');
-      if (isKeyword) {
-        try {
-          const keywordsData = await api.get(`/api/simplifi/campaigns/${campaignId}/keywords`);
-          console.log('Keywords API response:', keywordsData);
-          setKeywords(keywordsData.keywords || keywordsData || []);
-        } catch (e) { console.error('Could not fetch keywords:', e); }
-      }
+      // Get keywords - always try to fetch (don't rely on campaign name detection)
+      // The API will return count: 0 if no keywords exist
+      try {
+        // Use the org-aware endpoint for better reliability
+        const keywordsData = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords`);
+        console.log('Keywords API response:', keywordsData);
+        // The API returns { keywords: [{ count: N, ... }] } 
+        const keywordInfo = keywordsData.keywords?.[0] || keywordsData;
+        if (keywordInfo && keywordInfo.count > 0) {
+          setKeywords(keywordsData.keywords || [keywordInfo]);
+        }
+      } catch (e) { console.log('Keywords not available for this campaign:', e.message); }
       
       // Fetch Report Center enhanced data (async, don't block initial load)
       loadEnhancedData(clientData.simplifi_org_id, campaignId, campaignData);
@@ -3934,9 +3937,8 @@ function CampaignDetailPage() {
       const isOTT = campaignName.includes('ott') ||
                     campaignName.includes('ctv') ||
                     campaignName.includes('streaming');
-      const isKeyword = campaignName.includes('keyword') || campaignName.includes('_kw');
       
-      console.log(`Campaign "${campaignData?.name}" - isGeoFence: ${isGeoFence}, isOTT: ${isOTT}, isKeyword: ${isKeyword}`);
+      console.log(`Campaign "${campaignData?.name}" - isGeoFence: ${isGeoFence}, isOTT: ${isOTT}`);
       
       const promises = [];
       
@@ -4000,14 +4002,18 @@ function CampaignDetailPage() {
         );
       }
       
-      // Fetch keyword performance for keyword campaigns
-      if (isKeyword) {
-        promises.push(
-          api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/keyword-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => setKeywordPerformance(data.keyword_performance || []))
-            .catch(e => console.log('Keyword performance not available:', e.message))
-        );
-      }
+      // Fetch keyword performance - always try (not just for campaigns with 'keyword' in name)
+      promises.push(
+        api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/keyword-performance?startDate=${startDate}&endDate=${endDate}`)
+          .then(data => {
+            const kwPerf = data.keyword_performance || [];
+            if (kwPerf.length > 0) {
+              console.log(`Keyword performance loaded: ${kwPerf.length} keywords`);
+              setKeywordPerformance(kwPerf);
+            }
+          })
+          .catch(e => console.log('Keyword performance not available:', e.message))
+      );
       
       await Promise.all(promises);
       

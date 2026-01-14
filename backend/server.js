@@ -1195,14 +1195,26 @@ app.get('/api/simplifi/campaigns/:campaignId/geo_fences', authenticateToken, asy
   }
 });
 
-// Get campaign keywords
+// Get campaign keywords (with org context for better reliability)
+app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keywords', authenticateToken, async (req, res) => {
+  try {
+    const { orgId, campaignId } = req.params;
+    const keywords = await simplifiClient.getCampaignKeywordsWithOrg(orgId, campaignId);
+    res.json(keywords);
+  } catch (error) {
+    console.error('Get keywords error:', error);
+    res.status(500).json({ error: 'Failed to get keywords', details: error.message });
+  }
+});
+
+// Get campaign keywords (legacy endpoint without org - kept for backward compatibility)
 app.get('/api/simplifi/campaigns/:campaignId/keywords', authenticateToken, async (req, res) => {
   try {
     const keywords = await simplifiClient.getCampaignKeywords(req.params.campaignId);
     res.json(keywords);
   } catch (error) {
     console.error('Get keywords error:', error);
-    res.status(500).json({ error: 'Failed to get keywords' });
+    res.status(500).json({ error: 'Failed to get keywords', details: error.message });
   }
 });
 
