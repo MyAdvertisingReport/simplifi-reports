@@ -28,6 +28,11 @@ import {
 } from 'recharts';
 
 // ============================================
+// API BASE URL - Use environment variable in production
+// ============================================
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+// ============================================
 // AUTH CONTEXT
 // ============================================
 const AuthContext = createContext(null);
@@ -48,7 +53,7 @@ function AuthProvider({ children }) {
 
   const fetchUser = async (token) => {
     try {
-      const res = await fetch('/api/auth/me', {
+      const res = await fetch(`${API_BASE}/api/auth/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
@@ -64,7 +69,7 @@ function AuthProvider({ children }) {
   };
 
   const login = async (email, password) => {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -97,7 +102,7 @@ function AuthProvider({ children }) {
 export const api = {
   get: async (url) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE}${url}`, {
       headers: token ? { 'Authorization': `Bearer ${token}` } : {}
     });
     if (!res.ok) {
@@ -108,7 +113,7 @@ export const api = {
   },
   post: async (url, data) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE}${url}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -124,7 +129,7 @@ export const api = {
   },
   put: async (url, data) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE}${url}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -140,7 +145,7 @@ export const api = {
   },
   delete: async (url) => {
     const token = localStorage.getItem('token');
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE}${url}`, {
       method: 'DELETE',
       headers: token ? { 'Authorization': `Bearer ${token}` } : {}
     });
