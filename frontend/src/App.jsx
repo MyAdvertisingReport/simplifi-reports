@@ -3815,11 +3815,27 @@ function CampaignDetailPage() {
       );
       
       console.log('Raw ad stats from API:', adData.campaign_stats?.length, 'entries');
+      if (adData.campaign_stats?.[0]) {
+        console.log('Sample ad stat entry:', JSON.stringify(adData.campaign_stats[0]));
+      }
+      
+      // IMPORTANT: Filter stats to only include the current campaign
+      // The API sometimes returns stats for all campaigns in the org
+      const campaignIdNum = parseInt(campaignId);
+      const filteredStats = (adData.campaign_stats || []).filter(stat => stat.campaign_id === campaignIdNum);
+      console.log(`Filtered to campaign ${campaignId}: ${filteredStats.length} entries (from ${adData.campaign_stats?.length || 0} total)`);
       
       // Deduplicate ad stats - API might return multiple entries per ad (e.g., by day)
+      // Skip entries without a valid ad_id
       const adStatsMap = new Map();
-      (adData.campaign_stats || []).forEach(stat => {
+      let skippedCount = 0;
+      filteredStats.forEach(stat => {
         const adId = stat.ad_id;
+        // Skip entries without a valid ad_id
+        if (!adId || adId === null || adId === undefined) {
+          skippedCount++;
+          return;
+        }
         if (adStatsMap.has(adId)) {
           // Aggregate stats for same ad
           const existing = adStatsMap.get(adId);
@@ -3830,6 +3846,8 @@ function CampaignDetailPage() {
           adStatsMap.set(adId, { ...stat });
         }
       });
+      
+      console.log(`Ad stats processing: ${skippedCount} entries skipped (no ad_id), ${adStatsMap.size} unique ads found`);
       
       // Convert back to array and calculate derived metrics
       const deduplicatedStats = Array.from(adStatsMap.values()).map(stat => ({
