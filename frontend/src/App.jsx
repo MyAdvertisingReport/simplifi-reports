@@ -2640,19 +2640,21 @@ function ClientDetailPage({ publicMode = false }) {
             ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          // API returns array directly
-          const locations = Array.isArray(locData) ? locData : (locData.locations || locData || []);
-          locations.forEach(loc => {
-            const locName = loc.city || loc.metro || loc.location || 'Unknown';
-            const existing = allLocations.find(l => (l.city || l.location) === locName);
-            if (existing) {
-              existing.impressions += loc.impressions || 0;
-              existing.clicks += loc.clicks || 0;
-              existing.spend += loc.spend || 0;
-            } else {
-              allLocations.push({ ...loc, location: locName });
-            }
-          });
+          // API returns array directly, handle null
+          if (locData) {
+            const locations = Array.isArray(locData) ? locData : (locData.locations || []);
+            locations.forEach(loc => {
+              const locName = loc.city || loc.metro || loc.location || 'Unknown';
+              const existing = allLocations.find(l => (l.city || l.location) === locName);
+              if (existing) {
+                existing.impressions += loc.impressions || 0;
+                existing.clicks += loc.clicks || 0;
+                existing.spend += loc.spend || 0;
+              } else {
+                allLocations.push({ ...loc, location: locName });
+              }
+            });
+          }
         } catch (e) { console.log('Location fetch error:', e.message); }
         
         // Geo fence performance  
@@ -2665,17 +2667,19 @@ function ClientDetailPage({ publicMode = false }) {
             ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          // API returns array directly
-          const geoFences = Array.isArray(geoData) ? geoData : (geoData.geoFences || geoData || []);
-          geoFences.forEach(gf => {
-            const existing = allGeoFences.find(g => g.name === gf.name);
-            if (existing) {
-              existing.impressions += gf.impressions || 0;
-              existing.clicks += gf.clicks || 0;
-            } else {
-              allGeoFences.push({ ...gf });
-            }
-          });
+          // API returns array directly, handle null
+          if (geoData) {
+            const geoFences = Array.isArray(geoData) ? geoData : (geoData.geoFences || []);
+            geoFences.forEach(gf => {
+              const existing = allGeoFences.find(g => g.name === gf.name);
+              if (existing) {
+                existing.impressions += gf.impressions || 0;
+                existing.clicks += gf.clicks || 0;
+              } else {
+                allGeoFences.push({ ...gf });
+              }
+            });
+          }
         } catch (e) { console.log('GeoFence fetch error:', e.message); }
         
         // Keyword performance
@@ -2688,17 +2692,19 @@ function ClientDetailPage({ publicMode = false }) {
             ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          // API returns array directly
-          const keywords = Array.isArray(kwData) ? kwData : (kwData.keywords || kwData || []);
-          keywords.forEach(kw => {
-            const existing = allKeywords.find(k => k.keyword === kw.keyword);
-            if (existing) {
-              existing.impressions += kw.impressions || 0;
-              existing.clicks += kw.clicks || 0;
-            } else {
-              allKeywords.push({ ...kw });
-            }
-          });
+          // API returns array directly, handle null
+          if (kwData) {
+            const keywords = Array.isArray(kwData) ? kwData : (kwData.keywords || []);
+            keywords.forEach(kw => {
+              const existing = allKeywords.find(k => k.keyword === kw.keyword);
+              if (existing) {
+                existing.impressions += kw.impressions || 0;
+                existing.clicks += kw.clicks || 0;
+              } else {
+                allKeywords.push({ ...kw });
+              }
+            });
+          }
         } catch (e) { console.log('Keyword fetch error:', e.message); }
         
         // Domain performance
@@ -2711,17 +2717,19 @@ function ClientDetailPage({ publicMode = false }) {
             ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
             : await api.get(endpoint);
           
-          // API returns array directly
-          const domains = Array.isArray(domData) ? domData : (domData.domains || domData || []);
-          domains.forEach(d => {
-            const existing = allDomains.find(dom => dom.domain === d.domain);
-            if (existing) {
-              existing.impressions += d.impressions || 0;
-              existing.clicks += d.clicks || 0;
-            } else {
-              allDomains.push({ ...d });
-            }
-          });
+          // API returns array directly, handle null
+          if (domData) {
+            const domains = Array.isArray(domData) ? domData : (domData.domains || []);
+            domains.forEach(d => {
+              const existing = allDomains.find(dom => dom.domain === d.domain);
+              if (existing) {
+                existing.impressions += d.impressions || 0;
+                existing.clicks += d.clicks || 0;
+              } else {
+                allDomains.push({ ...d });
+              }
+            });
+          }
         } catch (e) { console.log('Domain fetch error:', e.message); }
         
       } catch (err) {

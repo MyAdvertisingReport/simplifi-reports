@@ -59,9 +59,9 @@ class SimplifiClient {
    */
   async getCampaignsWithAds(orgId) {
     try {
-      // Use include parameter to nest ads with their file types and sizes
+      // Use include parameter to nest ads with their file types, sizes, and creative URLs
       const params = new URLSearchParams();
-      params.append('include', 'ads,ad_file_types,ad_sizes');
+      params.append('include', 'ads,ad_file_types,ad_sizes,primary_creative');
       params.append('size', '100');
 
       const url = `/organizations/${orgId}/campaigns?${params.toString()}`;
