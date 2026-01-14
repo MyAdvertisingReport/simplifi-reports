@@ -513,15 +513,35 @@ class SimplifiClient {
     try {
       console.log(`[SIMPLIFI CLIENT] Downloading keywords for org ${orgId}, campaign ${campaignId}`);
       
-      const response = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}/keywords/download`, {
-        responseType: 'text',
-        headers: {
-          'Accept': 'text/csv, text/plain, */*'
-        }
-      });
+      // First, get the keywords summary to find the download URL
+      const summaryResponse = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}/keywords`);
+      const keywordInfo = summaryResponse.data?.keywords?.[0];
       
-      console.log(`[SIMPLIFI CLIENT] Keywords download response type: ${typeof response.data}`);
-      console.log(`[SIMPLIFI CLIENT] Keywords download response (first 500 chars): ${String(response.data).substring(0, 500)}`);
+      console.log(`[SIMPLIFI CLIENT] Keywords summary:`, JSON.stringify(keywordInfo).substring(0, 500));
+      
+      if (!keywordInfo) {
+        throw new Error('No keyword information found');
+      }
+      
+      // Find the download action URL
+      const downloadAction = keywordInfo.actions?.find(a => a.download);
+      const downloadUrl = downloadAction?.download?.href;
+      
+      console.log(`[SIMPLIFI CLIENT] Download URL: ${downloadUrl}`);
+      
+      if (!downloadUrl) {
+        throw new Error('No download URL found in keywords response');
+      }
+      
+      // Extract the path from the full URL
+      const urlPath = downloadUrl.replace('https://app.simpli.fi/api', '');
+      console.log(`[SIMPLIFI CLIENT] Download URL path: ${urlPath}`);
+      
+      // Download the CSV
+      const response = await this.client.get(urlPath);
+      
+      console.log(`[SIMPLIFI CLIENT] Download response type: ${typeof response.data}`);
+      console.log(`[SIMPLIFI CLIENT] Download response (first 500 chars): ${JSON.stringify(response.data).substring(0, 500)}`);
       
       // Handle different response types
       let csvText = response.data;
@@ -531,16 +551,24 @@ class SimplifiClient {
         if (Buffer.isBuffer(csvText)) {
           csvText = csvText.toString('utf8');
         } else if (typeof csvText === 'object') {
-          // API might return JSON instead of CSV in some cases
-          console.log(`[SIMPLIFI CLIENT] Response is object, not CSV:`, csvText);
-          throw new Error('API returned JSON instead of CSV');
+          // API might return JSON - check if it has keywords array
+          if (Array.isArray(csvText)) {
+            // It's already an array of keywords
+            const keywords = csvText.map((kw, i) => ({
+              id: i + 1,
+              keyword: typeof kw === 'string' ? kw : (kw.name || kw.keyword || String(kw)),
+              max_bid: kw.max_bid || null
+            }));
+            console.log(`[SIMPLIFI CLIENT] Response was JSON array with ${keywords.length} keywords`);
+            return { keywords };
+          }
+          csvText = String(csvText);
         } else {
           csvText = String(csvText);
         }
       }
       
       // Parse CSV - format is: keyword,max_bid (max_bid is optional)
-      // Also handle potential header row
       const lines = csvText.split(/[\r\n]+/).filter(line => line.trim());
       
       // Check if first line is a header
@@ -555,7 +583,6 @@ class SimplifiClient {
         // Handle CSV with possible quoted values
         let keyword, maxBid;
         if (line.includes('"')) {
-          // Parse quoted CSV
           const match = line.match(/^"?([^"]*)"?,?(.*)$/);
           keyword = match?.[1]?.trim() || line;
           maxBid = match?.[2] ? parseFloat(match[2].trim()) : null;
@@ -574,15 +601,14 @@ class SimplifiClient {
         }
       }
       
-      console.log(`[SIMPLIFI CLIENT] Parsed ${keywords.length} keywords for campaign ${campaignId}`);
+      console.log(`[SIMPLIFI CLIENT] Parsed ${keywords.length} keywords`);
       if (keywords.length > 0) {
-        console.log(`[SIMPLIFI CLIENT] Sample keywords:`, keywords.slice(0, 3));
+        console.log(`[SIMPLIFI CLIENT] Sample:`, keywords.slice(0, 3));
       }
       
       return { keywords };
     } catch (error) {
-      console.error(`[SIMPLIFI CLIENT] Error downloading keywords for org ${orgId}, campaign ${campaignId}:`, error.message);
-      console.error(`[SIMPLIFI CLIENT] Full error:`, error);
+      console.error(`[SIMPLIFI CLIENT] Error downloading keywords:`, error.message);
       throw this._handleError(error);
     }
   }
