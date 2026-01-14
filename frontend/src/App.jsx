@@ -2492,7 +2492,8 @@ function ClientDetailPage({ publicMode = false }) {
         if (!response.ok) throw new Error('Failed to load stats');
         const data = await response.json();
         
-        setCampaigns(data.campaigns || []);
+        const allCampaigns = data.campaigns || [];
+        setCampaigns(allCampaigns);
         
         // Create stats map by campaign id
         const statsMap = {};
@@ -2501,7 +2502,48 @@ function ClientDetailPage({ publicMode = false }) {
         });
         setCampaignStats(statsMap);
         setDailyStats(data.dailyStats || []);
-        setAdStats(data.adStats || []);
+        
+        // Build ad details map from campaigns (same as authenticated mode)
+        const adDetailsMap = {};
+        allCampaigns.forEach(campaign => {
+          (campaign.ads || []).forEach(ad => {
+            const width = ad.original_width ? parseInt(ad.original_width) : null;
+            const height = ad.original_height ? parseInt(ad.original_height) : null;
+            const adFileType = ad.ad_file_types?.[0]?.name || '';
+            
+            adDetailsMap[ad.id] = {
+              ...ad,
+              campaign_id: campaign.id,
+              campaign_name: campaign.name,
+              preview_url: ad.primary_creative_url,
+              width: width,
+              height: height,
+              is_video: adFileType.toLowerCase() === 'video' || ad.name?.toLowerCase().includes('.mp4'),
+              file_type: adFileType
+            };
+          });
+        });
+        
+        // Enrich ad stats with ad details
+        const activeCampaigns = allCampaigns.filter(c => c.status?.toLowerCase() === 'active');
+        const activeCampaignIds = activeCampaigns.map(c => c.id);
+        
+        const enrichedAdStats = (data.adStats || [])
+          .filter(ad => activeCampaignIds.includes(ad.campaign_id))
+          .map(stat => {
+            const details = adDetailsMap[stat.ad_id] || {};
+            return {
+              ...stat,
+              name: details.name || stat.name || `Ad ${stat.ad_id}`,
+              preview_url: details.preview_url,
+              width: details.width,
+              height: details.height,
+              is_video: details.is_video,
+              file_type: details.file_type
+            };
+          });
+        
+        setAdStats(enrichedAdStats);
       } else {
         // Use authenticated endpoints
         // Get all campaigns WITH ADS INCLUDED (using include parameter)
