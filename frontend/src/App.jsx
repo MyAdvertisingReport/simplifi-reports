@@ -2560,15 +2560,19 @@ function ClientDetailPage() {
 
   // Show the static share link for this client
   const showShareLink = () => {
-    if (client?.share_token) {
-      setReportLink({ token: client.share_token });
+    if (client?.slug || client?.share_token) {
+      setReportLink({ token: client.share_token, slug: client.slug });
     } else {
       alert('Share link not available. Please contact support.');
     }
   };
 
   const copyLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/report/${client?.share_token || reportLink?.token}`);
+    // Prefer slug-based URL if available
+    const url = client?.slug 
+      ? `${window.location.origin}/client/${client.slug}/report`
+      : `${window.location.origin}/report/${client?.share_token || reportLink?.token}`;
+    navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -2860,7 +2864,11 @@ function ClientDetailPage() {
       {reportLink && (
         <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <Check size={18} color="#10b981" />
-          <code style={{ flex: 1, fontSize: '0.8125rem', color: '#065f46' }}>{window.location.origin}/report/{reportLink.token}</code>
+          <code style={{ flex: 1, fontSize: '0.8125rem', color: '#065f46' }}>
+            {client?.slug 
+              ? `${window.location.origin}/client/${client.slug}/report`
+              : `${window.location.origin}/report/${reportLink.token}`}
+          </code>
           <button onClick={copyLink} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.375rem 0.75rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.8125rem', cursor: 'pointer' }}>
             {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied!' : 'Copy'}
           </button>
@@ -6246,7 +6254,7 @@ function PublicReportPage() {
 
   const loadClient = async () => {
     try {
-      const response = await fetch(`/api/public/client/${token}`);
+      const response = await fetch(`${API_BASE}/api/public/client/${token}`);
       if (!response.ok) {
         throw new Error('Report not found');
       }
@@ -6260,7 +6268,7 @@ function PublicReportPage() {
 
   const loadStats = async () => {
     try {
-      const response = await fetch(`/api/public/client/${token}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
+      const response = await fetch(`${API_BASE}/api/public/client/${token}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
       if (!response.ok) throw new Error('Failed to load stats');
       const data = await response.json();
       
@@ -6742,6 +6750,226 @@ function SettingsPage() {
 }
 
 // ============================================
+// SLUG-BASED PUBLIC REPORT PAGE
+// ============================================
+function SlugReportPage() {
+  const { slug } = useParams();
+  const [client, setClient] = useState(null);
+  const [campaigns, setCampaigns] = useState([]);
+  const [campaignStats, setCampaignStats] = useState({});
+  const [dailyStats, setDailyStats] = useState([]);
+  const [adStats, setAdStats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [dateRange, setDateRange] = useState({
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  });
+
+  useEffect(() => {
+    loadClient();
+  }, [slug]);
+
+  useEffect(() => {
+    if (client?.simplifi_org_id) {
+      loadStats();
+    }
+  }, [client, dateRange]);
+
+  const loadClient = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/public/client/slug/${slug}`);
+      if (!response.ok) {
+        throw new Error('Report not found');
+      }
+      const data = await response.json();
+      setClient(data);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  const loadStats = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/public/client/slug/${slug}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
+      if (!response.ok) throw new Error('Failed to load stats');
+      const data = await response.json();
+      
+      setCampaigns(data.campaigns || []);
+      
+      // Create stats map by campaign id
+      const statsMap = {};
+      (data.campaignStats || []).forEach(s => {
+        statsMap[s.campaign_id] = s;
+      });
+      setCampaignStats(statsMap);
+      setDailyStats(data.dailyStats || []);
+      setAdStats(data.adStats || []);
+    } catch (err) {
+      console.error('Failed to load stats:', err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{ fontSize: '2rem', color: '#dc2626', marginBottom: '0.5rem' }}>Report Not Found</h1>
+          <p style={{ color: '#6b7280' }}>This report link is invalid or the client doesn't exist.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const activeCampaigns = campaigns.filter(c => c.status?.toLowerCase() === 'active');
+  const totalStats = activeCampaigns.reduce((acc, c) => {
+    const s = campaignStats[c.id] || {};
+    acc.impressions += s.impressions || 0;
+    acc.clicks += s.clicks || 0;
+    return acc;
+  }, { impressions: 0, clicks: 0 });
+  totalStats.ctr = totalStats.impressions > 0 ? totalStats.clicks / totalStats.impressions : 0;
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#f9fafb' }}>
+      {/* Header */}
+      <div style={{ 
+        background: `linear-gradient(135deg, ${client?.primary_color || '#1e3a8a'} 0%, ${client?.secondary_color || '#3b82f6'} 100%)`,
+        padding: '2rem',
+        color: 'white'
+      }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              {client?.logo_path && (
+                <img src={client.logo_path} alt={client.name} style={{ height: '48px', background: 'white', padding: '0.25rem', borderRadius: '0.5rem' }} />
+              )}
+              <div>
+                <h1 style={{ margin: 0, fontSize: '1.5rem' }}>{client?.name}</h1>
+                <p style={{ margin: 0, opacity: 0.9, fontSize: '0.875rem' }}>Digital Advertising Report</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="date"
+                value={dateRange.startDate}
+                onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+                style={{ padding: '0.5rem', borderRadius: '0.375rem', border: 'none' }}
+              />
+              <span>to</span>
+              <input
+                type="date"
+                value={dateRange.endDate}
+                onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+                style={{ padding: '0.5rem', borderRadius: '0.375rem', border: 'none' }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+        {/* Summary Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+          <div style={{ background: 'white', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Impressions</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{formatNumber(totalStats.impressions)}</div>
+          </div>
+          <div style={{ background: 'white', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Clicks</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{formatNumber(totalStats.clicks)}</div>
+          </div>
+          <div style={{ background: 'white', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>CTR</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{formatPercent(totalStats.ctr)}</div>
+          </div>
+          <div style={{ background: 'white', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+            <div style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '0.25rem' }}>Active Campaigns</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{activeCampaigns.length}</div>
+          </div>
+        </div>
+
+        {/* Daily Performance Chart */}
+        {dailyStats.length > 0 && (
+          <div style={{ background: 'white', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '2rem' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Daily Performance</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <RechartsAreaChart data={dailyStats}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="stat_date" tickFormatter={(d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} />
+                <YAxis />
+                <Tooltip />
+                <Area type="monotone" dataKey="impressions" stroke={client?.primary_color || '#3b82f6'} fill={client?.primary_color || '#3b82f6'} fillOpacity={0.2} />
+              </RechartsAreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* Campaigns */}
+        <div style={{ background: 'white', padding: '1.5rem', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+          <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Campaign Performance</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                <th style={{ textAlign: 'left', padding: '0.75rem', color: '#6b7280', fontWeight: 500 }}>Campaign</th>
+                <th style={{ textAlign: 'right', padding: '0.75rem', color: '#6b7280', fontWeight: 500 }}>Status</th>
+                <th style={{ textAlign: 'right', padding: '0.75rem', color: '#6b7280', fontWeight: 500 }}>Impressions</th>
+                <th style={{ textAlign: 'right', padding: '0.75rem', color: '#6b7280', fontWeight: 500 }}>Clicks</th>
+                <th style={{ textAlign: 'right', padding: '0.75rem', color: '#6b7280', fontWeight: 500 }}>CTR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {campaigns.map(campaign => {
+                const stats = campaignStats[campaign.id] || {};
+                const ctr = stats.impressions > 0 ? (stats.clicks / stats.impressions) : 0;
+                const statusStyle = getStatusStyle(campaign.status);
+                return (
+                  <tr key={campaign.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '0.75rem' }}>
+                      <div style={{ fontWeight: 500 }}>{campaign.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{parseStrategy(campaign.name)}</div>
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '0.75rem' }}>
+                      <span style={{ 
+                        padding: '0.25rem 0.75rem', 
+                        borderRadius: '9999px', 
+                        fontSize: '0.75rem',
+                        background: statusStyle.bg,
+                        color: statusStyle.color
+                      }}>
+                        {statusStyle.label}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(stats.impressions || 0)}</td>
+                    <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(stats.clicks || 0)}</td>
+                    <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatPercent(ctr)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div style={{ textAlign: 'center', marginTop: '2rem', color: '#9ca3af', fontSize: '0.875rem' }}>
+          Powered by WSIC Digital Advertising
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // MAIN APP
 // ============================================
 function App() {
@@ -6751,6 +6979,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/report/:token" element={<PublicReportPage />} />
+          <Route path="/client/:slug/report" element={<SlugReportPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/clients" element={<ProtectedRoute><ClientsPage /></ProtectedRoute>} />
           <Route path="/clients/:id" element={<ProtectedRoute><ClientDetailPage /></ProtectedRoute>} />
@@ -6765,4 +6994,3 @@ function App() {
 }
 
 export default App;
- 

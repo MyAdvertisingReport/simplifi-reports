@@ -243,6 +243,34 @@ async function seedInitialData() {
       console.log('  Password: [set via environment variable]');
     }
   }
+
+  // Generate slugs for any existing clients without them
+  const clientsWithoutSlugs = await pool.query("SELECT id, name FROM clients WHERE slug IS NULL");
+  if (clientsWithoutSlugs.rows.length > 0) {
+    console.log(`Generating slugs for ${clientsWithoutSlugs.rows.length} clients...`);
+    for (const client of clientsWithoutSlugs.rows) {
+      const slug = await generateUniqueSlugForMigration(client.name);
+      await pool.query("UPDATE clients SET slug = $1 WHERE id = $2", [slug, client.id]);
+      console.log(`  ✓ ${client.name} → ${slug}`);
+    }
+    console.log('✓ Client slugs generated');
+  }
+}
+
+// Helper for migration - generates unique slug
+async function generateUniqueSlugForMigration(name) {
+  let baseSlug = generateSlug(name);
+  let slug = baseSlug;
+  let counter = 1;
+  
+  while (true) {
+    const existing = await pool.query("SELECT id FROM clients WHERE slug = $1", [slug]);
+    if (existing.rows.length === 0) {
+      return slug;
+    }
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+  }
 }
 
 // Database helper class

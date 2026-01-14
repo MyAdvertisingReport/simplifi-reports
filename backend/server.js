@@ -533,6 +533,114 @@ app.get('/api/clients/:clientId/report/pdf', authenticateToken, async (req, res)
 });
 
 // ============================================
+// PUBLIC REPORT ROUTES (No auth required)
+// ============================================
+
+// Get client by share token (legacy)
+app.get('/api/public/client/:token', async (req, res) => {
+  try {
+    const client = await dbHelper.getClientByShareToken(req.params.token);
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    // Return limited public info
+    res.json({
+      id: client.id,
+      name: client.name,
+      slug: client.slug,
+      simplifi_org_id: client.simplifi_org_id,
+      primary_color: client.primary_color,
+      secondary_color: client.secondary_color,
+      logo_path: client.logo_path
+    });
+  } catch (error) {
+    console.error('Get public client error:', error);
+    res.status(500).json({ error: 'Failed to get client' });
+  }
+});
+
+// Get client by slug (new permanent URLs)
+app.get('/api/public/client/slug/:slug', async (req, res) => {
+  try {
+    const client = await dbHelper.getClientBySlug(req.params.slug);
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    // Return limited public info
+    res.json({
+      id: client.id,
+      name: client.name,
+      slug: client.slug,
+      simplifi_org_id: client.simplifi_org_id,
+      primary_color: client.primary_color,
+      secondary_color: client.secondary_color,
+      logo_path: client.logo_path
+    });
+  } catch (error) {
+    console.error('Get public client by slug error:', error);
+    res.status(500).json({ error: 'Failed to get client' });
+  }
+});
+
+// Get public stats by share token (legacy)
+app.get('/api/public/client/:token/stats', async (req, res) => {
+  try {
+    const client = await dbHelper.getClientByShareToken(req.params.token);
+    if (!client || !client.simplifi_org_id) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const { startDate, endDate } = req.query;
+    
+    // Fetch campaigns
+    const campaignsData = await simplifiClient.getCampaigns(client.simplifi_org_id);
+    const campaigns = campaignsData.campaigns || [];
+
+    // Fetch stats
+    const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
+    const dailyStats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, true, false);
+
+    res.json({
+      campaigns,
+      campaignStats: stats.campaign_stats || [],
+      dailyStats: dailyStats.campaign_stats || []
+    });
+  } catch (error) {
+    console.error('Get public stats error:', error);
+    res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+// Get public stats by slug (new permanent URLs)
+app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
+  try {
+    const client = await dbHelper.getClientBySlug(req.params.slug);
+    if (!client || !client.simplifi_org_id) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const { startDate, endDate } = req.query;
+    
+    // Fetch campaigns
+    const campaignsData = await simplifiClient.getCampaigns(client.simplifi_org_id);
+    const campaigns = campaignsData.campaigns || [];
+
+    // Fetch stats
+    const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
+    const dailyStats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, true, false);
+
+    res.json({
+      campaigns,
+      campaignStats: stats.campaign_stats || [],
+      dailyStats: dailyStats.campaign_stats || []
+    });
+  } catch (error) {
+    console.error('Get public stats by slug error:', error);
+    res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+// ============================================
 // CLIENT NOTES ROUTES
 // ============================================
 
