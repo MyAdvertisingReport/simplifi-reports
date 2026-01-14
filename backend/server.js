@@ -911,11 +911,11 @@ async function startServer() {
   try {
     // Initialize database
     console.log('Initializing database...');
-    const db = await initializeDatabase();
-    dbHelper = new DatabaseHelper(db);
+    await initializeDatabase();
+    dbHelper = new DatabaseHelper();
     
     // Seed initial data if needed
-    await seedInitialData(dbHelper);
+    await seedInitialData();
     console.log('Database ready');
 
     // Initialize Simpli.fi client
