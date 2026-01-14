@@ -428,21 +428,21 @@ class ReportCenterService {
       
       if (!data || !Array.isArray(data)) return [];
       
-      // Map the data - try multiple possible field names
+      // Map the data using the correct field names from Simpli.fi Report Center
       const result = data.map(row => ({
-        keyword: row['dim_keyword.keyword'] || 
+        keyword: row['summary_delivery_events.keyword_reporting_name'] ||  // This is the correct field!
+                 row['dim_keyword.keyword'] || 
                  row['summary_delivery_events.keyword'] || 
-                 row['dim_keyword.keyword_name'] ||
-                 row['keyword'] ||
-                 row['Keyword'] ||
-                 Object.values(row).find(v => typeof v === 'string' && v.length > 0 && v.length < 100),
-        impressions: parseInt(row['summary_delivery_events.impressions'] || row['impressions'] || row['Impressions'] || 0),
-        clicks: parseInt(row['summary_delivery_events.clicks'] || row['clicks'] || row['Clicks'] || 0),
-        ctr: parseFloat(row['summary_delivery_events.ctr'] || row['ctr'] || row['CTR'] || 0),
-        spend: parseFloat(row['summary_delivery_events.spend'] || row['spend'] || row['Spend'] || 0)
+                 row['keyword'],
+        impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
+        clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
+        ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
+        spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0),  // total_cust is the spend field
+        ecpm: parseFloat(row['summary_delivery_events.ecpm'] || 0),
+        ecpc: parseFloat(row['summary_delivery_events.ecpc'] || 0)
       })).filter(r => r.keyword).sort((a, b) => b.impressions - a.impressions);
       
-      console.log(`[REPORT CENTER] Processed ${result.length} keywords`);
+      console.log(`[REPORT CENTER] Processed ${result.length} keywords with performance data`);
       if (result.length > 0) {
         console.log(`[REPORT CENTER] First keyword result:`, JSON.stringify(result[0]));
       }
