@@ -207,15 +207,23 @@ function seedInitialData() {
   const uCount = userCount ? userCount.values[0][0] : 0;
   
   if (uCount === 0) {
-    // Create default admin
-    const defaultPassword = bcrypt.hashSync('changeme123', 10);
+    // Create default admin - use environment variables if set, otherwise use defaults
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'changeme123';
+    const adminName = process.env.ADMIN_NAME || 'Admin User';
+    
+    const passwordHash = bcrypt.hashSync(adminPassword, 10);
     db.run(`INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)`,
-      [uuidv4(), 'admin@example.com', defaultPassword, 'Admin User', 'admin']);
+      [uuidv4(), adminEmail, passwordHash, adminName, 'admin']);
 
     console.log('✓ Created default admin user');
-    console.log('  Email: admin@example.com');
-    console.log('  Password: changeme123');
-    console.log('  ⚠️  CHANGE THIS PASSWORD IMMEDIATELY!');
+    console.log('  Email:', adminEmail);
+    if (adminEmail === 'admin@example.com') {
+      console.log('  Password: changeme123');
+      console.log('  ⚠️  CHANGE THIS PASSWORD IMMEDIATELY!');
+    } else {
+      console.log('  Password: [set via environment variable]');
+    }
   }
 
   saveDatabase();
