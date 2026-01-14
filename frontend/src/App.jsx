@@ -2379,7 +2379,7 @@ function generatePDFHTML(data, client, campaigns, campaignStats, showSpendData) 
 // ============================================
 // CLIENT DETAIL PAGE (Main Report View)
 // ============================================
-function ClientDetailPage() {
+function ClientDetailPage({ publicMode = false }) {
   const { slug } = useParams();
   const [client, setClient] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
@@ -2391,8 +2391,9 @@ function ClientDetailPage() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
-  // Client view mode persists across pages via localStorage
+  // Client view mode - forced true in public mode
   const [clientViewMode, setClientViewMode] = useState(() => {
+    if (publicMode) return true;
     return localStorage.getItem('clientViewMode') === 'true';
   });
   const [editMode, setEditMode] = useState(false); // For rearranging sections
@@ -2407,15 +2408,16 @@ function ClientDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const { user } = useAuth();
   
-  // Persist client view mode to localStorage when it changes
+  // Persist client view mode to localStorage when it changes (not in public mode)
   const toggleClientViewMode = () => {
+    if (publicMode) return; // Can't toggle in public mode
     const newValue = !clientViewMode;
     setClientViewMode(newValue);
     localStorage.setItem('clientViewMode', newValue.toString());
   };
   
-  // Determine if we should show spend data (only for logged-in users NOT in client view mode)
-  const showSpendData = user && !clientViewMode;
+  // Determine if we should show spend data (only for logged-in users NOT in client view mode, never in public mode)
+  const showSpendData = !publicMode && user && !clientViewMode;
 
   // Default section order for main client page
   const defaultMainSectionOrder = ['active', 'charts', 'history', 'topads', 'pixel', 'paused'];
@@ -2462,12 +2464,20 @@ function ClientDetailPage() {
   };
 
   useEffect(() => { loadClient(); }, [slug]);
-  useEffect(() => { if (client?.simplifi_org_id) { loadData(); loadHistoryData(); } }, [client]);
+  useEffect(() => { if (client?.simplifi_org_id) { loadData(); if (!publicMode) loadHistoryData(); } }, [client]);
 
   const loadClient = async () => {
     try {
-      const data = await api.get(`/api/clients/slug/${slug}`);
-      setClient(data);
+      // Use public endpoint in public mode, authenticated endpoint otherwise
+      if (publicMode) {
+        const response = await fetch(`${API_BASE}/api/public/client/slug/${slug}`);
+        if (!response.ok) throw new Error('Client not found');
+        const data = await response.json();
+        setClient(data);
+      } else {
+        const data = await api.get(`/api/clients/slug/${slug}`);
+        setClient(data);
+      }
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -2476,10 +2486,28 @@ function ClientDetailPage() {
     if (!client?.simplifi_org_id) return;
     setStatsLoading(true);
     try {
-      // Get all campaigns WITH ADS INCLUDED (using include parameter)
-      const campaignsData = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/campaigns-with-ads`);
-      const allCampaigns = campaignsData.campaigns || [];
-      setCampaigns(allCampaigns);
+      if (publicMode) {
+        // Use public stats endpoint
+        const response = await fetch(`${API_BASE}/api/public/client/slug/${slug}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`);
+        if (!response.ok) throw new Error('Failed to load stats');
+        const data = await response.json();
+        
+        setCampaigns(data.campaigns || []);
+        
+        // Create stats map by campaign id
+        const statsMap = {};
+        (data.campaignStats || []).forEach(s => {
+          statsMap[s.campaign_id] = s;
+        });
+        setCampaignStats(statsMap);
+        setDailyStats(data.dailyStats || []);
+        setAdStats(data.adStats || []);
+      } else {
+        // Use authenticated endpoints
+        // Get all campaigns WITH ADS INCLUDED (using include parameter)
+        const campaignsData = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/campaigns-with-ads`);
+        const allCampaigns = campaignsData.campaigns || [];
+        setCampaigns(allCampaigns);
 
       // Build a map of all ads from all campaigns
       const adDetailsMap = {};
@@ -2553,6 +2581,7 @@ function ClientDetailPage() {
 
       // Note: Device breakdown stats not available via Simpli.fi public API
       // The Report Center has device reports but they cannot be fetched programmatically
+      } // End of else (authenticated mode)
 
     } catch (err) { console.error(err); }
     setStatsLoading(false);
@@ -2560,10 +2589,10 @@ function ClientDetailPage() {
 
   // Load 12-month campaign history
   const loadHistoryData = async () => {
-    if (!client?.simplifi_org_id) return;
+    if (!client?.simplifi_org_id || !client?.id) return;
     setHistoryLoading(true);
     try {
-      const data = await api.get(`/api/clients/${id}/report/pdf?includeHistory=true`);
+      const data = await api.get(`/api/clients/${client.id}/report/pdf?includeHistory=true`);
       setHistoryData(data.history);
     } catch (err) {
       console.error('Failed to load history:', err);
@@ -2787,12 +2816,18 @@ function ClientDetailPage() {
           justifyContent: 'space-between', 
           alignItems: 'center'
         }}>
-          <Link to="/clients" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
-            <ArrowLeft size={16} /> Back to Clients
-          </Link>
+          {publicMode ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.875rem' }}>
+              <TrendingUp size={16} /> Digital Advertising Report
+            </div>
+          ) : (
+            <Link to="/clients" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
+              <ArrowLeft size={16} /> Back to Clients
+            </Link>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            {/* Edit Layout Button */}
-            {user && !clientViewMode && (
+            {/* Edit Layout Button - hidden in public mode */}
+            {!publicMode && user && !clientViewMode && (
               <button 
                 onClick={() => setEditMode(!editMode)}
                 style={{ 
@@ -2812,8 +2847,8 @@ function ClientDetailPage() {
                 {editMode ? 'Done' : 'Edit Layout'}
               </button>
             )}
-            {/* Edit Client Button - Admin only */}
-            {user?.role === 'admin' && !clientViewMode && (
+            {/* Edit Client Button - Admin only, hidden in public mode */}
+            {!publicMode && user?.role === 'admin' && !clientViewMode && (
               <button 
                 onClick={() => setShowEditModal(true)}
                 style={{ 
@@ -2833,7 +2868,7 @@ function ClientDetailPage() {
                 Edit Client
               </button>
             )}
-            {user?.role === 'admin' && (
+            {!publicMode && user?.role === 'admin' && (
               <button onClick={showShareLink} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', background: '#0d9488', color: 'white', border: 'none', borderRadius: '0.375rem', fontSize: '0.8125rem', cursor: 'pointer' }}>
                 <ExternalLink size={14} /> Share
               </button>
@@ -2889,8 +2924,8 @@ function ClientDetailPage() {
         </div>
       )}
 
-      {/* Collapsible Internal Notes - just below header for admins */}
-      {user && !clientViewMode && (
+      {/* Collapsible Internal Notes - just below header for admins, hidden in public mode */}
+      {!publicMode && user && !clientViewMode && (
         <InternalNotesSection clientId={client?.id} isCollapsible={true} />
       )}
 
@@ -3214,7 +3249,7 @@ function ClientDetailPage() {
             client={client} 
             onSave={async (updates) => {
               try {
-                const updated = await api.put(`/api/clients/${id}`, updates);
+                const updated = await api.put(`/api/clients/${client?.id}`, updates);
                 setClient(updated);
                 setShowEditModal(false);
               } catch (err) {
@@ -3224,6 +3259,13 @@ function ClientDetailPage() {
             onCancel={() => setShowEditModal(false)}
           />
         </Modal>
+      )}
+      
+      {/* Footer for public reports */}
+      {publicMode && (
+        <div style={{ textAlign: 'center', marginTop: '2rem', padding: '1.5rem', color: '#9ca3af', fontSize: '0.875rem' }}>
+          Powered by WSIC Digital Advertising
+        </div>
       )}
     </div>
   );
@@ -6993,7 +7035,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/report/:token" element={<PublicReportPage />} />
-          <Route path="/client/:slug/report" element={<SlugReportPage />} />
+          <Route path="/client/:slug/report" element={<ClientDetailPage publicMode={true} />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/clients" element={<ProtectedRoute><ClientsPage /></ProtectedRoute>} />
           <Route path="/client/:slug" element={<ProtectedRoute><ClientDetailPage /></ProtectedRoute>} />

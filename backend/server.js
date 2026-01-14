@@ -612,18 +612,30 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
 
     const { startDate, endDate } = req.query;
     
-    // Fetch campaigns
-    const campaignsData = await simplifiClient.getCampaigns(client.simplifi_org_id);
+    // Fetch campaigns with ads included
+    const campaignsData = await simplifiClient.getCampaigns(client.simplifi_org_id, true); // include ads
     const campaigns = campaignsData.campaigns || [];
 
-    // Fetch stats
+    // Fetch stats by campaign
     const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
+    
+    // Fetch daily stats
     const dailyStats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, true, false);
+    
+    // Fetch ad stats
+    let adStats = [];
+    try {
+      const adStatsData = await simplifiClient.getAdStats(client.simplifi_org_id, { startDate, endDate });
+      adStats = adStatsData.campaign_stats || [];
+    } catch (adErr) {
+      console.log('Ad stats not available:', adErr.message);
+    }
 
     res.json({
       campaigns,
       campaignStats: stats.campaign_stats || [],
-      dailyStats: dailyStats.campaign_stats || []
+      dailyStats: dailyStats.campaign_stats || [],
+      adStats
     });
   } catch (error) {
     console.error('Get public stats by slug error:', error);
