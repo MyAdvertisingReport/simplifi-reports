@@ -348,7 +348,8 @@ class DatabaseHelper {
     await pool.query("DELETE FROM users WHERE id = $1", [id]);
   }
 
-  async createUser(email, password, name, role) {
+  async createUser(data) {
+    const { email, password, name, role } = data;
     const id = uuidv4();
     const passwordHash = bcrypt.hashSync(password, 10);
     await pool.query(

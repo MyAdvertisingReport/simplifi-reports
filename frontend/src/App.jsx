@@ -3817,8 +3817,8 @@ function CampaignDetailPage() {
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/location-performance?startDate=${startDate}&endDate=${endDate}`)
           .then(data => {
-            // Deduplicate locations by combining city+region+country
-            const locations = data.location_performance || [];
+            // Data is returned as array directly, or may have location_performance property
+            const locations = Array.isArray(data) ? data : (data.location_performance || data.locations || []);
             const locationMap = new Map();
             locations.forEach(loc => {
               const key = `${loc.city || ''}-${loc.metro || ''}-${loc.region || ''}-${loc.country || ''}`;
