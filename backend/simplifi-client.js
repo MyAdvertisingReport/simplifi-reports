@@ -534,7 +534,7 @@ class SimplifiClient {
         throw new Error('No download URL found in keywords response');
       }
       
-      // Use native https with the correct Accept header (Simpli.fi requires html, csv, and json)
+      // Use native https with browser-like headers
       const url = new URL(downloadUrl);
       
       const keywords = await new Promise((resolve, reject) => {
@@ -545,8 +545,8 @@ class SimplifiClient {
           headers: {
             'X-App-Key': this.appKey,
             'X-User-Key': this.userKey,
-            'Accept': 'text/html, text/csv, application/json, */*',
-            'Content-Type': 'application/json'
+            // Mimic curl default behavior - no Accept header restriction
+            'User-Agent': 'curl/7.68.0'
           }
         };
         
@@ -572,10 +572,7 @@ class SimplifiClient {
               return;
             }
             
-            // Check content type to determine how to parse
-            const contentType = res.headers['content-type'] || '';
-            
-            // Try to parse as CSV (most likely format for download)
+            // Parse as CSV (expected format: keyword,max_bid per line)
             const lines = data.split(/[\r\n]+/).filter(line => line.trim());
             
             // Check if first line is a header
