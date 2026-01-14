@@ -688,6 +688,66 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
 });
 
 // ============================================
+// PUBLIC REPORT CENTER ROUTES (No auth required)
+// ============================================
+
+app.get('/api/public/report-center/:orgId/campaigns/:campaignId/location-performance', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json({ locations: [] });
+    }
+    const data = await reportCenterService.getLocationPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json(data);
+  } catch (error) {
+    console.error('Public location performance error:', error);
+    res.json({ locations: [] });
+  }
+});
+
+app.get('/api/public/report-center/:orgId/campaigns/:campaignId/geo-fence-performance', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json({ geoFences: [] });
+    }
+    const data = await reportCenterService.getGeoFencePerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json(data);
+  } catch (error) {
+    console.error('Public geo-fence performance error:', error);
+    res.json({ geoFences: [] });
+  }
+});
+
+app.get('/api/public/report-center/:orgId/campaigns/:campaignId/keyword-performance', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json({ keywords: [] });
+    }
+    const data = await reportCenterService.getKeywordPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json(data);
+  } catch (error) {
+    console.error('Public keyword performance error:', error);
+    res.json({ keywords: [] });
+  }
+});
+
+app.get('/api/public/report-center/:orgId/campaigns/:campaignId/domain-performance', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    if (!reportCenterService) {
+      return res.json({ domains: [] });
+    }
+    const data = await reportCenterService.getDomainPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
+    res.json(data);
+  } catch (error) {
+    console.error('Public domain performance error:', error);
+    res.json({ domains: [] });
+  }
+});
+
+// ============================================
 // CLIENT NOTES ROUTES
 // ============================================
 

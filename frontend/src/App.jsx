@@ -2391,6 +2391,15 @@ function ClientDetailPage({ publicMode = false }) {
   const [statsLoading, setStatsLoading] = useState(false);
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  
+  // Report Center Enhanced Data (aggregated across all active campaigns)
+  const [locationPerformance, setLocationPerformance] = useState([]);
+  const [geoFencePerformance, setGeoFencePerformance] = useState([]);
+  const [keywordPerformance, setKeywordPerformance] = useState([]);
+  const [domainPerformance, setDomainPerformance] = useState([]);
+  const [conversionData, setConversionData] = useState(null);
+  const [enhancedDataLoading, setEnhancedDataLoading] = useState(false);
+  
   // Client view mode - forced true in public mode
   const [clientViewMode, setClientViewMode] = useState(() => {
     if (publicMode) return true;
@@ -2419,8 +2428,8 @@ function ClientDetailPage({ publicMode = false }) {
   // Determine if we should show spend data (only for logged-in users NOT in client view mode, never in public mode)
   const showSpendData = !publicMode && user && !clientViewMode;
 
-  // Default section order for main client page
-  const defaultMainSectionOrder = ['active', 'charts', 'history', 'topads', 'pixel', 'paused'];
+  // Default section order for main client page - now includes Report Center sections
+  const defaultMainSectionOrder = ['active', 'charts', 'location', 'topads', 'keywords', 'geofences', 'domains', 'history', 'pixel', 'paused'];
   const [sectionOrder, setSectionOrder] = useState(() => {
     const saved = localStorage.getItem('clientMainSectionOrder');
     // Filter out 'device' from any saved order since it's not available via API
@@ -2602,6 +2611,131 @@ function ClientDetailPage({ publicMode = false }) {
     }
     setHistoryLoading(false);
   };
+
+  // Load Report Center enhanced data (aggregated across active campaigns)
+  const loadEnhancedData = async () => {
+    if (!client?.simplifi_org_id) return;
+    
+    const activeCamps = campaigns.filter(c => c.status?.toLowerCase() === 'active');
+    if (activeCamps.length === 0) return;
+    
+    setEnhancedDataLoading(true);
+    
+    // Aggregate data across all active campaigns
+    const allLocations = [];
+    const allGeoFences = [];
+    const allKeywords = [];
+    const allDomains = [];
+    let totalConversions = { visits: 0, conversions: 0 };
+    
+    // Fetch data for each active campaign and aggregate
+    for (const campaign of activeCamps.slice(0, 5)) { // Limit to 5 campaigns to avoid rate limits
+      try {
+        // Location performance
+        try {
+          const endpoint = publicMode 
+            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/location-performance`
+            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/location-performance`;
+          
+          const locData = publicMode 
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : { locations: [] })
+            : await api.get(endpoint);
+          
+          (locData.locations || []).forEach(loc => {
+            const existing = allLocations.find(l => l.location === loc.location);
+            if (existing) {
+              existing.impressions += loc.impressions || 0;
+              existing.clicks += loc.clicks || 0;
+              existing.spend += loc.spend || 0;
+            } else {
+              allLocations.push({ ...loc });
+            }
+          });
+        } catch (e) { /* skip */ }
+        
+        // Geo fence performance  
+        try {
+          const endpoint = publicMode
+            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/geo-fence-performance`
+            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/geo-fence-performance`;
+          
+          const geoData = publicMode
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : { geoFences: [] })
+            : await api.get(endpoint);
+          
+          (geoData.geoFences || []).forEach(gf => {
+            const existing = allGeoFences.find(g => g.name === gf.name);
+            if (existing) {
+              existing.impressions += gf.impressions || 0;
+              existing.clicks += gf.clicks || 0;
+            } else {
+              allGeoFences.push({ ...gf });
+            }
+          });
+        } catch (e) { /* skip */ }
+        
+        // Keyword performance
+        try {
+          const endpoint = publicMode
+            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/keyword-performance`
+            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/keyword-performance`;
+          
+          const kwData = publicMode
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : { keywords: [] })
+            : await api.get(endpoint);
+          
+          (kwData.keywords || []).forEach(kw => {
+            const existing = allKeywords.find(k => k.keyword === kw.keyword);
+            if (existing) {
+              existing.impressions += kw.impressions || 0;
+              existing.clicks += kw.clicks || 0;
+            } else {
+              allKeywords.push({ ...kw });
+            }
+          });
+        } catch (e) { /* skip */ }
+        
+        // Domain performance
+        try {
+          const endpoint = publicMode
+            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/domain-performance`
+            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/domain-performance`;
+          
+          const domData = publicMode
+            ? await fetch(endpoint).then(r => r.ok ? r.json() : { domains: [] })
+            : await api.get(endpoint);
+          
+          (domData.domains || []).forEach(d => {
+            const existing = allDomains.find(dom => dom.domain === d.domain);
+            if (existing) {
+              existing.impressions += d.impressions || 0;
+              existing.clicks += d.clicks || 0;
+            } else {
+              allDomains.push({ ...d });
+            }
+          });
+        } catch (e) { /* skip */ }
+        
+      } catch (err) {
+        console.error(`Failed to load enhanced data for campaign ${campaign.id}:`, err);
+      }
+    }
+    
+    // Sort and set aggregated data
+    setLocationPerformance(allLocations.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
+    setGeoFencePerformance(allGeoFences.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
+    setKeywordPerformance(allKeywords.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
+    setDomainPerformance(allDomains.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
+    
+    setEnhancedDataLoading(false);
+  };
+
+  // Load enhanced data after campaigns are loaded
+  useEffect(() => {
+    if (campaigns.length > 0 && client?.simplifi_org_id) {
+      loadEnhancedData();
+    }
+  }, [campaigns, client]);
 
   // Show the static share link for this client
   const showShareLink = () => {
@@ -3238,6 +3372,135 @@ function ClientDetailPage({ publicMode = false }) {
                 return (
                   <DraggableReportSection {...sectionProps} title="Retargeting Pixel" icon={Radio} iconColor="#0d9488">
                     <PixelSection orgId={client.simplifi_org_id} clientName={client.name} />
+                  </DraggableReportSection>
+                );
+              
+              case 'location':
+                if (locationPerformance.length === 0 && !enhancedDataLoading) return null;
+                return (
+                  <DraggableReportSection {...sectionProps} title={`Performance by Location${locationPerformance.length > 0 ? ` (${locationPerformance.length})` : ''}`} icon={MapPin} iconColor="#10b981">
+                    {enhancedDataLoading && locationPerformance.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
+                        <p style={{ fontSize: '0.875rem' }}>Loading location data...</p>
+                      </div>
+                    ) : (
+                      <LocationPerformanceTable 
+                        locations={locationPerformance} 
+                        showSpend={showSpendData}
+                      />
+                    )}
+                  </DraggableReportSection>
+                );
+              
+              case 'keywords':
+                if (keywordPerformance.length === 0 && !enhancedDataLoading) return null;
+                return (
+                  <DraggableReportSection {...sectionProps} title={`Keyword Performance${keywordPerformance.length > 0 ? ` (${keywordPerformance.length})` : ''}`} icon={Search} iconColor="#f59e0b">
+                    {enhancedDataLoading && keywordPerformance.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
+                        <p style={{ fontSize: '0.875rem' }}>Loading keyword data...</p>
+                      </div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Keyword</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {keywordPerformance.slice(0, 15).map((kw, i) => {
+                            const ctr = kw.impressions > 0 ? (kw.clicks / kw.impressions * 100) : 0;
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{kw.keyword}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(kw.impressions)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(kw.clicks)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </DraggableReportSection>
+                );
+              
+              case 'geofences':
+                if (geoFencePerformance.length === 0 && !enhancedDataLoading) return null;
+                return (
+                  <DraggableReportSection {...sectionProps} title={`Geo-Fence Performance${geoFencePerformance.length > 0 ? ` (${geoFencePerformance.length})` : ''}`} icon={MapPin} iconColor="#8b5cf6">
+                    {enhancedDataLoading && geoFencePerformance.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
+                        <p style={{ fontSize: '0.875rem' }}>Loading geo-fence data...</p>
+                      </div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Location</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {geoFencePerformance.slice(0, 15).map((gf, i) => {
+                            const ctr = gf.impressions > 0 ? (gf.clicks / gf.impressions * 100) : 0;
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{gf.name}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(gf.impressions)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(gf.clicks)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </DraggableReportSection>
+                );
+              
+              case 'domains':
+                if (domainPerformance.length === 0 && !enhancedDataLoading) return null;
+                return (
+                  <DraggableReportSection {...sectionProps} title={`Top Domains${domainPerformance.length > 0 ? ` (${domainPerformance.length})` : ''}`} icon={Globe} iconColor="#0ea5e9">
+                    {enhancedDataLoading && domainPerformance.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
+                        <p style={{ fontSize: '0.875rem' }}>Loading domain data...</p>
+                      </div>
+                    ) : (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Domain</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
+                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {domainPerformance.slice(0, 15).map((d, i) => {
+                            const ctr = d.impressions > 0 ? (d.clicks / d.impressions * 100) : 0;
+                            return (
+                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{d.domain}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(d.impressions)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(d.clicks)}</td>
+                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
                   </DraggableReportSection>
                 );
               
