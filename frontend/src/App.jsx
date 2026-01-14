@@ -3124,7 +3124,10 @@ function ClientDetailPage({ publicMode = false }) {
                                 <video 
                                   src={ad.preview_url} 
                                   style={{ maxWidth: '100%', maxHeight: '80px', objectFit: 'contain' }}
+                                  autoPlay
+                                  loop
                                   muted
+                                  playsInline
                                 />
                               ) : (
                                 <img 
