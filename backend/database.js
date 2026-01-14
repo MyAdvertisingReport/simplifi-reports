@@ -314,6 +314,15 @@ class DatabaseHelper {
     return result.rows[0] || null;
   }
 
+  async createBrand(name, logoPath = null, primaryColor = '#1a56db', secondaryColor = '#7c3aed') {
+    const id = uuidv4();
+    await pool.query(
+      `INSERT INTO brands (id, name, logo_path, primary_color, secondary_color) VALUES ($1, $2, $3, $4, $5)`,
+      [id, name, logoPath, primaryColor, secondaryColor]
+    );
+    return this.getBrandById(id);
+  }
+
   // Clients
   async getAllClients() {
     const result = await pool.query(`
