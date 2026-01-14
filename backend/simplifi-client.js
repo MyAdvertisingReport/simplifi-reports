@@ -174,10 +174,15 @@ class SimplifiClient {
    */
   async getCampaignAds(campaignId) {
     try {
-      // Simpli.fi API endpoint for ads is /campaigns/{campaign_id}/ads
-      const response = await this.client.get(`/campaigns/${campaignId}/ads`);
+      // Simpli.fi API endpoint for ads - using shorter syntax per API docs
+      const url = `/campaigns/${campaignId}/ads`;
+      console.log(`[SIMPLIFI CLIENT] Fetching ads from: ${url}`);
+      const response = await this.client.get(url);
+      console.log(`[SIMPLIFI CLIENT] Ads response status: ${response.status}`);
+      console.log(`[SIMPLIFI CLIENT] Ads count: ${response.data?.ads?.length || 0}`);
       return response.data;
     } catch (error) {
+      console.error(`[SIMPLIFI CLIENT] Error fetching ads for campaign ${campaignId}:`, error.response?.status, error.response?.data || error.message);
       throw this._handleError(error);
     }
   }

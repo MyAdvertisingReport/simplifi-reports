@@ -1114,14 +1114,54 @@ app.get('/api/simplifi/campaigns/:campaignId', authenticateToken, async (req, re
   }
 });
 
+// Debug endpoint - test fetching ads with full org context
+app.get('/api/debug/org/:orgId/campaign/:campaignId/ads', authenticateToken, async (req, res) => {
+  try {
+    const { orgId, campaignId } = req.params;
+    console.log(`[DEBUG ADS] Testing ads fetch for org ${orgId}, campaign ${campaignId}`);
+    
+    // Try the full org context URL
+    const fullUrl = `/organizations/${orgId}/campaigns/${campaignId}/ads`;
+    console.log(`[DEBUG ADS] Trying full URL: ${fullUrl}`);
+    
+    const response = await simplifiClient.client.get(fullUrl);
+    console.log(`[DEBUG ADS] Success! Got ${response.data?.ads?.length || 0} ads`);
+    
+    // Log first ad details
+    if (response.data?.ads?.[0]) {
+      const firstAd = response.data.ads[0];
+      console.log(`[DEBUG ADS] First ad: id=${firstAd.id}, name=${firstAd.name}, primary_creative_url=${firstAd.primary_creative_url}`);
+    }
+    
+    res.json({
+      success: true,
+      url_used: fullUrl,
+      ad_count: response.data?.ads?.length || 0,
+      ads: response.data?.ads || [],
+      sample_ad: response.data?.ads?.[0] || null
+    });
+  } catch (error) {
+    console.error('[DEBUG ADS] Error:', error.response?.status, error.response?.data || error.message);
+    res.json({
+      success: false,
+      error: error.message,
+      status: error.response?.status,
+      response_data: error.response?.data
+    });
+  }
+});
+
 // Get campaign ads
 app.get('/api/simplifi/campaigns/:campaignId/ads', authenticateToken, async (req, res) => {
   try {
+    console.log(`[ADS ENDPOINT] Fetching ads for campaign ${req.params.campaignId}`);
     const ads = await simplifiClient.getCampaignAds(req.params.campaignId);
+    console.log(`[ADS ENDPOINT] Success - got ${ads?.ads?.length || 0} ads`);
     res.json(ads);
   } catch (error) {
-    console.error('Get ads error:', error);
-    res.status(500).json({ error: 'Failed to get ads' });
+    console.error('[ADS ENDPOINT] Error fetching ads:', error.message);
+    console.error('[ADS ENDPOINT] Full error:', error);
+    res.status(500).json({ error: 'Failed to get ads', details: error.message });
   }
 });
 
