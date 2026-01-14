@@ -613,7 +613,7 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
     const { startDate, endDate } = req.query;
     
     // Fetch campaigns with ads included
-    const campaignsData = await simplifiClient.getCampaigns(client.simplifi_org_id, true); // include ads
+    const campaignsData = await simplifiClient.getCampaignsWithAds(client.simplifi_org_id);
     const campaigns = campaignsData.campaigns || [];
 
     // Build ad details map from campaigns
