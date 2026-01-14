@@ -170,13 +170,28 @@ class SimplifiClient {
 
   /**
    * Get ads for a campaign
-   * @param {number} orgId - Organization ID
+   * @param {number} orgId - Organization ID (may be parent org - we'll find actual owner)
    * @param {number} campaignId - Campaign ID
    */
   async getCampaignAds(orgId, campaignId) {
     try {
-      // Use full URL with org context - the short syntax doesn't always work
-      const url = `/organizations/${orgId}/campaigns/${campaignId}/ads`;
+      // First, get the campaign to find its actual organization_id
+      // The passed orgId might be a parent org, but ads endpoint needs the campaign's direct org
+      let actualOrgId = orgId;
+      
+      try {
+        const campaignResponse = await this.client.get(`/campaigns/${campaignId}`);
+        const campaign = campaignResponse.data?.campaigns?.[0] || campaignResponse.data;
+        if (campaign?.organization_id) {
+          actualOrgId = campaign.organization_id;
+          console.log(`[SIMPLIFI CLIENT] Campaign ${campaignId} belongs to org ${actualOrgId} (requested org was ${orgId})`);
+        }
+      } catch (e) {
+        console.log(`[SIMPLIFI CLIENT] Could not fetch campaign details, using provided orgId: ${orgId}`);
+      }
+      
+      // Use the actual organization ID that owns this campaign
+      const url = `/organizations/${actualOrgId}/campaigns/${campaignId}/ads`;
       console.log(`[SIMPLIFI CLIENT] Fetching ads from: ${url}`);
       const response = await this.client.get(url);
       console.log(`[SIMPLIFI CLIENT] Ads response status: ${response.status}`);
