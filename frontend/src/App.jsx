@@ -5287,70 +5287,356 @@ function DeviceBreakdownChart({ data }) {
 // ============================================
 function ExpandableLocationTable({ locations, showSpend, formatNumber, formatCurrency }) {
   const [expanded, setExpanded] = useState(false);
+  const [expandedStates, setExpandedStates] = useState({});
   
-  const sortedLocations = [...locations].sort((a, b) => b.impressions - a.impressions);
-  const displayLocations = expanded ? sortedLocations : sortedLocations.slice(0, 3);
-  const hasMore = sortedLocations.length > 3;
+  // Sort locations by impressions
+  const sortedLocations = [...locations].sort((a, b) => (b.impressions || 0) - (a.impressions || 0));
+  
+  // Group locations by state/region
+  const groupedByState = sortedLocations.reduce((acc, loc) => {
+    const state = loc.region || loc.state || 'Other';
+    if (!acc[state]) {
+      acc[state] = {
+        name: state,
+        country: loc.country || 'US',
+        locations: [],
+        totalImpressions: 0,
+        totalClicks: 0,
+        totalSpend: 0
+      };
+    }
+    acc[state].locations.push(loc);
+    acc[state].totalImpressions += loc.impressions || 0;
+    acc[state].totalClicks += loc.clicks || 0;
+    acc[state].totalSpend += loc.spend || 0;
+    return acc;
+  }, {});
+  
+  // Convert to array and sort by impressions
+  const stateGroups = Object.values(groupedByState)
+    .map(group => ({
+      ...group,
+      ctr: group.totalImpressions > 0 ? (group.totalClicks / group.totalImpressions) * 100 : 0,
+      locationCount: group.locations.length
+    }))
+    .sort((a, b) => b.totalImpressions - a.totalImpressions);
+  
+  // Get top 5 individual locations for the summary view
+  const top5Locations = sortedLocations.slice(0, 5);
+  
+  // Get max impressions for the visual bar
+  const maxImpressions = top5Locations[0]?.impressions || 1;
+  
+  // Toggle state expansion
+  const toggleState = (stateName) => {
+    setExpandedStates(prev => ({
+      ...prev,
+      [stateName]: !prev[stateName]
+    }));
+  };
+  
+  // Calculate totals
+  const totalImpressions = sortedLocations.reduce((sum, loc) => sum + (loc.impressions || 0), 0);
+  const totalClicks = sortedLocations.reduce((sum, loc) => sum + (loc.clicks || 0), 0);
+  const overallCTR = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+  
+  if (!expanded) {
+    // Collapsed view: Show top 5 locations with visual bars
+    return (
+      <div>
+        {/* Summary stats */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(3, 1fr)', 
+          gap: '1rem', 
+          marginBottom: '1.25rem',
+          padding: '1rem',
+          background: '#f0fdf4',
+          borderRadius: '0.75rem'
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.6875rem', color: '#059669', textTransform: 'uppercase', fontWeight: 600 }}>Total Locations</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#065f46' }}>{locations.length}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.6875rem', color: '#059669', textTransform: 'uppercase', fontWeight: 600 }}>States/Regions</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#065f46' }}>{stateGroups.length}</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '0.6875rem', color: '#059669', textTransform: 'uppercase', fontWeight: 600 }}>Avg CTR</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#065f46' }}>{overallCTR.toFixed(2)}%</div>
+          </div>
+        </div>
+        
+        {/* Top 5 locations with visual bars */}
+        <div style={{ marginBottom: '0.5rem', fontSize: '0.8125rem', fontWeight: 600, color: '#374151' }}>
+          Top Performing Locations
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {top5Locations.map((loc, i) => {
+            const barWidth = (loc.impressions / maxImpressions) * 100;
+            const ctr = loc.impressions > 0 ? (loc.clicks / loc.impressions) * 100 : 0;
+            return (
+              <div key={i} style={{ position: 'relative' }}>
+                {/* Background bar */}
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  height: '100%',
+                  width: `${barWidth}%`,
+                  background: 'linear-gradient(90deg, #d1fae5 0%, #a7f3d0 100%)',
+                  borderRadius: '0.5rem',
+                  zIndex: 0
+                }} />
+                {/* Content */}
+                <div style={{
+                  position: 'relative',
+                  zIndex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.75rem 1rem',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ 
+                      width: '24px', 
+                      height: '24px', 
+                      borderRadius: '50%', 
+                      background: '#10b981',
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 700
+                    }}>
+                      {i + 1}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#111827' }}>{loc.city || loc.metro || 'Unknown'}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                        {loc.region && `${loc.region}`}{loc.country && loc.country !== 'US' && `, ${loc.country}`}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase' }}>Impressions</div>
+                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#065f46' }}>{formatNumber(loc.impressions)}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase' }}>Clicks</div>
+                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#3b82f6' }}>{formatNumber(loc.clicks)}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: '60px' }}>
+                      <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase' }}>CTR</div>
+                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#7c3aed' }}>{ctr.toFixed(2)}%</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Expand button */}
+        {locations.length > 5 && (
+          <button
+            onClick={() => setExpanded(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              width: '100%',
+              marginTop: '1rem',
+              padding: '0.75rem',
+              background: '#f0fdf4',
+              border: '1px solid #a7f3d0',
+              borderRadius: '0.5rem',
+              color: '#065f46',
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            View by State/Region ({stateGroups.length} regions, {locations.length} total locations)
+            <ChevronDown size={18} />
+          </button>
+        )}
+      </div>
+    );
+  }
+  
+  // Expanded view: Grouped by state with expandable cities
+  // Limit to top 10 states for manageability
+  const displayStates = stateGroups.slice(0, 10);
+  const hiddenStatesCount = stateGroups.length - 10;
+  const hiddenLocationsCount = stateGroups.slice(10).reduce((sum, s) => sum + s.locationCount, 0);
   
   return (
     <div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Location</th>
-            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
-            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
-            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>
-            {showSpend && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {displayLocations.map((loc, i) => (
-            <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-              <td style={{ padding: '0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <MapPin size={14} color="#10b981" />
+      {/* Summary header */}
+      <div style={{ 
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '1rem',
+        padding: '0.75rem 1rem',
+        background: '#f0fdf4',
+        borderRadius: '0.5rem'
+      }}>
+        <div style={{ fontSize: '0.875rem', color: '#065f46' }}>
+          <strong>{formatNumber(totalImpressions)}</strong> impressions across <strong>{locations.length}</strong> locations
+        </div>
+        <div style={{ fontSize: '0.875rem', color: '#065f46' }}>
+          Overall CTR: <strong>{overallCTR.toFixed(2)}%</strong>
+        </div>
+      </div>
+      
+      {/* State groups */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {displayStates.map((state, i) => {
+          const isStateExpanded = expandedStates[state.name];
+          const topCities = state.locations.slice(0, 5);
+          
+          return (
+            <div key={state.name} style={{ 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '0.5rem',
+              overflow: 'hidden'
+            }}>
+              {/* State header - clickable */}
+              <button
+                onClick={() => toggleState(state.name)}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '0.875rem 1rem',
+                  background: isStateExpanded ? '#f0fdf4' : '#fafafa',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <MapPin size={18} color="#10b981" />
                   <div>
-                    <div style={{ fontWeight: 500 }}>{loc.city || loc.metro || 'Unknown'}</div>
-                    {loc.region && <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{loc.region}, {loc.country}</div>}
+                    <div style={{ fontWeight: 600, color: '#111827' }}>{state.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                      {state.locationCount} {state.locationCount === 1 ? 'city' : 'cities'}
+                    </div>
                   </div>
                 </div>
-              </td>
-              <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumber(loc.impressions)}</td>
-              <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumber(loc.clicks)}</td>
-              <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{loc.ctr?.toFixed(2) || '0.00'}%</td>
-              {showSpend && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(loc.spend)}</td>}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {hasMore && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '0.5rem',
-            width: '100%',
-            marginTop: '0.75rem',
-            padding: '0.5rem',
-            background: '#f0fdf4',
-            border: '1px solid #a7f3d0',
-            borderRadius: '0.5rem',
-            color: '#065f46',
-            fontSize: '0.8125rem',
-            fontWeight: 500,
-            cursor: 'pointer'
-          }}
-        >
-          {expanded ? (
-            <>Show Less <ChevronUp size={16} /></>
-          ) : (
-            <>View All {sortedLocations.length} Locations <ChevronDown size={16} /></>
-          )}
-        </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#065f46' }}>
+                      {formatNumber(state.totalImpressions)}
+                    </div>
+                    <div style={{ fontSize: '0.6875rem', color: '#6b7280' }}>impressions</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#7c3aed' }}>
+                      {state.ctr.toFixed(2)}%
+                    </div>
+                    <div style={{ fontSize: '0.6875rem', color: '#6b7280' }}>CTR</div>
+                  </div>
+                  {isStateExpanded ? <ChevronUp size={18} color="#6b7280" /> : <ChevronDown size={18} color="#6b7280" />}
+                </div>
+              </button>
+              
+              {/* Expanded city list */}
+              {isStateExpanded && (
+                <div style={{ padding: '0.5rem 1rem 1rem', background: 'white' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
+                        <th style={{ padding: '0.5rem', textAlign: 'left', fontSize: '0.6875rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase' }}>City</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.6875rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase' }}>Impressions</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.6875rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase' }}>Clicks</th>
+                        <th style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.6875rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase' }}>CTR</th>
+                        {showSpend && <th style={{ padding: '0.5rem', textAlign: 'right', fontSize: '0.6875rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase' }}>Spend</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topCities.map((loc, j) => {
+                        const cityCtr = loc.impressions > 0 ? (loc.clicks / loc.impressions) * 100 : 0;
+                        return (
+                          <tr key={j} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                            <td style={{ padding: '0.5rem', fontSize: '0.875rem' }}>{loc.city || loc.metro || 'Unknown'}</td>
+                            <td style={{ padding: '0.5rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>{formatNumber(loc.impressions)}</td>
+                            <td style={{ padding: '0.5rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>{formatNumber(loc.clicks)}</td>
+                            <td style={{ padding: '0.5rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>{cityCtr.toFixed(2)}%</td>
+                            {showSpend && <td style={{ padding: '0.5rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>{formatCurrency(loc.spend)}</td>}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {state.locationCount > 5 && (
+                    <div style={{ 
+                      marginTop: '0.5rem', 
+                      padding: '0.5rem', 
+                      background: '#f9fafb', 
+                      borderRadius: '0.25rem',
+                      fontSize: '0.75rem',
+                      color: '#6b7280',
+                      textAlign: 'center'
+                    }}>
+                      + {state.locationCount - 5} more cities in {state.name}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      
+      {/* Hidden states notice */}
+      {hiddenStatesCount > 0 && (
+        <div style={{ 
+          marginTop: '0.75rem', 
+          padding: '0.75rem', 
+          background: '#f9fafb', 
+          borderRadius: '0.5rem',
+          fontSize: '0.8125rem',
+          color: '#6b7280',
+          textAlign: 'center'
+        }}>
+          + {hiddenStatesCount} more regions with {hiddenLocationsCount} locations
+        </div>
       )}
+      
+      {/* Collapse button */}
+      <button
+        onClick={() => {
+          setExpanded(false);
+          setExpandedStates({});
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          width: '100%',
+          marginTop: '1rem',
+          padding: '0.75rem',
+          background: '#f0fdf4',
+          border: '1px solid #a7f3d0',
+          borderRadius: '0.5rem',
+          color: '#065f46',
+          fontSize: '0.875rem',
+          fontWeight: 600,
+          cursor: 'pointer'
+        }}
+      >
+        Show Less <ChevronUp size={18} />
+      </button>
     </div>
   );
 }
