@@ -576,8 +576,28 @@ app.get('/api/public/client/:token/stats', async (req, res) => {
     const adDetailsMap = {};
     campaigns.forEach(campaign => {
       (campaign.ads || []).forEach(ad => {
-        const width = ad.original_width ? parseInt(ad.original_width) : null;
-        const height = ad.original_height ? parseInt(ad.original_height) : null;
+        // Try multiple sources for dimensions
+        let width = null, height = null;
+        
+        // 1. Try original_width/original_height (e.g., "1920 px")
+        if (ad.original_width) width = parseInt(ad.original_width);
+        if (ad.original_height) height = parseInt(ad.original_height);
+        
+        // 2. Try ad_sizes array
+        if ((!width || !height) && ad.ad_sizes && ad.ad_sizes.length > 0) {
+          width = width || ad.ad_sizes[0].width;
+          height = height || ad.ad_sizes[0].height;
+        }
+        
+        // 3. Parse from ad name (e.g., "banner_300x250.gif")
+        if (!width || !height) {
+          const sizeMatch = (ad.name || '').match(/(\d{2,4})x(\d{2,4})/i);
+          if (sizeMatch) {
+            width = width || parseInt(sizeMatch[1]);
+            height = height || parseInt(sizeMatch[2]);
+          }
+        }
+        
         const adFileType = ad.ad_file_types?.[0]?.name || '';
         
         adDetailsMap[ad.id] = {
@@ -592,6 +612,8 @@ app.get('/api/public/client/:token/stats', async (req, res) => {
         };
       });
     });
+    
+    console.log(`[PUBLIC TOKEN] Built ad details map with ${Object.keys(adDetailsMap).length} ads`);
 
     // Fetch stats by campaign
     const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
@@ -661,8 +683,28 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
     const adDetailsMap = {};
     campaigns.forEach(campaign => {
       (campaign.ads || []).forEach(ad => {
-        const width = ad.original_width ? parseInt(ad.original_width) : null;
-        const height = ad.original_height ? parseInt(ad.original_height) : null;
+        // Try multiple sources for dimensions
+        let width = null, height = null;
+        
+        // 1. Try original_width/original_height (e.g., "1920 px")
+        if (ad.original_width) width = parseInt(ad.original_width);
+        if (ad.original_height) height = parseInt(ad.original_height);
+        
+        // 2. Try ad_sizes array
+        if ((!width || !height) && ad.ad_sizes && ad.ad_sizes.length > 0) {
+          width = width || ad.ad_sizes[0].width;
+          height = height || ad.ad_sizes[0].height;
+        }
+        
+        // 3. Parse from ad name (e.g., "banner_300x250.gif")
+        if (!width || !height) {
+          const sizeMatch = (ad.name || '').match(/(\d{2,4})x(\d{2,4})/i);
+          if (sizeMatch) {
+            width = width || parseInt(sizeMatch[1]);
+            height = height || parseInt(sizeMatch[2]);
+          }
+        }
+        
         const adFileType = ad.ad_file_types?.[0]?.name || '';
         
         adDetailsMap[ad.id] = {
@@ -677,6 +719,8 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
         };
       });
     });
+    
+    console.log(`[PUBLIC SLUG] Built ad details map with ${Object.keys(adDetailsMap).length} ads`);
 
     // Fetch stats by campaign
     const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
