@@ -15,6 +15,7 @@ const fs = require('fs');
 
 const SimplifiClient = require('./simplifi-client');
 const { ReportCenterService } = require('./report-center-service');
+const { SyncService } = require('./sync-service');
 const { initializeDatabase, seedInitialData, DatabaseHelper } = require('./database');
 
 // Initialize Express
@@ -70,6 +71,9 @@ let simplifiClient = null;
 
 // Initialize Report Center service
 let reportCenterService = null;
+
+// Initialize Sync service
+let syncService = null;
 
 // ============================================
 // HEALTH CHECK ENDPOINTS (for deployment)
@@ -1103,6 +1107,275 @@ function aggregateByCampaign(dailyStats) {
   return Object.values(byCampaign);
 }
 
+// Helper functions for data aggregation
+function aggregateStats(dailyStats) {
+  if (!dailyStats || !dailyStats.length) return {};
+  
+  const result = {
+    impressions: dailyStats.reduce((sum, s) => sum + (parseInt(s.impressions) || 0), 0),
+    clicks: dailyStats.reduce((sum, s) => sum + (parseInt(s.clicks) || 0), 0),
+    total_spend: dailyStats.reduce((sum, s) => sum + (parseFloat(s.total_spend) || 0), 0),
+    conversions: dailyStats.reduce((sum, s) => sum + (parseInt(s.conversions) || 0), 0),
+    video_views: dailyStats.reduce((sum, s) => sum + (parseInt(s.video_views) || 0), 0)
+  };
+  result.ctr = result.impressions > 0 ? (result.clicks / result.impressions * 100) : 0;
+  result.cpm = result.impressions > 0 ? (result.total_spend / result.impressions * 1000) : 0;
+  result.cpc = result.clicks > 0 ? (result.total_spend / result.clicks) : 0;
+  return result;
+}
+
+function mergeAdsWithStats(ads, adStats) {
+  const statsMap = {};
+  (adStats || []).forEach(s => { statsMap[s.ad_id] = s; });
+  
+  return (ads || []).map(ad => ({
+    id: ad.ad_id,
+    name: ad.ad_name,
+    status: ad.status,
+    ad_type: ad.ad_type,
+    preview_url: ad.preview_url,
+    impressions: parseInt(statsMap[ad.ad_id]?.impressions) || 0,
+    clicks: parseInt(statsMap[ad.ad_id]?.clicks) || 0,
+    spend: parseFloat(statsMap[ad.ad_id]?.spend) || 0,
+    ...(ad.ad_data ? JSON.parse(ad.ad_data) : {})
+  }));
+}
+
+function mergeKeywordsWithStats(keywords, keywordStats) {
+  const statsMap = {};
+  (keywordStats || []).forEach(s => { statsMap[s.keyword] = s; });
+  
+  return (keywords || []).map(kw => ({
+    keyword: kw.keyword,
+    max_bid: kw.max_bid,
+    impressions: parseInt(statsMap[kw.keyword]?.impressions) || 0,
+    clicks: parseInt(statsMap[kw.keyword]?.clicks) || 0,
+    spend: parseFloat(statsMap[kw.keyword]?.spend) || 0,
+    ctr: parseFloat(statsMap[kw.keyword]?.ctr) || 0
+  }));
+}
+
+function mergeGeoFencesWithStats(geoFences, geoFenceStats) {
+  const statsMap = {};
+  (geoFenceStats || []).forEach(s => { statsMap[s.geo_fence_id] = s; });
+  
+  return (geoFences || []).map(gf => ({
+    id: gf.geo_fence_id,
+    name: gf.geo_fence_name,
+    impressions: parseInt(statsMap[gf.geo_fence_id]?.impressions) || 0,
+    clicks: parseInt(statsMap[gf.geo_fence_id]?.clicks) || 0,
+    conversions: parseInt(statsMap[gf.geo_fence_id]?.conversions) || 0,
+    spend: parseFloat(statsMap[gf.geo_fence_id]?.spend) || 0,
+    ...(gf.geo_fence_data ? JSON.parse(gf.geo_fence_data) : {})
+  }));
+}
+
+// ============================================
+// DATA SYNC ENDPOINTS (Background sync)
+// ============================================
+
+// Trigger sync for a client
+app.post('/api/clients/:clientId/sync-data', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { fullSync, includeReportCenter } = req.body;
+    
+    if (!syncService) {
+      return res.status(503).json({ error: 'Sync service not available' });
+    }
+    
+    // Start sync in background, return immediately
+    const syncPromise = syncService.syncClient(req.params.clientId, { fullSync, includeReportCenter });
+    
+    // Wait a short time to see if it starts successfully
+    const timeout = new Promise(resolve => setTimeout(() => resolve({ status: 'started' }), 1000));
+    const result = await Promise.race([syncPromise, timeout]);
+    
+    res.json({ 
+      status: result.status || 'started',
+      message: 'Sync initiated. Check sync status for progress.'
+    });
+  } catch (error) {
+    console.error('Trigger sync error:', error);
+    res.status(500).json({ error: 'Failed to trigger sync' });
+  }
+});
+
+// Get sync status for a client
+app.get('/api/clients/:clientId/sync-status', authenticateToken, async (req, res) => {
+  try {
+    const status = await dbHelper.getSyncStatus(req.params.clientId);
+    const lastSync = await dbHelper.getLastSyncTime(req.params.clientId);
+    res.json({ 
+      syncStatus: status,
+      lastSync
+    });
+  } catch (error) {
+    console.error('Get sync status error:', error);
+    res.status(500).json({ error: 'Failed to get sync status' });
+  }
+});
+
+// Sync all clients (admin only, use sparingly)
+app.post('/api/sync/all', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!syncService) {
+      return res.status(503).json({ error: 'Sync service not available' });
+    }
+    
+    // Start in background
+    syncService.syncAllClients({ fullSync: false, includeReportCenter: false });
+    
+    res.json({ status: 'started', message: 'Syncing all clients in background' });
+  } catch (error) {
+    console.error('Sync all error:', error);
+    res.status(500).json({ error: 'Failed to start sync' });
+  }
+});
+
+// ============================================
+// CACHED DATA ENDPOINTS (Fast - reads from PostgreSQL)
+// ============================================
+
+/**
+ * Get ALL cached data for a campaign in one call
+ * This is the primary endpoint for the frontend - replaces multiple API calls
+ */
+app.get('/api/clients/:clientId/campaigns/:campaignId/cached-data', authenticateToken, async (req, res) => {
+  try {
+    const { clientId, campaignId } = req.params;
+    const { startDate, endDate } = req.query;
+    
+    // Get all cached data in parallel from PostgreSQL
+    const data = await dbHelper.getAllCachedDataForCampaign(clientId, parseInt(campaignId), startDate, endDate);
+    
+    // If we have no cached data, trigger a sync and return what we can from API
+    if (!data.campaign && (!data.stats || !data.stats.length)) {
+      console.log(`[CACHE] No cached data for campaign ${campaignId}, fetching from API...`);
+      
+      const client = await dbHelper.getClientById(clientId);
+      if (!client?.simplifi_org_id) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+      
+      // Trigger background sync
+      if (syncService) {
+        syncService.syncClient(clientId, { includeReportCenter: false }).catch(console.error);
+      }
+      
+      // Return fresh data from API (slower but necessary for first load)
+      try {
+        const [campaignData, statsData] = await Promise.all([
+          simplifiClient.getCampaign(client.simplifi_org_id, campaignId).catch(() => null),
+          simplifiClient.getCampaignStats(client.simplifi_org_id, { campaignId, startDate, endDate, byDay: true }).catch(() => ({ campaign_stats: [] }))
+        ]);
+        
+        return res.json({
+          campaign: campaignData?.campaigns?.[0] || null,
+          stats: aggregateStats(statsData.campaign_stats || []),
+          dailyStats: statsData.campaign_stats || [],
+          ads: [],
+          keywords: [],
+          geoFences: [],
+          locationStats: [],
+          deviceStats: [],
+          viewability: null,
+          conversions: [],
+          fromCache: false,
+          lastSynced: null,
+          message: 'Data fetched from API. Background sync started.'
+        });
+      } catch (apiError) {
+        console.error('API fetch error:', apiError);
+        return res.json({ ...data, fromCache: true, error: 'Could not fetch fresh data' });
+      }
+    }
+    
+    // Aggregate daily stats into totals
+    const aggregatedStats = aggregateStats(data.stats || []);
+    
+    // Merge ad data with ad stats
+    const adsWithStats = mergeAdsWithStats(data.ads || [], data.adStats || []);
+    
+    // Merge keywords with stats
+    const keywordsWithStats = mergeKeywordsWithStats(data.keywords || [], data.keywordStats || []);
+    
+    // Merge geo-fences with stats
+    const geoFencesWithStats = mergeGeoFencesWithStats(data.geoFences || [], data.geoFenceStats || []);
+    
+    res.json({
+      campaign: data.campaign ? JSON.parse(data.campaign.campaign_data || '{}') : null,
+      stats: aggregatedStats,
+      dailyStats: data.stats || [],
+      ads: adsWithStats,
+      keywords: keywordsWithStats,
+      geoFences: geoFencesWithStats,
+      locationStats: data.locationStats || [],
+      deviceStats: data.deviceStats || [],
+      viewability: data.viewability || null,
+      conversions: data.conversions || [],
+      fromCache: true,
+      lastSynced: data.lastSynced
+    });
+  } catch (error) {
+    console.error('Get cached data error:', error);
+    res.status(500).json({ error: 'Failed to get cached data' });
+  }
+});
+
+/**
+ * Get cached campaigns list for a client
+ */
+app.get('/api/clients/:clientId/cached-campaigns', authenticateToken, async (req, res) => {
+  try {
+    const campaigns = await dbHelper.getCachedCampaigns(req.params.clientId);
+    
+    if (!campaigns || !campaigns.length) {
+      // No cache, get from API
+      const client = await dbHelper.getClientById(req.params.clientId);
+      if (!client?.simplifi_org_id) {
+        return res.json({ campaigns: [], fromCache: false });
+      }
+      
+      const apiData = await simplifiClient.getCampaignsWithAds(client.simplifi_org_id);
+      return res.json({ 
+        campaigns: apiData.campaigns || [], 
+        fromCache: false 
+      });
+    }
+    
+    // Parse campaign data
+    const parsedCampaigns = campaigns.map(c => ({
+      id: c.campaign_id,
+      name: c.campaign_name,
+      status: c.status,
+      start_date: c.start_date,
+      end_date: c.end_date,
+      budget: c.budget,
+      campaign_type: c.campaign_type,
+      ...(c.campaign_data ? JSON.parse(c.campaign_data) : {})
+    }));
+    
+    res.json({ campaigns: parsedCampaigns, fromCache: true });
+  } catch (error) {
+    console.error('Get cached campaigns error:', error);
+    res.status(500).json({ error: 'Failed to get cached campaigns' });
+  }
+});
+
+/**
+ * Get cached daily stats for charts
+ */
+app.get('/api/clients/:clientId/cached-daily-stats', authenticateToken, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const stats = await dbHelper.getCachedDailyStats(req.params.clientId, startDate, endDate);
+    res.json({ daily_stats: stats, fromCache: true });
+  } catch (error) {
+    console.error('Get cached daily stats error:', error);
+    res.status(500).json({ error: 'Failed to get cached daily stats' });
+  }
+});
+
 // Get campaign details
 app.get('/api/simplifi/campaigns/:campaignId', authenticateToken, async (req, res) => {
   try {
@@ -1195,41 +1468,14 @@ app.get('/api/simplifi/campaigns/:campaignId/geo_fences', authenticateToken, asy
   }
 });
 
-// Get campaign keywords (with org context for better reliability)
-app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keywords', authenticateToken, async (req, res) => {
-  try {
-    const { orgId, campaignId } = req.params;
-    const keywords = await simplifiClient.getCampaignKeywordsWithOrg(orgId, campaignId);
-    res.json(keywords);
-  } catch (error) {
-    console.error('Get keywords error:', error);
-    res.status(500).json({ error: 'Failed to get keywords', details: error.message });
-  }
-});
-
-// Download actual keyword list (returns parsed CSV as JSON array)
-app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/keywords/download', authenticateToken, async (req, res) => {
-  try {
-    const { orgId, campaignId } = req.params;
-    console.log(`[SERVER] Downloading keywords for org ${orgId}, campaign ${campaignId}`);
-    const keywords = await simplifiClient.downloadCampaignKeywords(orgId, campaignId);
-    console.log(`[SERVER] Successfully downloaded ${keywords?.keywords?.length || 0} keywords`);
-    res.json(keywords);
-  } catch (error) {
-    console.error('Download keywords error:', error.message);
-    console.error('Download keywords full error:', error);
-    res.status(500).json({ error: 'Failed to download keywords', details: error.message });
-  }
-});
-
-// Get campaign keywords (legacy endpoint without org - kept for backward compatibility)
+// Get campaign keywords
 app.get('/api/simplifi/campaigns/:campaignId/keywords', authenticateToken, async (req, res) => {
   try {
     const keywords = await simplifiClient.getCampaignKeywords(req.params.campaignId);
     res.json(keywords);
   } catch (error) {
     console.error('Get keywords error:', error);
-    res.status(500).json({ error: 'Failed to get keywords', details: error.message });
+    res.status(500).json({ error: 'Failed to get keywords' });
   }
 });
 
@@ -1416,15 +1662,21 @@ async function startServer() {
     reportCenterService = new ReportCenterService(simplifiClient);
     console.log('Report Center service initialized');
 
+    // Initialize Sync service
+    syncService = new SyncService(simplifiClient, reportCenterService, dbHelper);
+    console.log('Sync service initialized');
+
     // Start server
     app.listen(PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║   Simpli.fi Reports Server Running                        ║
+║   Simpli.fi Reports Server v2.0                           ║
 ╠═══════════════════════════════════════════════════════════╣
 ║   Port: ${PORT}                                            ║
 ║   Environment: ${(process.env.NODE_ENV || 'development').padEnd(36)}║
 ║   Health Check: http://localhost:${PORT}/api/health          ║
+║                                                           ║
+║   NEW: PostgreSQL caching + Background sync enabled       ║
 ╚═══════════════════════════════════════════════════════════╝
       `);
     });

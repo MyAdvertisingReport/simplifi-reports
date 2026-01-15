@@ -7,7 +7,8 @@ import {
   Tablet, Tv, MapPin, Image, Percent, Play, Pause, StopCircle, ChevronRight,
   GripVertical, Save, MessageSquare, Pin, Trash2, Edit3, Video, Radio, Code,
   CheckCircle, AlertCircle, Clock, Bookmark, Flag, Download, History, Award,
-  TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List
+  TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List,
+  Database, RefreshCw
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -3612,6 +3613,9 @@ function CampaignDetailPage() {
   const [domainPerformance, setDomainPerformance] = useState([]);
   const [keywordPerformance, setKeywordPerformance] = useState([]);
   const [enhancedDataLoading, setEnhancedDataLoading] = useState(false);
+  const [lastSynced, setLastSynced] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [dataFromCache, setDataFromCache] = useState(false);
   
   // Client view mode persists across pages via localStorage
   const [clientViewMode, setClientViewMode] = useState(() => {
@@ -3737,199 +3741,258 @@ function CampaignDetailPage() {
       const clientData = await api.get(`/api/clients/slug/${slug}`);
       setClient(clientData);
 
-      // Get campaign details (without ads - we'll fetch those separately)
-      const campaignsData = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns`);
-      const campaignData = (campaignsData.campaigns || []).find(c => c.id === parseInt(campaignId));
-      setCampaign(campaignData);
-
-      // Fetch ads directly from the Ads endpoint to get full details including primary_creative_url
-      let adsFromApi = [];
+      // Try to get cached data first (FAST - single call)
+      let usedCache = false;
       try {
-        // Use the full org/campaign path - the short path doesn't work
-        const adsResponse = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/ads`);
-        adsFromApi = adsResponse.ads || [];
-        console.log('Ads fetched directly from Ads endpoint:', adsFromApi.length, 'ads');
-        if (adsFromApi[0]) {
-          console.log('First ad sample:', adsFromApi[0]);
-        }
-      } catch (adsErr) {
-        console.error('Failed to fetch ads from dedicated endpoint:', adsErr);
-      }
-
-      // Build ad details map from the fetched ads
-      const adDetailsMap = {};
-      adsFromApi.forEach(ad => {
-        // Parse dimensions from ad_sizes resource URL or use defaults
-        let width = null;
-        let height = null;
-        
-        // Try to get dimensions from the ad name (e.g., "300x250_banner.jpg")
-        const sizeMatch = ad.name?.match(/(\d{2,4})x(\d{2,4})/i);
-        if (sizeMatch) {
-          width = parseInt(sizeMatch[1]);
-          height = parseInt(sizeMatch[2]);
-        }
-        
-        // The API returns primary_creative_url directly
-        const previewUrl = ad.primary_creative_url;
-        
-        // Determine if video based on file type or name
-        const isVideo = ad.name?.toLowerCase().includes('.mp4') || 
-                       ad.name?.toLowerCase().includes('.mov') ||
-                       ad.name?.toLowerCase().includes('video');
-        
-        console.log(`Ad ${ad.id} "${ad.name}": primary_creative_url = ${previewUrl}`);
-        
-        adDetailsMap[ad.id] = {
-          ...ad,
-          preview_url: previewUrl,
-          width: width,
-          height: height,
-          is_video: isVideo,
-          file_type: isVideo ? 'Video' : 'Image'
-        };
-      });
-      console.log('Ad details map built:', Object.keys(adDetailsMap).length, 'ads with', 
-                  Object.values(adDetailsMap).filter(a => a.preview_url).length, 'having preview URLs');
-
-      // Get campaign stats
-      const statsData = await api.get(
-        `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}`
-      );
-      setStats(statsData.campaign_stats?.[0] || null);
-
-      // Get daily stats for this campaign
-      const dailyData = await api.get(
-        `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byDay=true`
-      );
-      console.log('Daily stats raw response:', dailyData);
-      if (dailyData.campaign_stats && dailyData.campaign_stats.length > 0) {
-        console.log('Daily stats sample record keys:', Object.keys(dailyData.campaign_stats[0]));
-        console.log('Daily stats sample record:', dailyData.campaign_stats[0]);
-      }
-      setDailyStats((dailyData.campaign_stats || []).sort((a, b) => new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)));
-
-      // Get ad stats for this campaign
-      const adData = await api.get(
-        `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byAd=true`
-      );
-      
-      console.log('Raw ad stats from API:', adData.campaign_stats?.length, 'entries');
-      if (adData.campaign_stats?.[0]) {
-        console.log('Sample ad stat entry:', JSON.stringify(adData.campaign_stats[0]));
-      }
-      
-      // IMPORTANT: Filter stats to only include the current campaign
-      // The API sometimes returns stats for all campaigns in the org
-      const campaignIdNum = parseInt(campaignId);
-      const filteredStats = (adData.campaign_stats || []).filter(stat => stat.campaign_id === campaignIdNum);
-      console.log(`Filtered to campaign ${campaignId}: ${filteredStats.length} entries (from ${adData.campaign_stats?.length || 0} total)`);
-      
-      // Deduplicate ad stats - API might return multiple entries per ad (e.g., by day)
-      // Skip entries without a valid ad_id
-      const adStatsMap = new Map();
-      let skippedCount = 0;
-      filteredStats.forEach(stat => {
-        const adId = stat.ad_id;
-        // Skip entries without a valid ad_id
-        if (!adId || adId === null || adId === undefined) {
-          skippedCount++;
-          return;
-        }
-        if (adStatsMap.has(adId)) {
-          // Aggregate stats for same ad
-          const existing = adStatsMap.get(adId);
-          existing.impressions = (existing.impressions || 0) + (stat.impressions || 0);
-          existing.clicks = (existing.clicks || 0) + (stat.clicks || 0);
-          existing.total_spend = (parseFloat(existing.total_spend) || 0) + (parseFloat(stat.total_spend) || 0);
-        } else {
-          adStatsMap.set(adId, { ...stat });
-        }
-      });
-      
-      console.log(`Ad stats processing: ${skippedCount} entries skipped (no ad_id), ${adStatsMap.size} unique ads found`);
-      
-      // Convert back to array and calculate derived metrics
-      const deduplicatedStats = Array.from(adStatsMap.values()).map(stat => ({
-        ...stat,
-        ctr: stat.impressions > 0 ? stat.clicks / stat.impressions : 0,
-        cpm: stat.impressions > 0 ? (stat.total_spend / stat.impressions) * 1000 : 0,
-        cpc: stat.clicks > 0 ? stat.total_spend / stat.clicks : 0
-      }));
-      
-      console.log('Deduplicated ad stats:', deduplicatedStats.length, 'unique ads');
-      
-      // Merge ad stats with details from campaign
-      const enrichedAds = deduplicatedStats.map(stat => {
-        const details = adDetailsMap[stat.ad_id] || {};
-        return {
-          ...stat,
-          name: details.name || stat.name || `Ad ${stat.ad_id}`,
-          preview_url: details.preview_url,
-          width: details.width,
-          height: details.height,
-          is_video: details.is_video,
-          file_type: details.file_type
-        };
-      });
-      
-      console.log('Enriched ads with previews:', enrichedAds.filter(a => a.preview_url).length, 'have preview URLs');
-      setAdStats(enrichedAds);
-
-      // Note: Device stats removed from individual campaigns - shown only on main client page
-
-      // Get geo/location stats
-      try {
-        const geoData = await api.get(
-          `/api/simplifi/organizations/${clientData.simplifi_org_id}/geo-stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}`
+        const cachedData = await api.get(
+          `/api/clients/${clientData.id}/campaigns/${campaignId}/cached-data?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
         );
-        setGeoStats(geoData.campaign_stats || []);
-      } catch (e) { console.error('Could not fetch geo stats:', e); }
-
-      // Get geo-fences if this is a geo-fence campaign - improved detection
-      const campNameLower = campaignData?.name?.toLowerCase() || '';
-      const isGeoFence = campNameLower.includes('_gf') || 
-                         campNameLower.includes('geofence') || campNameLower.includes('geo_fence') || campNameLower.includes('geo-fence') ||
-                         campNameLower.includes('geocomp') || campNameLower.includes('geo_comp') || campNameLower.includes('geo-comp') ||
-                         campNameLower.includes('geotarget') || campNameLower.includes('geo_target') ||
-                         campNameLower.includes('_geo_');
-      if (isGeoFence) {
-        try {
-          const fencesData = await api.get(`/api/simplifi/campaigns/${campaignId}/geo_fences`);
-          setGeoFences(fencesData.geo_fences || []);
-        } catch (e) { console.error('Could not fetch geo-fences:', e); }
-      }
-
-      // Get keywords - download the actual keyword list
-      try {
-        // First get keyword summary to check count
-        const keywordSummary = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords`);
-        console.log('Keywords summary:', keywordSummary);
         
-        const keywordInfo = keywordSummary.keywords?.[0];
-        if (keywordInfo && keywordInfo.count > 0) {
-          // Download the actual keyword list
-          try {
-            const keywordList = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords/download`);
-            console.log('Downloaded keywords:', keywordList);
-            setKeywords(keywordList.keywords || []);
-          } catch (downloadErr) {
-            console.log('Could not download keyword list, using summary:', downloadErr.message);
-            // Fallback to just showing the count
-            setKeywords([{ 
-              keyword: `${keywordInfo.count} keywords in campaign`,
-              count: keywordInfo.count,
-              isSummary: true
-            }]);
+        if (cachedData && (cachedData.campaign || cachedData.stats?.impressions > 0 || cachedData.dailyStats?.length > 0)) {
+          console.log('[CACHE] Using cached data for campaign', campaignId);
+          usedCache = true;
+          
+          // Set all data from cache
+          setCampaign(cachedData.campaign);
+          setStats(cachedData.stats);
+          setDailyStats((cachedData.dailyStats || []).sort((a, b) => 
+            new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)
+          ));
+          
+          // Ads with stats already merged
+          if (cachedData.ads?.length > 0) {
+            const enrichedAds = cachedData.ads.map(ad => ({
+              ...ad,
+              ad_id: ad.id,
+              ctr: ad.impressions > 0 ? ad.clicks / ad.impressions : 0,
+              cpm: ad.impressions > 0 ? (ad.spend / ad.impressions) * 1000 : 0,
+              cpc: ad.clicks > 0 ? ad.spend / ad.clicks : 0
+            }));
+            setAdStats(enrichedAds);
+          }
+          
+          // Keywords
+          if (cachedData.keywords?.length > 0) {
+            setKeywords(cachedData.keywords);
+            setKeywordPerformance(cachedData.keywords);
+          }
+          
+          // Geo-fences
+          if (cachedData.geoFences?.length > 0) {
+            setGeoFences(cachedData.geoFences);
+            setGeoFencePerformance(cachedData.geoFences);
+          }
+          
+          // Location stats
+          if (cachedData.locationStats?.length > 0) {
+            setLocationPerformance(cachedData.locationStats);
+            setGeoStats(cachedData.locationStats);
+          }
+          
+          // Device stats
+          if (cachedData.deviceStats?.length > 0) {
+            setEnhancedDeviceStats(cachedData.deviceStats);
+            setDeviceStats(cachedData.deviceStats);
+          }
+          
+          // Viewability
+          if (cachedData.viewability) {
+            setViewabilityData(cachedData.viewability);
+          }
+          
+          // Conversions
+          if (cachedData.conversions?.length > 0) {
+            setConversionData(cachedData.conversions);
+          }
+          
+          // Track cache status
+          setDataFromCache(cachedData.fromCache || false);
+          if (cachedData.lastSynced) {
+            setLastSynced(new Date(cachedData.lastSynced));
+            console.log('[CACHE] Data last synced:', new Date(cachedData.lastSynced).toLocaleString());
+          }
+          
+          // If cache data was incomplete, still try to load enhanced data in background
+          if (!cachedData.fromCache || !cachedData.locationStats?.length) {
+            loadEnhancedData(clientData.simplifi_org_id, campaignId, cachedData.campaign);
           }
         }
-      } catch (e) { console.log('Keywords not available for this campaign:', e.message); }
-      
-      // Fetch Report Center enhanced data (async, don't block initial load)
-      loadEnhancedData(clientData.simplifi_org_id, campaignId, campaignData);
+      } catch (cacheError) {
+        console.log('[CACHE] Cache not available, falling back to direct API:', cacheError.message);
+        setDataFromCache(false);
+      }
+
+      // If cache didn't work, fall back to direct API calls
+      if (!usedCache) {
+        setDataFromCache(false);
+        await loadDataFromAPI(clientData);
+      }
       
     } catch (err) { console.error(err); }
     setLoading(false);
+  };
+
+  // Trigger a sync for this client
+  const triggerSync = async () => {
+    if (!client?.id || syncing) return;
+    
+    setSyncing(true);
+    try {
+      await api.post(`/api/clients/${client.id}/sync-data`, { 
+        fullSync: false, 
+        includeReportCenter: true 
+      });
+      
+      // Wait a bit then reload data
+      setTimeout(async () => {
+        await loadData();
+        setSyncing(false);
+      }, 3000);
+    } catch (err) {
+      console.error('Sync failed:', err);
+      setSyncing(false);
+    }
+  };
+
+  // Fallback: Load data directly from Simpli.fi API (slower)
+  const loadDataFromAPI = async (clientData) => {
+    console.log('[API] Loading data directly from Simpli.fi API...');
+    
+    // Get campaign details
+    const campaignsData = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns`);
+    const campaignData = (campaignsData.campaigns || []).find(c => c.id === parseInt(campaignId));
+    setCampaign(campaignData);
+
+    // Fetch ads directly
+    let adsFromApi = [];
+    try {
+      const adsResponse = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/ads`);
+      adsFromApi = adsResponse.ads || [];
+      console.log('Ads fetched:', adsFromApi.length);
+    } catch (adsErr) {
+      console.error('Failed to fetch ads:', adsErr);
+    }
+
+    // Build ad details map
+    const adDetailsMap = {};
+    adsFromApi.forEach(ad => {
+      let width = null, height = null;
+      const sizeMatch = ad.name?.match(/(\d{2,4})x(\d{2,4})/i);
+      if (sizeMatch) {
+        width = parseInt(sizeMatch[1]);
+        height = parseInt(sizeMatch[2]);
+      }
+      const isVideo = ad.name?.toLowerCase().includes('.mp4') || 
+                     ad.name?.toLowerCase().includes('.mov') ||
+                     ad.name?.toLowerCase().includes('video');
+      
+      adDetailsMap[ad.id] = {
+        ...ad,
+        preview_url: ad.primary_creative_url,
+        width, height,
+        is_video: isVideo,
+        file_type: isVideo ? 'Video' : 'Image'
+      };
+    });
+
+    // Get campaign stats
+    const statsData = await api.get(
+      `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}`
+    );
+    setStats(statsData.campaign_stats?.[0] || null);
+
+    // Get daily stats
+    const dailyData = await api.get(
+      `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byDay=true`
+    );
+    setDailyStats((dailyData.campaign_stats || []).sort((a, b) => new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)));
+
+    // Get ad stats
+    const adData = await api.get(
+      `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byAd=true`
+    );
+    
+    const campaignIdNum = parseInt(campaignId);
+    const filteredStats = (adData.campaign_stats || []).filter(stat => stat.campaign_id === campaignIdNum);
+    
+    // Deduplicate ad stats
+    const adStatsMap = new Map();
+    filteredStats.forEach(stat => {
+      const adId = stat.ad_id;
+      if (!adId) return;
+      if (adStatsMap.has(adId)) {
+        const existing = adStatsMap.get(adId);
+        existing.impressions = (existing.impressions || 0) + (stat.impressions || 0);
+        existing.clicks = (existing.clicks || 0) + (stat.clicks || 0);
+        existing.total_spend = (parseFloat(existing.total_spend) || 0) + (parseFloat(stat.total_spend) || 0);
+      } else {
+        adStatsMap.set(adId, { ...stat });
+      }
+    });
+    
+    const deduplicatedStats = Array.from(adStatsMap.values()).map(stat => ({
+      ...stat,
+      ctr: stat.impressions > 0 ? stat.clicks / stat.impressions : 0,
+      cpm: stat.impressions > 0 ? (stat.total_spend / stat.impressions) * 1000 : 0,
+      cpc: stat.clicks > 0 ? stat.total_spend / stat.clicks : 0
+    }));
+    
+    const enrichedAds = deduplicatedStats.map(stat => {
+      const details = adDetailsMap[stat.ad_id] || {};
+      return {
+        ...stat,
+        name: details.name || stat.name || `Ad ${stat.ad_id}`,
+        preview_url: details.preview_url,
+        width: details.width,
+        height: details.height,
+        is_video: details.is_video,
+        file_type: details.file_type
+      };
+    });
+    setAdStats(enrichedAds);
+
+    // Get geo stats
+    try {
+      const geoData = await api.get(
+        `/api/simplifi/organizations/${clientData.simplifi_org_id}/geo-stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}`
+      );
+      setGeoStats(geoData.campaign_stats || []);
+    } catch (e) { console.error('Could not fetch geo stats:', e); }
+
+    // Get geo-fences if applicable
+    const campNameLower = campaignData?.name?.toLowerCase() || '';
+    const isGeoFence = campNameLower.includes('_gf') || 
+                       campNameLower.includes('geofence') || campNameLower.includes('geo_fence') || campNameLower.includes('geo-fence') ||
+                       campNameLower.includes('geocomp') || campNameLower.includes('geo_comp') || campNameLower.includes('geo-comp') ||
+                       campNameLower.includes('geotarget') || campNameLower.includes('geo_target') ||
+                       campNameLower.includes('_geo_');
+    if (isGeoFence) {
+      try {
+        const fencesData = await api.get(`/api/simplifi/campaigns/${campaignId}/geo_fences`);
+        setGeoFences(fencesData.geo_fences || []);
+      } catch (e) { console.error('Could not fetch geo-fences:', e); }
+    }
+
+    // Get keywords
+    try {
+      const keywordSummary = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords`);
+      const keywordInfo = keywordSummary.keywords?.[0];
+      if (keywordInfo && keywordInfo.count > 0) {
+        try {
+          const keywordList = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/keywords/download`);
+          setKeywords(keywordList.keywords || []);
+        } catch (downloadErr) {
+          setKeywords([{ 
+            keyword: `${keywordInfo.count} keywords in campaign`,
+            count: keywordInfo.count,
+            isSummary: true
+          }]);
+        }
+      }
+    } catch (e) { console.log('Keywords not available:', e.message); }
+    
+    // Fetch enhanced data in background
+    loadEnhancedData(clientData.simplifi_org_id, campaignId, campaignData);
   };
   
   // Load enhanced data from Report Center (runs in background)
@@ -4182,6 +4245,54 @@ function CampaignDetailPage() {
                   >
                     Update
                   </button>
+                </div>
+                {/* Cache/Sync Status */}
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  gap: '0.75rem', 
+                  marginTop: '0.5rem',
+                  fontSize: '0.6875rem',
+                  opacity: 0.8
+                }}>
+                  {dataFromCache && (
+                    <span style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '0.25rem',
+                      background: 'rgba(34, 197, 94, 0.3)',
+                      padding: '0.125rem 0.5rem',
+                      borderRadius: '9999px'
+                    }}>
+                      <Database size={10} />
+                      Cached
+                    </span>
+                  )}
+                  {lastSynced && (
+                    <span>Last synced: {lastSynced.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                  )}
+                  {!clientViewMode && (
+                    <button
+                      onClick={triggerSync}
+                      disabled={syncing}
+                      style={{
+                        padding: '0.125rem 0.5rem',
+                        background: syncing ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)',
+                        color: 'white',
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.625rem',
+                        cursor: syncing ? 'not-allowed' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem'
+                      }}
+                    >
+                      <RefreshCw size={10} className={syncing ? 'spin' : ''} />
+                      {syncing ? 'Syncing...' : 'Sync Now'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -8010,6 +8121,24 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        {/* Global Styles */}
+        <style>{`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          .spin {
+            animation: spin 1s linear infinite;
+          }
+          .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+        `}</style>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/report/:token" element={<PublicReportPage />} />
