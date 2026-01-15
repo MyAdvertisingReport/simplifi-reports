@@ -2111,9 +2111,26 @@ function ClientDetailPage({ publicMode = false }) {
       const adDetailsMap = {};
       allCampaigns.forEach(campaign => {
         (campaign.ads || []).forEach(ad => {
-          // Parse dimensions from original_width/original_height (e.g., "1920 px" -> 1920)
-          const width = ad.original_width ? parseInt(ad.original_width) : null;
-          const height = ad.original_height ? parseInt(ad.original_height) : null;
+          // Try multiple sources for dimensions
+          // 1. original_width/original_height (e.g., "1920 px" -> 1920)
+          let width = ad.original_width ? parseInt(ad.original_width) : null;
+          let height = ad.original_height ? parseInt(ad.original_height) : null;
+          
+          // 2. ad_sizes array (e.g., [{width: 300, height: 250}])
+          if ((!width || !height) && ad.ad_sizes && ad.ad_sizes.length > 0) {
+            width = ad.ad_sizes[0].width || width;
+            height = ad.ad_sizes[0].height || height;
+          }
+          
+          // 3. Parse from ad name (e.g., "banner_300x250.jpg")
+          if ((!width || !height) && ad.name) {
+            const sizeMatch = ad.name.match(/(\d{2,4})x(\d{2,4})/i);
+            if (sizeMatch) {
+              width = width || parseInt(sizeMatch[1]);
+              height = height || parseInt(sizeMatch[2]);
+            }
+          }
+          
           const adFileType = ad.ad_file_types?.[0]?.name || '';
           
           adDetailsMap[ad.id] = {

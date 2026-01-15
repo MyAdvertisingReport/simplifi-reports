@@ -1138,17 +1138,48 @@ function mergeAdsWithStats(ads, adStats) {
   const statsMap = {};
   (adStats || []).forEach(s => { statsMap[s.ad_id] = s; });
   
-  return (ads || []).map(ad => ({
-    id: ad.ad_id,
-    name: ad.ad_name,
-    status: ad.status,
-    ad_type: ad.ad_type,
-    preview_url: ad.preview_url,
-    impressions: parseInt(statsMap[ad.ad_id]?.impressions) || 0,
-    clicks: parseInt(statsMap[ad.ad_id]?.clicks) || 0,
-    spend: parseFloat(statsMap[ad.ad_id]?.spend) || 0,
-    ...(ad.ad_data ? JSON.parse(ad.ad_data) : {})
-  }));
+  return (ads || []).map(ad => {
+    // Parse ad_data if it exists
+    let adData = {};
+    if (ad.ad_data) {
+      try {
+        adData = JSON.parse(ad.ad_data);
+      } catch (e) {}
+    }
+    
+    // Try to get dimensions from multiple sources
+    let width = adData.original_width ? parseInt(adData.original_width) : null;
+    let height = adData.original_height ? parseInt(adData.original_height) : null;
+    
+    // Try ad_sizes array
+    if ((!width || !height) && adData.ad_sizes && adData.ad_sizes.length > 0) {
+      width = width || adData.ad_sizes[0].width;
+      height = height || adData.ad_sizes[0].height;
+    }
+    
+    // Try parsing from name
+    const name = ad.ad_name || adData.name || '';
+    const sizeMatch = name.match(/(\d{2,4})x(\d{2,4})/i);
+    if (sizeMatch && (!width || !height)) {
+      width = width || parseInt(sizeMatch[1]);
+      height = height || parseInt(sizeMatch[2]);
+    }
+    
+    return {
+      id: ad.ad_id,
+      ad_id: ad.ad_id,
+      name: name,
+      status: ad.status,
+      ad_type: ad.ad_type,
+      preview_url: ad.preview_url || adData.primary_creative_url,
+      width,
+      height,
+      impressions: parseInt(statsMap[ad.ad_id]?.impressions) || 0,
+      clicks: parseInt(statsMap[ad.ad_id]?.clicks) || 0,
+      spend: parseFloat(statsMap[ad.ad_id]?.spend) || 0,
+      ...adData
+    };
+  });
 }
 
 function mergeKeywordsWithStats(keywords, keywordStats) {
@@ -1298,15 +1329,50 @@ app.get('/api/clients/:clientId/campaigns/:campaignId/cached-data', authenticate
       // If we still have no stats, fetch them too
       if (!data.stats || !data.stats.length) {
         try {
-          const statsData = await simplifiClient.getCampaignStats(client.simplifi_org_id, { 
-            campaignId, startDate, endDate, byDay: true 
+          // Fetch stats, ads, and ad stats in parallel
+          const [statsData, adsData, adStatsData] = await Promise.all([
+            simplifiClient.getCampaignStats(client.simplifi_org_id, { 
+              campaignId, startDate, endDate, byDay: true 
+            }),
+            simplifiClient.getCampaignAds(client.simplifi_org_id, campaignId).catch(() => ({ ads: [] })),
+            simplifiClient.getCampaignStats(client.simplifi_org_id, { 
+              campaignId, startDate, endDate, byAd: true 
+            }).catch(() => ({ campaign_stats: [] }))
+          ]);
+          
+          // Merge ads with their stats
+          const adsWithStats = (adsData.ads || []).map(ad => {
+            const adStat = (adStatsData.campaign_stats || []).find(s => s.ad_id === ad.id);
+            // Try to get dimensions from multiple sources
+            let width = ad.original_width ? parseInt(ad.original_width) : null;
+            let height = ad.original_height ? parseInt(ad.original_height) : null;
+            if ((!width || !height) && ad.ad_sizes && ad.ad_sizes.length > 0) {
+              width = width || ad.ad_sizes[0].width;
+              height = height || ad.ad_sizes[0].height;
+            }
+            const sizeMatch = ad.name?.match(/(\d{2,4})x(\d{2,4})/i);
+            if (sizeMatch && (!width || !height)) {
+              width = width || parseInt(sizeMatch[1]);
+              height = height || parseInt(sizeMatch[2]);
+            }
+            return {
+              ...ad,
+              ad_id: ad.id,
+              preview_url: ad.primary_creative_url,
+              width,
+              height,
+              impressions: adStat?.impressions || 0,
+              clicks: adStat?.clicks || 0,
+              spend: parseFloat(adStat?.total_spend) || 0,
+              ctr: adStat?.impressions > 0 ? adStat.clicks / adStat.impressions : 0
+            };
           });
           
           return res.json({
             campaign: campaignInfo,
             stats: aggregateStats(statsData.campaign_stats || []),
             dailyStats: statsData.campaign_stats || [],
-            ads: [],
+            ads: adsWithStats,
             keywords: [],
             geoFences: [],
             locationStats: [],
