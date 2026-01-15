@@ -730,6 +730,92 @@ class DatabaseHelper {
       lastSynced: lastSyncResult.rows[0]?.last_sync
     };
   }
+
+  // ==========================================
+  // BATCH CACHE METHODS (for server.js compatibility)
+  // ==========================================
+
+  async cacheStatsBatch(clientId, stats) {
+    if (!stats || stats.length === 0) return;
+    
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      for (const stat of stats) {
+        const statDate = stat.stat_date || stat.date;
+        const campaignId = stat.campaign_id;
+        
+        if (!statDate || !campaignId) continue;
+        
+        await client.query(`
+          INSERT INTO cached_campaign_stats 
+          (client_id, campaign_id, stat_date, impressions, clicks, ctr, cpm, cpc, total_spend, vcr, conversions, video_views, raw_data, last_synced)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+          ON CONFLICT (client_id, campaign_id, stat_date) DO UPDATE SET
+            impressions = EXCLUDED.impressions,
+            clicks = EXCLUDED.clicks,
+            ctr = EXCLUDED.ctr,
+            cpm = EXCLUDED.cpm,
+            cpc = EXCLUDED.cpc,
+            total_spend = EXCLUDED.total_spend,
+            vcr = EXCLUDED.vcr,
+            conversions = EXCLUDED.conversions,
+            video_views = EXCLUDED.video_views,
+            raw_data = EXCLUDED.raw_data,
+            last_synced = NOW()
+        `, [
+          clientId,
+          campaignId,
+          statDate,
+          stat.impressions || 0,
+          stat.clicks || 0,
+          stat.ctr || 0,
+          stat.cpm || 0,
+          stat.cpc || 0,
+          stat.total_spend || 0,
+          stat.vcr || 0,
+          stat.conversions || 0,
+          stat.video_views || 0,
+          JSON.stringify(stat)
+        ]);
+      }
+      
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateFetchLog(clientId, lastFetchDate, status) {
+    await pool.query(`
+      INSERT INTO sync_status (client_id, last_incremental_sync, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (client_id) DO UPDATE SET
+        last_incremental_sync = $2,
+        updated_at = NOW()
+    `, [clientId, lastFetchDate]);
+  }
+
+  async getLastFetchDate(clientId) {
+    const result = await pool.query(
+      'SELECT last_incremental_sync FROM sync_status WHERE client_id = $1',
+      [clientId]
+    );
+    return result.rows[0]?.last_incremental_sync;
+  }
+
+  async getCachedStats(clientId, startDate, endDate, byCampaign = false) {
+    const result = await pool.query(`
+      SELECT * FROM cached_campaign_stats 
+      WHERE client_id = $1 AND stat_date >= $2 AND stat_date <= $3
+      ORDER BY stat_date
+    `, [clientId, startDate, endDate]);
+    return result.rows;
+  }
 }
 
 // ============================================
