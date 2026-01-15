@@ -148,38 +148,51 @@ class SimplifiClient {
    */
   async getCampaignsWithAds(orgId) {
     try {
-      // Use include parameter to nest ads with their file types, sizes, and creative URLs
-      const params = new URLSearchParams();
-      params.append('include', 'ads,ad_file_types,ad_sizes,primary_creative');
-      params.append('size', '100');
-
-      const url = `/organizations/${orgId}/campaigns?${params.toString()}`;
-      console.log('Fetching campaigns with ads:', url);
-      const response = await this.rateLimitedRequest('get', url);
+      // First get all campaigns
+      const campaignsResponse = await this.rateLimitedRequest('get', `/organizations/${orgId}/campaigns?size=100`);
+      const campaigns = campaignsResponse.data?.campaigns || [];
       
-      // Log ad structure for debugging
-      const campaigns = response.data?.campaigns || [];
-      const firstCampaignWithAds = campaigns.find(c => c.ads && c.ads.length > 0);
-      if (firstCampaignWithAds && firstCampaignWithAds.ads[0]) {
-        const sampleAd = firstCampaignWithAds.ads[0];
-        console.log('[AD STRUCTURE] Sample ad keys:', Object.keys(sampleAd));
-        console.log('[AD STRUCTURE] Sample ad:', JSON.stringify({
-          id: sampleAd.id,
-          name: sampleAd.name,
-          original_width: sampleAd.original_width,
-          original_height: sampleAd.original_height,
-          width: sampleAd.width,
-          height: sampleAd.height,
-          ad_sizes: sampleAd.ad_sizes,
-          ad_file_types: sampleAd.ad_file_types,
-          primary_creative_url: sampleAd.primary_creative_url,
-          creative_url: sampleAd.creative_url
-        }, null, 2));
-      } else {
-        console.log('[AD STRUCTURE] No ads found in campaigns');
+      console.log(`[CAMPAIGNS] Found ${campaigns.length} campaigns for org ${orgId}`);
+      
+      // Fetch ads for each campaign (limit to first 10 active campaigns to avoid rate limits)
+      const activeCampaigns = campaigns.filter(c => c.status?.toLowerCase() === 'active').slice(0, 10);
+      
+      for (const campaign of activeCampaigns) {
+        try {
+          const adsResponse = await this.rateLimitedRequest('get', 
+            `/organizations/${orgId}/campaigns/${campaign.id}/ads?include=ad_file_types,ad_sizes`
+          );
+          campaign.ads = adsResponse.data?.ads || [];
+          
+          // Log first ad structure for debugging
+          if (campaign.ads.length > 0 && !this._adStructureLogged) {
+            const sampleAd = campaign.ads[0];
+            console.log('[AD STRUCTURE] Sample ad keys:', Object.keys(sampleAd));
+            console.log('[AD STRUCTURE] Sample ad:', JSON.stringify({
+              id: sampleAd.id,
+              name: sampleAd.name,
+              original_width: sampleAd.original_width,
+              original_height: sampleAd.original_height,
+              width: sampleAd.width,
+              height: sampleAd.height,
+              ad_sizes: sampleAd.ad_sizes,
+              ad_file_types: sampleAd.ad_file_types,
+              primary_creative_url: sampleAd.primary_creative_url,
+              creative_url: sampleAd.creative_url,
+              pacing: sampleAd.pacing
+            }, null, 2));
+            this._adStructureLogged = true;
+          }
+        } catch (adError) {
+          console.log(`[CAMPAIGNS] Could not fetch ads for campaign ${campaign.id}:`, adError.message);
+          campaign.ads = [];
+        }
       }
       
-      return response.data;
+      // For inactive campaigns, just set empty ads array
+      campaigns.filter(c => c.status?.toLowerCase() !== 'active').forEach(c => c.ads = []);
+      
+      return { campaigns };
     } catch (error) {
       throw this._handleError(error);
     }
