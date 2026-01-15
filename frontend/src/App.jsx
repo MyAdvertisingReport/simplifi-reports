@@ -3105,6 +3105,7 @@ function CampaignDetailPage() {
           
           // Ads with stats already merged
           if (cachedData.ads?.length > 0) {
+            console.log('[DEBUG] Received ads from cache:', cachedData.ads.length);
             const enrichedAds = cachedData.ads.map(ad => ({
               ...ad,
               ad_id: ad.id,
@@ -3112,7 +3113,10 @@ function CampaignDetailPage() {
               cpm: ad.impressions > 0 ? (ad.spend / ad.impressions) * 1000 : 0,
               cpc: ad.clicks > 0 ? ad.spend / ad.clicks : 0
             }));
+            console.log('[DEBUG] Enriched ads:', enrichedAds.length, enrichedAds[0]);
             setAdStats(enrichedAds);
+          } else {
+            console.log('[DEBUG] No ads in cached data');
           }
           
           // Keywords
@@ -3298,6 +3302,7 @@ function CampaignDetailPage() {
         file_type: details.file_type
       };
     });
+    console.log('[DEBUG] Enriched ads from API:', enrichedAds.length, enrichedAds[0]);
     setAdStats(enrichedAds);
 
     // Get geo stats
