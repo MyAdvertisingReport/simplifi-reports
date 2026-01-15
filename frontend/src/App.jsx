@@ -2667,7 +2667,7 @@ function ClientDetailPage({ publicMode = false }) {
                                 <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(stats.ctr)}</td>
                                 {showSpendData && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(stats.total_spend)}</td>}
                                 <td style={{ padding: '0.75rem' }}>
-                                  <Link to={`/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
+                                  <Link to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
                                     <ChevronRight size={18} />
                                   </Link>
                                 </td>
@@ -2867,7 +2867,7 @@ function ClientDetailPage({ publicMode = false }) {
                               <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.impressions)}</td>
                               <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.clicks)}</td>
                               <td style={{ padding: '0.75rem' }}>
-                                <Link to={`/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
+                                <Link to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
                                   <ChevronRight size={18} />
                                 </Link>
                               </td>
@@ -2943,7 +2943,7 @@ function ClientDetailPage({ publicMode = false }) {
 // ============================================
 // CAMPAIGN DETAIL PAGE (Sub-page for individual campaign)
 // ============================================
-function CampaignDetailPage() {
+function CampaignDetailPage({ publicMode = false }) {
   const { slug, campaignId } = useParams();
   const [client, setClient] = useState(null);
   const [campaign, setCampaign] = useState(null);
@@ -3039,8 +3039,8 @@ function CampaignDetailPage() {
   
   const { user } = useAuth();
   
-  // Determine if we should show spend data
-  const showSpendData = user && !clientViewMode;
+  // Determine if we should show spend data (not in public mode, not in client view mode)
+  const showSpendData = !publicMode && user && !clientViewMode;
   
   // Determine campaign type for conditional sections - improved detection
   const campaignStrategy = parseStrategy(campaign?.name);
@@ -3114,9 +3114,23 @@ function CampaignDetailPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Get client by slug
-      const clientData = await api.get(`/api/clients/slug/${slug}`);
+      // Get client by slug - use public endpoint if in public mode
+      let clientData;
+      if (publicMode) {
+        const response = await fetch(`${API_BASE}/api/public/client/slug/${slug}`);
+        if (!response.ok) throw new Error('Client not found');
+        clientData = await response.json();
+      } else {
+        clientData = await api.get(`/api/clients/slug/${slug}`);
+      }
       setClient(clientData);
+
+      // In public mode, fetch data from public endpoints
+      if (publicMode) {
+        await loadPublicCampaignData(clientData);
+        setLoading(false);
+        return;
+      }
 
       // Try to get cached data first (FAST - single call)
       let usedCache = false;
@@ -3272,6 +3286,110 @@ function CampaignDetailPage() {
       
     } catch (err) { console.error(err); }
     setLoading(false);
+  };
+
+  // Load campaign data from public endpoints (no auth required)
+  const loadPublicCampaignData = async (clientData) => {
+    console.log('[PUBLIC] Loading campaign data from public API...');
+    
+    try {
+      // Get all campaigns to find this one
+      const response = await fetch(
+        `${API_BASE}/api/public/client/slug/${slug}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+      );
+      if (!response.ok) throw new Error('Failed to fetch stats');
+      const data = await response.json();
+      
+      // Find this campaign
+      const campaignData = (data.campaigns || []).find(c => c.id === parseInt(campaignId));
+      setCampaign(campaignData);
+      
+      // Detect campaign type
+      const detectedType = detectCampaignType(campaignData?.name);
+      setCampaignType(detectedType);
+      
+      // Get campaign stats
+      const campaignStats = (data.campaignStats || []).find(s => s.campaign_id === parseInt(campaignId));
+      setStats(normalizeStats(campaignStats || null));
+      
+      // Get daily stats for this campaign (filter from all daily stats)
+      // Note: Public API returns aggregated daily stats, not per-campaign
+      // We'll show what we have
+      setDailyStats((data.dailyStats || []).map(d => ({
+        ...d,
+        ctr: normalizeCtr(d.ctr)
+      })).sort((a, b) => new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)));
+      
+      // Get ads for this campaign
+      const campaignAds = (data.adStats || [])
+        .filter(ad => ad.campaign_id === parseInt(campaignId))
+        .map(ad => ({
+          ...ad,
+          ad_id: ad.ad_id || ad.id,
+          ctr: ad.impressions > 0 ? ad.clicks / ad.impressions : 0,
+          cpm: ad.impressions > 0 ? (parseFloat(ad.total_spend) / ad.impressions) * 1000 : 0,
+          cpc: ad.clicks > 0 ? parseFloat(ad.total_spend) / ad.clicks : 0
+        }));
+      setAdStats(campaignAds);
+      
+      // Try to load additional data from public report center endpoints
+      const orgId = clientData.simplifi_org_id;
+      
+      // Load geo-fence data if it's a geo-fence campaign
+      if (detectedType.isGeoFence) {
+        try {
+          const gfResponse = await fetch(
+            `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/geo-fence-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+          );
+          if (gfResponse.ok) {
+            const gfData = await gfResponse.json();
+            setGeoFencePerformance(gfData.geo_fence_performance || []);
+            setGeoFences(gfData.geo_fence_performance || []);
+          }
+        } catch (e) { console.log('Geo-fence data not available'); }
+      }
+      
+      // Load keyword data if it's a keyword campaign
+      if (detectedType.isKeyword) {
+        try {
+          const kwResponse = await fetch(
+            `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/keyword-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+          );
+          if (kwResponse.ok) {
+            const kwData = await kwResponse.json();
+            setKeywordPerformance(kwData.keyword_performance || []);
+            setKeywords(kwData.keyword_performance || []);
+          }
+        } catch (e) { console.log('Keyword data not available'); }
+      }
+      
+      // Load location performance
+      try {
+        const locResponse = await fetch(
+          `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/location-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+        );
+        if (locResponse.ok) {
+          const locData = await locResponse.json();
+          setLocationPerformance(locData.location_performance || []);
+          setGeoStats(locData.location_performance || []);
+        }
+      } catch (e) { console.log('Location data not available'); }
+      
+      // Load device breakdown
+      try {
+        const deviceResponse = await fetch(
+          `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+        );
+        if (deviceResponse.ok) {
+          const deviceData = await deviceResponse.json();
+          setEnhancedDeviceStats(deviceData.device_breakdown || []);
+          setDeviceStats(deviceData.device_breakdown || []);
+        }
+      } catch (e) { console.log('Device data not available'); }
+      
+    } catch (err) {
+      console.error('[PUBLIC] Error loading campaign data:', err);
+    }
   };
 
   // Trigger a sync for this client
@@ -3717,7 +3835,7 @@ function CampaignDetailPage() {
                   {lastSynced && (
                     <span>Last synced: {lastSynced.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
                   )}
-                  {!clientViewMode && (
+                  {!clientViewMode && !publicMode && (
                     <button
                       onClick={triggerSync}
                       disabled={syncing}
@@ -3752,12 +3870,12 @@ function CampaignDetailPage() {
           justifyContent: 'space-between', 
           alignItems: 'center'
         }}>
-          <Link to={`/client/${slug}`} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
+          <Link to={publicMode ? `/client/${slug}/report` : `/client/${slug}`} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
             <ArrowLeft size={16} /> Back to {client?.name}
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {/* Edit Layout Button - only for logged-in users */}
-            {user && !clientViewMode && (
+            {user && !clientViewMode && !publicMode && (
               <button 
                 onClick={() => setEditMode(!editMode)}
                 style={{ 
@@ -3816,7 +3934,7 @@ function CampaignDetailPage() {
 
       {/* Collapsible Internal Notes - just below header for admins */}
       {/* Notes are client-level only - same notes appear on client page and all campaign pages */}
-      {user && !clientViewMode && (
+      {user && !clientViewMode && !publicMode && (
         <InternalNotesSection clientId={client?.id} isCollapsible={true} />
       )}
 
@@ -7615,6 +7733,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/report/:token" element={<PublicReportPage />} />
           <Route path="/client/:slug/report" element={<ClientDetailPage publicMode={true} />} />
+          <Route path="/client/:slug/report/campaign/:campaignId" element={<CampaignDetailPage publicMode={true} />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/clients" element={<ProtectedRoute><ClientsPage /></ProtectedRoute>} />
           <Route path="/client/:slug" element={<ProtectedRoute><ClientDetailPage /></ProtectedRoute>} />
