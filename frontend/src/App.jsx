@@ -2621,138 +2621,11 @@ function ClientDetailPage({ publicMode = false }) {
     setHistoryLoading(false);
   };
 
-  // Load Report Center enhanced data (aggregated across active campaigns)
+  // Load Report Center enhanced data - DISABLED on client page for performance
+  // Keywords, Geo-fences, and Domains are now only loaded on individual campaign pages
   const loadEnhancedData = async () => {
-    if (!client?.simplifi_org_id) return;
-    
-    const activeCamps = campaigns.filter(c => c.status?.toLowerCase() === 'active');
-    if (activeCamps.length === 0) return;
-    
-    setEnhancedDataLoading(true);
-    
-    // Aggregate data across all active campaigns
-    const allLocations = [];
-    const allGeoFences = [];
-    const allKeywords = [];
-    const allDomains = [];
-    
-    // Fetch data for each active campaign and aggregate
-    for (const campaign of activeCamps.slice(0, 5)) { // Limit to 5 campaigns to avoid rate limits
-      try {
-        // Location performance
-        try {
-          const endpoint = publicMode 
-            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/location-performance`
-            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/location-performance`;
-          
-          const locData = publicMode 
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
-            : await api.get(endpoint);
-          
-          // API returns array directly, handle null
-          if (locData) {
-            const locations = Array.isArray(locData) ? locData : (locData.locations || []);
-            locations.forEach(loc => {
-              const locName = loc.city || loc.metro || loc.location || 'Unknown';
-              const existing = allLocations.find(l => (l.city || l.location) === locName);
-              if (existing) {
-                existing.impressions += loc.impressions || 0;
-                existing.clicks += loc.clicks || 0;
-                existing.spend += loc.spend || 0;
-              } else {
-                allLocations.push({ ...loc, location: locName });
-              }
-            });
-          }
-        } catch (e) { console.log('Location fetch error:', e.message); }
-        
-        // Geo fence performance  
-        try {
-          const endpoint = publicMode
-            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/geo-fence-performance`
-            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/geo-fence-performance`;
-          
-          const geoData = publicMode
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
-            : await api.get(endpoint);
-          
-          // API returns array directly, handle null
-          if (geoData) {
-            const geoFences = Array.isArray(geoData) ? geoData : (geoData.geoFences || []);
-            geoFences.forEach(gf => {
-              const existing = allGeoFences.find(g => g.name === gf.name);
-              if (existing) {
-                existing.impressions += gf.impressions || 0;
-                existing.clicks += gf.clicks || 0;
-              } else {
-                allGeoFences.push({ ...gf });
-              }
-            });
-          }
-        } catch (e) { console.log('GeoFence fetch error:', e.message); }
-        
-        // Keyword performance
-        try {
-          const endpoint = publicMode
-            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/keyword-performance`
-            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/keyword-performance`;
-          
-          const kwData = publicMode
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
-            : await api.get(endpoint);
-          
-          // API returns array directly, handle null
-          if (kwData) {
-            const keywords = Array.isArray(kwData) ? kwData : (kwData.keywords || []);
-            keywords.forEach(kw => {
-              const existing = allKeywords.find(k => k.keyword === kw.keyword);
-              if (existing) {
-                existing.impressions += kw.impressions || 0;
-                existing.clicks += kw.clicks || 0;
-              } else {
-                allKeywords.push({ ...kw });
-              }
-            });
-          }
-        } catch (e) { console.log('Keyword fetch error:', e.message); }
-        
-        // Domain performance
-        try {
-          const endpoint = publicMode
-            ? `${API_BASE}/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/domain-performance`
-            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/domain-performance`;
-          
-          const domData = publicMode
-            ? await fetch(endpoint).then(r => r.ok ? r.json() : [])
-            : await api.get(endpoint);
-          
-          // API returns array directly, handle null
-          if (domData) {
-            const domains = Array.isArray(domData) ? domData : (domData.domains || []);
-            domains.forEach(d => {
-              const existing = allDomains.find(dom => dom.domain === d.domain);
-              if (existing) {
-                existing.impressions += d.impressions || 0;
-                existing.clicks += d.clicks || 0;
-              } else {
-                allDomains.push({ ...d });
-              }
-            });
-          }
-        } catch (e) { console.log('Domain fetch error:', e.message); }
-        
-      } catch (err) {
-        console.error(`Failed to load enhanced data for campaign ${campaign.id}:`, err);
-      }
-    }
-    
-    // Sort and set aggregated data
-    console.log(`Loaded enhanced data: ${allLocations.length} locations, ${allGeoFences.length} geofences, ${allKeywords.length} keywords, ${allDomains.length} domains`);
-    setLocationPerformance(allLocations.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
-    setGeoFencePerformance(allGeoFences.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
-    setKeywordPerformance(allKeywords.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
-    setDomainPerformance(allDomains.sort((a, b) => (b.impressions || 0) - (a.impressions || 0)).slice(0, 20));
-    
+    // Intentionally empty - enhanced data is now loaded per-campaign only
+    // This significantly improves client page load time
     setEnhancedDataLoading(false);
   };
 
@@ -3402,155 +3275,20 @@ function ClientDetailPage({ publicMode = false }) {
                 );
               
               case 'location':
-                if (locationPerformance.length === 0 && !enhancedDataLoading) return null;
-                return (
-                  <DraggableReportSection {...sectionProps} title={`Performance by Location${locationPerformance.length > 0 ? ` (${locationPerformance.length})` : ''}`} icon={MapPin} iconColor="#10b981">
-                    {enhancedDataLoading && locationPerformance.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
-                        <p style={{ fontSize: '0.875rem' }}>Loading location data...</p>
-                      </div>
-                    ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Location</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
-                            {showSpendData && <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Spend</th>}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {locationPerformance.slice(0, 15).map((loc, i) => {
-                            const locName = loc.city || loc.metro || loc.location || 'Unknown';
-                            const ctr = loc.impressions > 0 ? (loc.clicks / loc.impressions * 100) : 0;
-                            return (
-                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{locName}{loc.region ? `, ${loc.region}` : ''}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(loc.impressions)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(loc.clicks)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
-                                {showSpendData && <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatCurrency(loc.spend || 0)}</td>}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </DraggableReportSection>
-                );
+                // Location Performance is now only shown on individual campaign pages
+                return null;
               
               case 'keywords':
-                if (keywordPerformance.length === 0 && !enhancedDataLoading) return null;
-                return (
-                  <DraggableReportSection {...sectionProps} title={`Keyword Performance${keywordPerformance.length > 0 ? ` (${keywordPerformance.length})` : ''}`} icon={Search} iconColor="#f59e0b">
-                    {enhancedDataLoading && keywordPerformance.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
-                        <p style={{ fontSize: '0.875rem' }}>Loading keyword data...</p>
-                      </div>
-                    ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Keyword</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {keywordPerformance.slice(0, 15).map((kw, i) => {
-                            const ctr = kw.impressions > 0 ? (kw.clicks / kw.impressions * 100) : 0;
-                            return (
-                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{kw.keyword}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(kw.impressions)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(kw.clicks)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </DraggableReportSection>
-                );
+                // Keyword Performance is now only shown on individual campaign pages (keyword campaigns only)
+                return null;
               
               case 'geofences':
-                if (geoFencePerformance.length === 0 && !enhancedDataLoading) return null;
-                return (
-                  <DraggableReportSection {...sectionProps} title={`Geo-Fence Performance${geoFencePerformance.length > 0 ? ` (${geoFencePerformance.length})` : ''}`} icon={MapPin} iconColor="#8b5cf6">
-                    {enhancedDataLoading && geoFencePerformance.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
-                        <p style={{ fontSize: '0.875rem' }}>Loading geo-fence data...</p>
-                      </div>
-                    ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Location</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {geoFencePerformance.slice(0, 15).map((gf, i) => {
-                            const ctr = gf.impressions > 0 ? (gf.clicks / gf.impressions * 100) : 0;
-                            return (
-                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{gf.name}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(gf.impressions)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(gf.clicks)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </DraggableReportSection>
-                );
+                // Geo-Fence Performance is now only shown on individual campaign pages (geo-fence campaigns only)
+                return null;
               
               case 'domains':
-                if (domainPerformance.length === 0 && !enhancedDataLoading) return null;
-                return (
-                  <DraggableReportSection {...sectionProps} title={`Top Domains${domainPerformance.length > 0 ? ` (${domainPerformance.length})` : ''}`} icon={Globe} iconColor="#0ea5e9">
-                    {enhancedDataLoading && domainPerformance.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
-                        <div className="spinner" style={{ margin: '0 auto 1rem' }} />
-                        <p style={{ fontSize: '0.875rem' }}>Loading domain data...</p>
-                      </div>
-                    ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Domain</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Impressions</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>Clicks</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', fontWeight: 600, color: '#374151' }}>CTR</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {domainPerformance.slice(0, 15).map((d, i) => {
-                            const ctr = d.impressions > 0 ? (d.clicks / d.impressions * 100) : 0;
-                            return (
-                              <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{d.domain}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(d.impressions)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{formatNumber(d.clicks)}</td>
-                                <td style={{ textAlign: 'right', padding: '0.75rem' }}>{ctr.toFixed(2)}%</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </DraggableReportSection>
-                );
+                // Top Domains is now only shown on individual campaign pages (OTT/CTV campaigns only)
+                return null;
               
               default:
                 return null;
