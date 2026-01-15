@@ -274,10 +274,24 @@ class DatabaseHelper {
     return result.rows;
   }
   
-  async createUser(email, password, name, role) {
+  async createUser(emailOrData, password, name, role) {
+    // Support both object and separate parameters
+    let email, pwd, userName, userRole;
+    if (typeof emailOrData === 'object') {
+      email = emailOrData.email;
+      pwd = emailOrData.password;
+      userName = emailOrData.name;
+      userRole = emailOrData.role || 'user';
+    } else {
+      email = emailOrData;
+      pwd = password;
+      userName = name;
+      userRole = role || 'user';
+    }
+    
     const result = await pool.query(
       'INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
-      [email, password, name, role]
+      [email, pwd, userName, userRole]
     );
     return result.rows[0];
   }
@@ -315,10 +329,22 @@ class DatabaseHelper {
     return result.rows;
   }
   
-  async createBrand(name, logoUrl, primaryColor) {
+  async createBrand(nameOrData, logoUrl, primaryColor) {
+    // Support both object and separate parameters
+    let name, logo, color;
+    if (typeof nameOrData === 'object') {
+      name = nameOrData.name;
+      logo = nameOrData.logo_url || nameOrData.logoUrl;
+      color = nameOrData.primary_color || nameOrData.primaryColor || '#6366f1';
+    } else {
+      name = nameOrData;
+      logo = logoUrl;
+      color = primaryColor || '#6366f1';
+    }
+    
     const result = await pool.query(
-      'INSERT INTO brands (name, logo_url, primary_color) VALUES ($1, $2, $3) RETURNING *',
-      [name, logoUrl, primaryColor || '#6366f1']
+      'INSERT INTO brands (name, primary_color) VALUES ($1, $2) RETURNING *',
+      [name, color]
     );
     return result.rows[0];
   }
@@ -457,6 +483,16 @@ class DatabaseHelper {
     `, [clientId]);
     return result.rows;
   }
+
+  async getAllClientAssignments() {
+    const result = await pool.query(`
+      SELECT ca.*, c.name as client_name, u.name as user_name, u.email as user_email
+      FROM client_assignments ca
+      JOIN clients c ON ca.client_id = c.id
+      JOIN users u ON ca.user_id = u.id
+    `);
+    return result.rows;
+  }
   
   async assignUserToClient(clientId, userId) {
     await pool.query(
@@ -492,10 +528,22 @@ class DatabaseHelper {
     return result.rows;
   }
   
-  async createNote(clientId, userId, content) {
+  async createNote(clientIdOrData, userId, content) {
+    // Support both object and separate parameters
+    let clientId, uid, noteContent;
+    if (typeof clientIdOrData === 'object') {
+      clientId = clientIdOrData.client_id;
+      uid = clientIdOrData.user_id;
+      noteContent = clientIdOrData.content;
+    } else {
+      clientId = clientIdOrData;
+      uid = userId;
+      noteContent = content;
+    }
+    
     const result = await pool.query(
       'INSERT INTO client_notes (client_id, user_id, content) VALUES ($1, $2, $3) RETURNING *',
-      [clientId, userId, content]
+      [clientId, uid, noteContent]
     );
     return result.rows[0];
   }

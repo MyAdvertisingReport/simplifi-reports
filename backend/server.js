@@ -375,7 +375,7 @@ app.get('/api/clients', authenticateToken, async (req, res) => {
     if (req.user.role === 'admin') {
       clients = await dbHelper.getAllClients();
     } else {
-      clients = await dbHelper.getClientsByUserId(req.user.id);
+      clients = await dbHelper.getClientsForUser(req.user.id);
     }
     res.json(clients);
   } catch (error) {
@@ -443,7 +443,7 @@ app.get('/api/client-assignments', authenticateToken, requireAdmin, async (req, 
 // Get users assigned to a specific client
 app.get('/api/clients/:id/assignments', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const users = await dbHelper.getUsersByClientId(req.params.id);
+    const users = await dbHelper.getClientAssignments(req.params.id);
     res.json(users);
   } catch (error) {
     console.error('Get client assignments error:', error);
@@ -458,7 +458,7 @@ app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, async 
     if (!userId) {
       return res.status(400).json({ error: 'User ID required' });
     }
-    await dbHelper.assignClientToUser(req.params.id, userId);
+    await dbHelper.assignUserToClient(req.params.id, userId);
     res.json({ success: true });
   } catch (error) {
     console.error('Assign client error:', error);
@@ -469,7 +469,7 @@ app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, async 
 // Remove user from client
 app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    await dbHelper.unassignClientFromUser(req.params.id, req.params.userId);
+    await dbHelper.removeUserFromClient(req.params.id, req.params.userId);
     res.json({ success: true });
   } catch (error) {
     console.error('Unassign client error:', error);
@@ -480,7 +480,7 @@ app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdm
 // Get clients assigned to a specific user
 app.get('/api/users/:id/clients', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const clients = await dbHelper.getClientsByUserId(req.params.id);
+    const clients = await dbHelper.getClientsForUser(req.params.id);
     res.json(clients);
   } catch (error) {
     console.error('Get user clients error:', error);
@@ -534,7 +534,7 @@ app.get('/api/clients/:clientId/report/pdf', authenticateToken, async (req, res)
 // Get client by share token (legacy)
 app.get('/api/public/client/:token', async (req, res) => {
   try {
-    const client = await dbHelper.getClientByShareToken(req.params.token);
+    const client = await dbHelper.getClientByToken(req.params.token);
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
@@ -580,7 +580,7 @@ app.get('/api/public/client/slug/:slug', async (req, res) => {
 // Get public stats by share token (legacy)
 app.get('/api/public/client/:token/stats', async (req, res) => {
   try {
-    const client = await dbHelper.getClientByShareToken(req.params.token);
+    const client = await dbHelper.getClientByToken(req.params.token);
     if (!client || !client.simplifi_org_id) {
       return res.status(404).json({ error: 'Client not found' });
     }
@@ -803,7 +803,7 @@ app.get('/api/public/report-center/:orgId/campaigns/:campaignId/viewability', as
 
 app.get('/api/clients/:clientId/notes', authenticateToken, async (req, res) => {
   try {
-    const notes = await dbHelper.getNotesByClient(req.params.clientId);
+    const notes = await dbHelper.getClientNotes(req.params.clientId);
     res.json(notes || []);
   } catch (error) {
     console.error('Get notes error:', error);
@@ -1004,7 +1004,7 @@ app.get('/api/clients/:clientId/cached-stats', authenticateToken, async (req, re
     
     // Try to get cached data (may fail if tables don't exist yet)
     try {
-      lastCachedDate = await dbHelper.getLastCachedDate(clientId);
+      lastCachedDate = await dbHelper.getLastFetchDate(clientId);
       
       if (lastCachedDate) {
         const lastCached = new Date(lastCachedDate);
