@@ -3150,9 +3150,10 @@ function CampaignDetailPage() {
             const enrichedAds = cachedData.ads.map(ad => ({
               ...ad,
               ad_id: ad.id,
+              total_spend: ad.spend || ad.total_spend || 0,
               ctr: ad.impressions > 0 ? ad.clicks / ad.impressions : 0,
-              cpm: ad.impressions > 0 ? (ad.spend / ad.impressions) * 1000 : 0,
-              cpc: ad.clicks > 0 ? ad.spend / ad.clicks : 0
+              cpm: ad.impressions > 0 ? ((ad.spend || ad.total_spend || 0) / ad.impressions) * 1000 : 0,
+              cpc: ad.clicks > 0 ? (ad.spend || ad.total_spend || 0) / ad.clicks : 0
             }));
             console.log('[DEBUG] Enriched ads:', enrichedAds.length, enrichedAds[0]);
             setAdStats(enrichedAds);
@@ -3198,6 +3199,7 @@ function CampaignDetailPage() {
                   impressions: stat.impressions || 0,
                   clicks: stat.clicks || 0,
                   spend: parseFloat(stat.total_spend) || 0,
+                  total_spend: parseFloat(stat.total_spend) || 0,
                   ctr: stat.impressions > 0 ? stat.clicks / stat.impressions : 0,
                   cpm: stat.impressions > 0 ? (parseFloat(stat.total_spend) / stat.impressions) * 1000 : 0,
                   cpc: stat.clicks > 0 ? parseFloat(stat.total_spend) / stat.clicks : 0
