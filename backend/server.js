@@ -1255,48 +1255,71 @@ app.get('/api/clients/:clientId/campaigns/:campaignId/cached-data', authenticate
     const { clientId, campaignId } = req.params;
     const { startDate, endDate } = req.query;
     
+    // Get client info first (needed for API fallback)
+    const client = await dbHelper.getClientById(clientId);
+    if (!client?.simplifi_org_id) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
     // Get all cached data in parallel from PostgreSQL
     const data = await dbHelper.getAllCachedDataForCampaign(clientId, parseInt(campaignId), startDate, endDate);
     
-    // If we have no cached data, trigger a sync and return what we can from API
-    if (!data.campaign && (!data.stats || !data.stats.length)) {
-      console.log(`[CACHE] No cached data for campaign ${campaignId}, fetching from API...`);
-      
-      const client = await dbHelper.getClientById(clientId);
-      if (!client?.simplifi_org_id) {
-        return res.status(404).json({ error: 'Client not found' });
+    // Parse campaign data from cache
+    let campaignInfo = null;
+    if (data.campaign?.campaign_data) {
+      try {
+        campaignInfo = JSON.parse(data.campaign.campaign_data);
+      } catch (e) {
+        console.log('Could not parse campaign_data:', e.message);
       }
+    }
+    
+    // If we have no cached data OR no campaign name, fetch campaign info from API
+    if (!campaignInfo?.name || (!data.stats || !data.stats.length)) {
+      console.log(`[CACHE] No cached data or campaign name for campaign ${campaignId}, fetching from API...`);
       
       // Trigger background sync
-      if (syncService) {
+      if (syncService && (!data.stats || !data.stats.length)) {
         syncService.syncClient(clientId, { includeReportCenter: false }).catch(console.error);
       }
       
-      // Return fresh data from API (slower but necessary for first load)
-      try {
-        const [campaignData, statsData] = await Promise.all([
-          simplifiClient.getCampaign(client.simplifi_org_id, campaignId).catch(() => null),
-          simplifiClient.getCampaignStats(client.simplifi_org_id, { campaignId, startDate, endDate, byDay: true }).catch(() => ({ campaign_stats: [] }))
-        ]);
-        
-        return res.json({
-          campaign: campaignData?.campaigns?.[0] || null,
-          stats: aggregateStats(statsData.campaign_stats || []),
-          dailyStats: statsData.campaign_stats || [],
-          ads: [],
-          keywords: [],
-          geoFences: [],
-          locationStats: [],
-          deviceStats: [],
-          viewability: null,
-          conversions: [],
-          fromCache: false,
-          lastSynced: null,
-          message: 'Data fetched from API. Background sync started.'
-        });
-      } catch (apiError) {
-        console.error('API fetch error:', apiError);
-        return res.json({ ...data, fromCache: true, error: 'Could not fetch fresh data' });
+      // Fetch campaign info from API if we don't have the name
+      if (!campaignInfo?.name) {
+        try {
+          const campaignData = await simplifiClient.getCampaign(client.simplifi_org_id, campaignId);
+          if (campaignData?.campaigns?.[0]) {
+            campaignInfo = campaignData.campaigns[0];
+          }
+        } catch (e) {
+          console.log('Could not fetch campaign from API:', e.message);
+        }
+      }
+      
+      // If we still have no stats, fetch them too
+      if (!data.stats || !data.stats.length) {
+        try {
+          const statsData = await simplifiClient.getCampaignStats(client.simplifi_org_id, { 
+            campaignId, startDate, endDate, byDay: true 
+          });
+          
+          return res.json({
+            campaign: campaignInfo,
+            stats: aggregateStats(statsData.campaign_stats || []),
+            dailyStats: statsData.campaign_stats || [],
+            ads: [],
+            keywords: [],
+            geoFences: [],
+            locationStats: [],
+            deviceStats: [],
+            viewability: null,
+            conversions: [],
+            fromCache: false,
+            lastSynced: data.lastSynced,
+            message: 'Data fetched from API. Background sync started.'
+          });
+        } catch (apiError) {
+          console.error('API fetch error:', apiError);
+        }
       }
     }
     
@@ -1313,7 +1336,7 @@ app.get('/api/clients/:clientId/campaigns/:campaignId/cached-data', authenticate
     const geoFencesWithStats = mergeGeoFencesWithStats(data.geoFences || [], data.geoFenceStats || []);
     
     res.json({
-      campaign: data.campaign ? JSON.parse(data.campaign.campaign_data || '{}') : null,
+      campaign: campaignInfo,
       stats: aggregatedStats,
       dailyStats: data.stats || [],
       ads: adsWithStats,

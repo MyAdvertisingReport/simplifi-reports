@@ -164,24 +164,32 @@ export const api = {
 // ============================================
 const formatNumber = (num) => {
   if (num === null || num === undefined) return '—';
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-  return new Intl.NumberFormat().format(Math.round(num));
+  const n = parseFloat(num);
+  if (isNaN(n)) return '—';
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return new Intl.NumberFormat().format(Math.round(n));
 };
 
 const formatNumberFull = (num) => {
   if (num === null || num === undefined) return '—';
-  return new Intl.NumberFormat().format(Math.round(num));
+  const n = parseFloat(num);
+  if (isNaN(n)) return '—';
+  return new Intl.NumberFormat().format(Math.round(n));
 };
 
 const formatCurrency = (num) => {
   if (num === null || num === undefined) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
+  const n = parseFloat(num);
+  if (isNaN(n)) return '—';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 };
 
 const formatPercent = (num) => {
   if (num === null || num === undefined) return '—';
-  return (num * 100).toFixed(2) + '%';
+  const n = parseFloat(num);
+  if (isNaN(n)) return '—';
+  return (n * 100).toFixed(2) + '%';
 };
 
 // Parse campaign name to extract strategy type
@@ -224,11 +232,17 @@ const parseStrategy = (campaignName) => {
 };
 
 // Parse ad name to extract size
-const parseAdSize = (adName) => {
-  if (!adName) return 'Unknown';
-  const sizeMatch = adName.match(/(\d{2,4}x\d{2,4})/i);
-  if (sizeMatch) return sizeMatch[1];
-  if (adName.toLowerCase().includes('.mp4') || adName.toLowerCase().includes('ott')) return 'Video/OTT';
+const parseAdSize = (adName, width, height) => {
+  // First try to parse from name
+  if (adName) {
+    const sizeMatch = adName.match(/(\d{2,4}x\d{2,4})/i);
+    if (sizeMatch) return sizeMatch[1];
+    if (adName.toLowerCase().includes('.mp4') || adName.toLowerCase().includes('ott')) return 'Video/OTT';
+  }
+  // Fall back to width/height if available
+  if (width && height) {
+    return `${width}x${height}`;
+  }
   return 'Unknown';
 };
 
@@ -746,7 +760,7 @@ function DashboardPage() {
     return n?.toLocaleString() || '0';
   };
 
-  const formatCurrency = (n) => '$' + (n || 0).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const formatCurrency = (n) => '$' + (parseFloat(n) || 0).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
@@ -924,7 +938,7 @@ function DashboardPage() {
                     <span style={{ fontWeight: 500 }}>{client.name}</span>
                   </div>
                   <span style={{ fontFamily: 'monospace', color: '#8b5cf6', fontWeight: 600 }}>
-                    {client.ctr.toFixed(2)}%
+                    {(parseFloat(client.ctr) || 0).toFixed(2)}%
                   </span>
                 </Link>
               ))
@@ -1308,7 +1322,7 @@ function NeedsAttentionSection({ campaigns, pixelsNeedingAttention, lowCTRCampai
                               color: '#dc2626',
                               fontFamily: 'monospace'
                             }}>
-                              {camp.ctr.toFixed(3)}% CTR
+                              {(parseFloat(camp.ctr) || 0).toFixed(3)}% CTR
                             </div>
                             <div style={{ fontSize: '0.6875rem', color: '#6b7280' }}>
                               {camp.clicks.toLocaleString()} clicks / {camp.impressions.toLocaleString()} impr
@@ -1580,7 +1594,7 @@ function ClientsPage() {
     return n?.toLocaleString() || '0';
   };
 
-  const formatCurrency = (n) => '$' + (n || 0).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const formatCurrency = (n) => '$' + (parseFloat(n) || 0).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
@@ -2230,7 +2244,7 @@ function ClientDetailPage({ publicMode = false }) {
 
   // Get top 3 ad sizes from active campaigns - include preview images
   const adSizeStats = adStats.reduce((acc, ad) => {
-    const size = parseAdSize(ad.name);
+    const size = parseAdSize(ad.name, ad.width, ad.height);
     if (!acc[size]) {
       acc[size] = { 
         impressions: 0, 
@@ -4961,7 +4975,7 @@ function ExpandableLocationTable({ locations, showSpend, formatNumber, formatCur
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#7c3aed' }}>
-                      {state.ctr.toFixed(2)}%
+                      {(parseFloat(state.ctr) || 0).toFixed(2)}%
                     </div>
                     <div style={{ fontSize: '0.6875rem', color: '#6b7280' }}>CTR</div>
                   </div>
