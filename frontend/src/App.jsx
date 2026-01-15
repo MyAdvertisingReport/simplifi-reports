@@ -3135,7 +3135,9 @@ function CampaignDetailPage({ publicMode = false }) {
 
       // In public mode, fetch data from public endpoints
       if (publicMode) {
+        console.log('[PUBLIC] Starting loadPublicCampaignData...');
         await loadPublicCampaignData(clientData);
+        console.log('[PUBLIC] Finished loadPublicCampaignData, setting loading=false');
         setLoading(false);
         return;
       }
@@ -3402,6 +3404,7 @@ function CampaignDetailPage({ publicMode = false }) {
         }
       } catch (e) { console.log('Device data not available'); }
       
+      console.log('[PUBLIC] loadPublicCampaignData COMPLETED');
     } catch (err) {
       console.error('[PUBLIC] Error loading campaign data:', err);
     }
@@ -3679,6 +3682,7 @@ function CampaignDetailPage({ publicMode = false }) {
   const statusStyle = getStatusStyle(campaign?.status);
   const StatusIcon = statusStyle.icon;
 
+  console.log('[RENDER] loading state:', loading);
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
   return (
