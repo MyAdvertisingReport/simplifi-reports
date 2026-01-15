@@ -3947,6 +3947,11 @@ function CampaignDetailPage({ publicMode = false }) {
 
       {/* Render sections in order */}
       {sectionOrder.map(sectionId => {
+        // Debug: log each section being processed
+        if (sectionId === 'geofences') {
+          console.log('[SECTION RENDER] Processing geofences section, geoFences:', geoFences.length, 'geoFencePerformance:', geoFencePerformance.length);
+        }
+        
         const sectionProps = {
           key: sectionId,
           id: sectionId,
