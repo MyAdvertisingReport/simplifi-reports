@@ -509,25 +509,6 @@ app.delete('/api/clients/:id', authenticateToken, requireAdmin, async (req, res)
 });
 
 // ============================================
-// CLIENT REPORT PDF ROUTES
-// ============================================
-
-// PDF report generation endpoint
-app.get('/api/clients/:clientId/report/pdf', authenticateToken, async (req, res) => {
-  try {
-    // For now, return a message that PDF generation needs to be configured
-    // Full implementation requires puppeteer or similar
-    res.status(501).json({ 
-      error: 'PDF generation not yet configured',
-      message: 'PDF report generation requires additional server setup'
-    });
-  } catch (error) {
-    console.error('PDF generation error:', error);
-    res.status(500).json({ error: 'Failed to generate PDF' });
-  }
-});
-
-// ============================================
 // PUBLIC REPORT ROUTES (No auth required)
 // ============================================
 
@@ -938,11 +919,14 @@ app.get('/api/simplifi/organizations', authenticateToken, async (req, res) => {
 // Get organization campaigns
 app.get('/api/simplifi/organizations/:orgId/campaigns', authenticateToken, async (req, res) => {
   try {
+    if (!simplifiClient) {
+      return res.json({ campaigns: [], error: 'API client not initialized' });
+    }
     const campaigns = await simplifiClient.getCampaigns(req.params.orgId);
-    res.json(campaigns);
+    res.json(campaigns || { campaigns: [] });
   } catch (error) {
-    console.error('Get campaigns error:', error);
-    res.status(500).json({ error: 'Failed to get campaigns' });
+    console.error('Get campaigns error:', error.message);
+    res.json({ campaigns: [], error: error.message });
   }
 });
 
