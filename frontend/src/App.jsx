@@ -3116,7 +3116,58 @@ function CampaignDetailPage() {
             console.log('[DEBUG] Enriched ads:', enrichedAds.length, enrichedAds[0]);
             setAdStats(enrichedAds);
           } else {
-            console.log('[DEBUG] No ads in cached data');
+            console.log('[DEBUG] No ads in cached data, fetching from API...');
+            // Fetch ads from API as fallback
+            try {
+              const [adsResponse, adStatsResponse] = await Promise.all([
+                api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns/${campaignId}/ads`),
+                api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byAd=true`)
+              ]);
+              
+              const adsFromApi = adsResponse.ads || [];
+              const adStatsFromApi = adStatsResponse.campaign_stats || [];
+              
+              // Build stats map
+              const statsMap = {};
+              adStatsFromApi.forEach(s => { statsMap[s.ad_id] = s; });
+              
+              // Merge ads with stats
+              const enrichedAds = adsFromApi.map(ad => {
+                const stat = statsMap[ad.id] || {};
+                // Parse dimensions
+                let width = ad.original_width ? parseInt(ad.original_width) : null;
+                let height = ad.original_height ? parseInt(ad.original_height) : null;
+                if ((!width || !height) && ad.ad_sizes?.length > 0) {
+                  width = width || ad.ad_sizes[0].width;
+                  height = height || ad.ad_sizes[0].height;
+                }
+                const sizeMatch = ad.name?.match(/(\d{2,4})x(\d{2,4})/i);
+                if (sizeMatch && (!width || !height)) {
+                  width = width || parseInt(sizeMatch[1]);
+                  height = height || parseInt(sizeMatch[2]);
+                }
+                
+                return {
+                  ...ad,
+                  ad_id: ad.id,
+                  preview_url: ad.primary_creative_url,
+                  width,
+                  height,
+                  is_video: ad.ad_file_types?.[0]?.name?.toLowerCase() === 'video' || ad.name?.toLowerCase().includes('.mp4'),
+                  impressions: stat.impressions || 0,
+                  clicks: stat.clicks || 0,
+                  spend: parseFloat(stat.total_spend) || 0,
+                  ctr: stat.impressions > 0 ? stat.clicks / stat.impressions : 0,
+                  cpm: stat.impressions > 0 ? (parseFloat(stat.total_spend) / stat.impressions) * 1000 : 0,
+                  cpc: stat.clicks > 0 ? parseFloat(stat.total_spend) / stat.clicks : 0
+                };
+              });
+              
+              console.log('[DEBUG] Fetched ads from API:', enrichedAds.length, enrichedAds[0]);
+              setAdStats(enrichedAds);
+            } catch (adError) {
+              console.log('[DEBUG] Could not fetch ads from API:', adError.message);
+            }
           }
           
           // Keywords
