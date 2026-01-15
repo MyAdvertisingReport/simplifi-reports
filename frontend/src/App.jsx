@@ -3341,12 +3341,16 @@ function CampaignDetailPage({ publicMode = false }) {
           const gfResponse = await fetch(
             `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/geo-fence-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
           );
+          console.log('[PUBLIC] Geo-fence response status:', gfResponse.status);
           if (gfResponse.ok) {
             const gfData = await gfResponse.json();
-            setGeoFencePerformance(gfData.geo_fence_performance || []);
-            setGeoFences(gfData.geo_fence_performance || []);
+            console.log('[PUBLIC] Geo-fence data:', gfData);
+            // API returns geofence_performance (no underscore)
+            const geoFences = gfData.geofence_performance || gfData.geo_fence_performance || [];
+            setGeoFencePerformance(geoFences);
+            setGeoFences(geoFences);
           }
-        } catch (e) { console.log('Geo-fence data not available'); }
+        } catch (e) { console.log('Geo-fence data not available:', e.message); }
       }
       
       // Load keyword data if it's a keyword campaign
@@ -3368,12 +3372,14 @@ function CampaignDetailPage({ publicMode = false }) {
         const locResponse = await fetch(
           `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/location-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
         );
+        console.log('[PUBLIC] Location response status:', locResponse.status);
         if (locResponse.ok) {
           const locData = await locResponse.json();
+          console.log('[PUBLIC] Location data count:', (locData.location_performance || []).length);
           setLocationPerformance(locData.location_performance || []);
           setGeoStats(locData.location_performance || []);
         }
-      } catch (e) { console.log('Location data not available'); }
+      } catch (e) { console.log('Location data not available:', e.message); }
       
       // Load device breakdown
       try {
