@@ -3346,9 +3346,10 @@ function CampaignDetailPage({ publicMode = false }) {
             const gfData = await gfResponse.json();
             console.log('[PUBLIC] Geo-fence data:', gfData);
             // API returns geofence_performance (no underscore)
-            const geoFences = gfData.geofence_performance || gfData.geo_fence_performance || [];
-            setGeoFencePerformance(geoFences);
-            setGeoFences(geoFences);
+            const geoFenceData = gfData.geofence_performance || gfData.geo_fence_performance || [];
+            console.log('[PUBLIC] Setting geo-fence state with', geoFenceData.length, 'items');
+            setGeoFencePerformance(geoFenceData);
+            setGeoFences(geoFenceData);
           }
         } catch (e) { console.log('Geo-fence data not available:', e.message); }
       }
@@ -4109,6 +4110,14 @@ function CampaignDetailPage({ publicMode = false }) {
             // Only show for geo-fence campaigns OR if we have actual geo-fence data
             const hasGeoFenceData = geoFences.length > 0 || geoFencePerformance.length > 0;
             const isGeoFenceCampaign = campaignType.isGeoFence;
+            
+            console.log('[GEOFENCE RENDER] Check:', { 
+              geoFencesLength: geoFences.length, 
+              geoFencePerformanceLength: geoFencePerformance.length,
+              hasGeoFenceData,
+              isGeoFenceCampaign,
+              campaignType
+            });
             
             // Skip if not a geo-fence campaign AND no geo-fence data
             if (!hasGeoFenceData && !isGeoFenceCampaign) return null;
