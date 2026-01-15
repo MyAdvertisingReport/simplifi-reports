@@ -156,6 +156,29 @@ class SimplifiClient {
       const url = `/organizations/${orgId}/campaigns?${params.toString()}`;
       console.log('Fetching campaigns with ads:', url);
       const response = await this.rateLimitedRequest('get', url);
+      
+      // Log ad structure for debugging
+      const campaigns = response.data?.campaigns || [];
+      const firstCampaignWithAds = campaigns.find(c => c.ads && c.ads.length > 0);
+      if (firstCampaignWithAds && firstCampaignWithAds.ads[0]) {
+        const sampleAd = firstCampaignWithAds.ads[0];
+        console.log('[AD STRUCTURE] Sample ad keys:', Object.keys(sampleAd));
+        console.log('[AD STRUCTURE] Sample ad:', JSON.stringify({
+          id: sampleAd.id,
+          name: sampleAd.name,
+          original_width: sampleAd.original_width,
+          original_height: sampleAd.original_height,
+          width: sampleAd.width,
+          height: sampleAd.height,
+          ad_sizes: sampleAd.ad_sizes,
+          ad_file_types: sampleAd.ad_file_types,
+          primary_creative_url: sampleAd.primary_creative_url,
+          creative_url: sampleAd.creative_url
+        }, null, 2));
+      } else {
+        console.log('[AD STRUCTURE] No ads found in campaigns');
+      }
+      
       return response.data;
     } catch (error) {
       throw this._handleError(error);
