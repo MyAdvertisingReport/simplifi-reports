@@ -3014,7 +3014,7 @@ function CampaignDetailPage({ publicMode = false }) {
   };
   
   // Default section order - can be customized (device stats shown only on main client page)
-  const defaultSectionOrder = ['performance', 'vcr', 'conversions', 'charts', 'geo', 'keywords', 'keywordPerformance', 'ads', 'geofences', 'domains', 'daily'];
+  const defaultSectionOrder = ['performance', 'vcr', 'conversions', 'charts', 'geo', 'geofences', 'keywords', 'keywordPerformance', 'ads', 'domains', 'daily'];
   const [sectionOrder, setSectionOrder] = useState(() => {
     // In public mode, always use default order (don't use localStorage)
     if (publicMode) {
@@ -3041,9 +3041,6 @@ function CampaignDetailPage({ publicMode = false }) {
     }
     return defaultSectionOrder;
   });
-  
-  // Debug log section order
-  console.log('[SECTION ORDER]', sectionOrder, 'includes geofences:', sectionOrder.includes('geofences'));
   
   const { user } = useAuth();
   
@@ -3351,17 +3348,20 @@ function CampaignDetailPage({ publicMode = false }) {
           const gfResponse = await fetch(
             `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/geo-fence-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
           );
-          console.log('[PUBLIC] Geo-fence response status:', gfResponse.status);
           if (gfResponse.ok) {
             const gfData = await gfResponse.json();
-            console.log('[PUBLIC] Geo-fence data:', gfData);
             // API returns geofence_performance (no underscore)
-            const geoFenceData = gfData.geofence_performance || gfData.geo_fence_performance || [];
-            console.log('[PUBLIC] Setting geo-fence state with', geoFenceData.length, 'items');
+            const rawGeoFenceData = gfData.geofence_performance || gfData.geo_fence_performance || [];
+            // Map geoFenceName to name for the component
+            const geoFenceData = rawGeoFenceData.map(gf => ({
+              ...gf,
+              id: gf.geoFenceId,
+              name: gf.geoFenceName || gf.name
+            }));
             setGeoFencePerformance(geoFenceData);
             setGeoFences(geoFenceData);
           }
-        } catch (e) { console.log('Geo-fence data not available:', e.message); }
+        } catch (e) { console.log('Geo-fence data not available'); }
       }
       
       // Load keyword data if it's a keyword campaign
@@ -3383,14 +3383,12 @@ function CampaignDetailPage({ publicMode = false }) {
         const locResponse = await fetch(
           `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/location-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
         );
-        console.log('[PUBLIC] Location response status:', locResponse.status);
         if (locResponse.ok) {
           const locData = await locResponse.json();
-          console.log('[PUBLIC] Location data count:', (locData.location_performance || []).length);
           setLocationPerformance(locData.location_performance || []);
           setGeoStats(locData.location_performance || []);
         }
-      } catch (e) { console.log('Location data not available:', e.message); }
+      } catch (e) { console.log('Location data not available'); }
       
       // Load device breakdown
       try {
@@ -3959,11 +3957,6 @@ function CampaignDetailPage({ publicMode = false }) {
 
       {/* Render sections in order */}
       {sectionOrder.map(sectionId => {
-        // Debug: log each section being processed
-        if (sectionId === 'geofences') {
-          console.log('[SECTION RENDER] Processing geofences section, geoFences:', geoFences.length, 'geoFencePerformance:', geoFencePerformance.length);
-        }
-        
         const sectionProps = {
           key: sectionId,
           id: sectionId,
@@ -4127,14 +4120,6 @@ function CampaignDetailPage({ publicMode = false }) {
             // Only show for geo-fence campaigns OR if we have actual geo-fence data
             const hasGeoFenceData = geoFences.length > 0 || geoFencePerformance.length > 0;
             const isGeoFenceCampaign = campaignType.isGeoFence;
-            
-            console.log('[GEOFENCE RENDER] Check:', { 
-              geoFencesLength: geoFences.length, 
-              geoFencePerformanceLength: geoFencePerformance.length,
-              hasGeoFenceData,
-              isGeoFenceCampaign,
-              campaignType
-            });
             
             // Skip if not a geo-fence campaign AND no geo-fence data
             if (!hasGeoFenceData && !isGeoFenceCampaign) return null;
