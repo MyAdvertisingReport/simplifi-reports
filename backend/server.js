@@ -952,36 +952,62 @@ app.get('/api/simplifi/organizations/:orgId/campaigns-with-ads', authenticateTok
     const campaigns = await simplifiClient.getCampaignsWithAds(req.params.orgId);
     res.json(campaigns);
   } catch (error) {
-    console.error('Get campaigns with ads error:', error);
-    res.status(500).json({ error: 'Failed to get campaigns with ads' });
+    console.error('Get campaigns with ads error:', error.message);
+    // Return empty instead of 500
+    res.json({ campaigns: [], error: error.message });
   }
 });
 
 // Get organization stats
 app.get('/api/simplifi/organizations/:orgId/stats', authenticateToken, async (req, res) => {
   try {
-    const { startDate, endDate, byDay, byCampaign, byAd } = req.query;
+    // Check if client is initialized
+    if (!simplifiClient) {
+      console.error('[STATS] Simpli.fi client not initialized');
+      return res.json({ campaign_stats: [], error: 'API client not initialized' });
+    }
+    
+    const { startDate, endDate, byDay, byCampaign, byAd, campaignId } = req.query;
+    
+    console.log(`[STATS] Fetching for org ${req.params.orgId}, dates: ${startDate} to ${endDate}`);
     
     // If byAd is requested, use a different method
     if (byAd === 'true') {
       const stats = await simplifiClient.getAdStats(req.params.orgId, {
         startDate,
-        endDate
+        endDate,
+        campaignId
       });
-      res.json(stats);
-    } else {
-      const stats = await simplifiClient.getOrganizationStats(
-        req.params.orgId,
+      return res.json(stats || { campaign_stats: [] });
+    }
+    
+    // If campaignId is specified, get campaign-specific stats
+    if (campaignId) {
+      const stats = await simplifiClient.getCampaignStats(req.params.orgId, {
+        campaignId,
         startDate,
         endDate,
-        byDay === 'true',
-        byCampaign === 'true'
-      );
-      res.json(stats);
+        byDay: byDay === 'true'
+      });
+      return res.json(stats || { campaign_stats: [] });
     }
+    
+    // Otherwise get org-wide stats
+    const stats = await simplifiClient.getOrganizationStats(
+      req.params.orgId,
+      startDate,
+      endDate,
+      byDay === 'true',
+      byCampaign === 'true'
+    );
+    res.json(stats || { campaign_stats: [] });
   } catch (error) {
-    console.error('Get stats error:', error);
-    res.status(500).json({ error: 'Failed to get stats' });
+    console.error('[STATS] Error:', error.message, error.stack);
+    // Return empty stats instead of 500 error
+    res.json({ 
+      campaign_stats: [],
+      error: error.message 
+    });
   }
 });
 
