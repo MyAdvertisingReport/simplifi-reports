@@ -3016,6 +3016,11 @@ function CampaignDetailPage({ publicMode = false }) {
   // Default section order - can be customized (device stats shown only on main client page)
   const defaultSectionOrder = ['performance', 'vcr', 'conversions', 'charts', 'geo', 'keywords', 'keywordPerformance', 'ads', 'geofences', 'domains', 'daily'];
   const [sectionOrder, setSectionOrder] = useState(() => {
+    // In public mode, always use default order (don't use localStorage)
+    if (publicMode) {
+      return defaultSectionOrder;
+    }
+    
     // Try to load saved order from localStorage
     const saved = localStorage.getItem('campaignSectionOrder');
     if (saved) {
@@ -3036,6 +3041,9 @@ function CampaignDetailPage({ publicMode = false }) {
     }
     return defaultSectionOrder;
   });
+  
+  // Debug log section order
+  console.log('[SECTION ORDER]', sectionOrder, 'includes geofences:', sectionOrder.includes('geofences'));
   
   const { user } = useAuth();
   
