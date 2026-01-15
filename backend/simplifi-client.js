@@ -8,6 +8,10 @@ const https = require('https');
 
 const BASE_URL = 'https://app.simpli.fi/api';
 
+// Simple in-memory cache for API responses
+const responseCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL
+
 class SimplifiClient {
   constructor(appKey, userKey) {
     this.appKey = appKey;
@@ -20,6 +24,90 @@ class SimplifiClient {
         'Content-Type': 'application/json'
       }
     });
+    
+    // Rate limiting queue
+    this.requestQueue = [];
+    this.isProcessingQueue = false;
+    this.lastRequestTime = 0;
+    this.minRequestInterval = 200; // Minimum 200ms between requests
+  }
+  
+  /**
+   * Make a rate-limited request with caching
+   */
+  async rateLimitedRequest(method, url, options = {}) {
+    const cacheKey = `${method}:${url}:${JSON.stringify(options)}`;
+    
+    // Check cache first
+    const cached = responseCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`[SIMPLIFI CLIENT] Cache hit for ${url}`);
+      return cached.data;
+    }
+    
+    // Queue the request
+    return new Promise((resolve, reject) => {
+      this.requestQueue.push({ method, url, options, resolve, reject, cacheKey });
+      this.processQueue();
+    });
+  }
+  
+  /**
+   * Process queued requests with rate limiting
+   */
+  async processQueue() {
+    if (this.isProcessingQueue || this.requestQueue.length === 0) return;
+    
+    this.isProcessingQueue = true;
+    
+    while (this.requestQueue.length > 0) {
+      const { method, url, options, resolve, reject, cacheKey } = this.requestQueue.shift();
+      
+      // Ensure minimum interval between requests
+      const elapsed = Date.now() - this.lastRequestTime;
+      if (elapsed < this.minRequestInterval) {
+        await new Promise(r => setTimeout(r, this.minRequestInterval - elapsed));
+      }
+      
+      try {
+        this.lastRequestTime = Date.now();
+        const response = method === 'get' 
+          ? await this.client.get(url, options)
+          : await this.client.post(url, options.data, options);
+        
+        // Cache the response
+        responseCache.set(cacheKey, { data: response, timestamp: Date.now() });
+        
+        resolve(response);
+      } catch (error) {
+        // If rate limited, wait and retry
+        if (error.response?.status === 429) {
+          console.log(`[SIMPLIFI CLIENT] Rate limited, waiting 5 seconds...`);
+          await new Promise(r => setTimeout(r, 5000));
+          // Re-queue the request
+          this.requestQueue.unshift({ method, url, options, resolve, reject, cacheKey });
+        } else {
+          reject(error);
+        }
+      }
+    }
+    
+    this.isProcessingQueue = false;
+  }
+  
+  /**
+   * Clear cache for a specific pattern or all
+   */
+  clearCache(pattern = null) {
+    if (pattern) {
+      for (const key of responseCache.keys()) {
+        if (key.includes(pattern)) {
+          responseCache.delete(key);
+        }
+      }
+    } else {
+      responseCache.clear();
+    }
   }
 
   /**
@@ -27,7 +115,7 @@ class SimplifiClient {
    */
   async getOrganizations() {
     try {
-      const response = await this.client.get('/organizations');
+      const response = await this.rateLimitedRequest('get', '/organizations');
       return response.data;
     } catch (error) {
       throw this._handleError(error);
@@ -47,7 +135,7 @@ class SimplifiClient {
       if (options.include) params.append('include', options.include);
       
       const url = `/organizations/${orgId}/campaigns${params.toString() ? '?' + params.toString() : ''}`;
-      const response = await this.client.get(url);
+      const response = await this.rateLimitedRequest('get', url);
       return response.data;
     } catch (error) {
       throw this._handleError(error);
@@ -67,7 +155,7 @@ class SimplifiClient {
 
       const url = `/organizations/${orgId}/campaigns?${params.toString()}`;
       console.log('Fetching campaigns with ads:', url);
-      const response = await this.client.get(url);
+      const response = await this.rateLimitedRequest('get', url);
       return response.data;
     } catch (error) {
       throw this._handleError(error);
@@ -81,7 +169,7 @@ class SimplifiClient {
    */
   async getCampaign(orgId, campaignId) {
     try {
-      const response = await this.client.get(`/organizations/${orgId}/campaigns/${campaignId}`);
+      const response = await this.rateLimitedRequest('get', `/organizations/${orgId}/campaigns/${campaignId}`);
       return response.data;
     } catch (error) {
       throw this._handleError(error);
@@ -113,7 +201,7 @@ class SimplifiClient {
       if (options.page) params.append('page', options.page);
 
       const url = `/organizations/${orgId}/campaign_stats${params.toString() ? '?' + params.toString() : ''}`;
-      const response = await this.client.get(url);
+      const response = await this.rateLimitedRequest('get', url);
       return response.data;
     } catch (error) {
       throw this._handleError(error);
@@ -149,7 +237,7 @@ class SimplifiClient {
    */
   async getDeviceTypes() {
     try {
-      const response = await this.client.get('/device_types');
+      const response = await this.rateLimitedRequest('get', '/device_types');
       return response.data;
     } catch (error) {
       throw this._handleError(error);
@@ -162,7 +250,7 @@ class SimplifiClient {
    */
   async getCampaignDeviceTypes(campaignId) {
     try {
-      const response = await this.client.get(`/campaigns/${campaignId}/device_types`);
+      const response = await this.rateLimitedRequest('get', `/campaigns/${campaignId}/device_types`);
       return response.data;
     } catch (error) {
       throw this._handleError(error);
@@ -179,7 +267,7 @@ class SimplifiClient {
       // Use full URL with org context - the short syntax doesn't always work
       const url = `/organizations/${orgId}/campaigns/${campaignId}/ads`;
       console.log(`[SIMPLIFI CLIENT] Fetching ads from: ${url}`);
-      const response = await this.client.get(url);
+      const response = await this.rateLimitedRequest('get', url);
       console.log(`[SIMPLIFI CLIENT] Ads response status: ${response.status}`);
       console.log(`[SIMPLIFI CLIENT] Ads count: ${response.data?.ads?.length || 0}`);
       if (response.data?.ads?.[0]) {
@@ -685,7 +773,7 @@ class SimplifiClient {
    */
   async getCampaignDetails(campaignId) {
     try {
-      const response = await this.client.get(`/campaigns/${campaignId}`);
+      const response = await this.rateLimitedRequest('get', `/campaigns/${campaignId}`);
       return response.data;
     } catch (error) {
       throw this._handleError(error);
