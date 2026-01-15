@@ -14,84 +14,21 @@ const pool = new Pool({
 async function initializeDatabase() {
   const client = await pool.connect();
   try {
-    // First, create core tables if they don't exist
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        name VARCHAR(255),
-        role VARCHAR(50) DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      
-      CREATE TABLE IF NOT EXISTS brands (
-        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-        name VARCHAR(255) NOT NULL,
-        logo_url TEXT,
-        primary_color VARCHAR(7) DEFAULT '#6366f1',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    // Check if clients table exists
-    const clientsExist = await client.query(`
-      SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'clients')
-    `);
-
-    if (!clientsExist.rows[0].exists) {
-      // Create clients table
-      await client.query(`
-        CREATE TABLE clients (
-          id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-          name VARCHAR(255) NOT NULL,
-          slug VARCHAR(255) UNIQUE,
-          brand_id TEXT REFERENCES brands(id),
-          simplifi_org_id INTEGER,
-          public_token VARCHAR(255) UNIQUE,
-          logo_path TEXT,
-          primary_color VARCHAR(20),
-          secondary_color VARCHAR(20),
-          date_range_start DATE,
-          date_range_end DATE,
-          status VARCHAR(50) DEFAULT 'active',
-          created_at TIMESTAMP DEFAULT NOW()
-        );
-      `);
-    }
-
-    // Check the actual type of clients.id
-    const clientIdType = await client.query(`
+    // Don't recreate existing tables - they may have different schema
+    // Just create the caching tables
+    
+    // Check if clients table exists to get the ID type
+    const clientsCheck = await client.query(`
       SELECT data_type FROM information_schema.columns 
       WHERE table_name = 'clients' AND column_name = 'id'
     `);
     
     let idType = 'TEXT';
-    if (clientIdType.rows.length > 0) {
-      const dt = clientIdType.rows[0].data_type;
+    if (clientsCheck.rows.length > 0) {
+      const dt = clientsCheck.rows[0].data_type;
       if (dt === 'uuid') idType = 'UUID';
       console.log(`[DB] clients.id type detected: ${dt} -> using ${idType}`);
     }
-
-    // Create remaining core tables
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS client_assignments (
-        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-        client_id TEXT NOT NULL,
-        user_id TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, user_id)
-      );
-      
-      CREATE TABLE IF NOT EXISTS client_notes (
-        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-        client_id TEXT NOT NULL,
-        user_id TEXT,
-        content TEXT NOT NULL,
-        is_pinned BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
 
     // ============================================
     // CACHING TABLES
@@ -339,7 +276,7 @@ class DatabaseHelper {
   
   async createUser(email, password, name, role) {
     const result = await pool.query(
-      'INSERT INTO users (email, password, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
+      'INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
       [email, password, name, role]
     );
     return result.rows[0];
@@ -353,7 +290,7 @@ class DatabaseHelper {
     if (updates.name) { fields.push(`name = $${i++}`); values.push(updates.name); }
     if (updates.email) { fields.push(`email = $${i++}`); values.push(updates.email); }
     if (updates.role) { fields.push(`role = $${i++}`); values.push(updates.role); }
-    if (updates.password) { fields.push(`password = $${i++}`); values.push(updates.password); }
+    if (updates.password) { fields.push(`password_hash = $${i++}`); values.push(updates.password); }
     
     if (fields.length === 0) return this.getUserById(id);
     
@@ -392,7 +329,7 @@ class DatabaseHelper {
   
   async getAllClients() {
     const result = await pool.query(`
-      SELECT c.*, b.name as brand_name, b.logo_url as brand_logo, b.primary_color as brand_color
+      SELECT c.*, b.name as brand_name, b.primary_color as brand_color
       FROM clients c
       LEFT JOIN brands b ON c.brand_id = b.id
       ORDER BY c.name
@@ -402,7 +339,7 @@ class DatabaseHelper {
   
   async getClientById(id) {
     const result = await pool.query(`
-      SELECT c.*, b.name as brand_name, b.logo_url as brand_logo, b.primary_color as brand_color
+      SELECT c.*, b.name as brand_name, b.primary_color as brand_color
       FROM clients c
       LEFT JOIN brands b ON c.brand_id = b.id
       WHERE c.id = $1
@@ -412,7 +349,7 @@ class DatabaseHelper {
   
   async getClientBySlug(slug) {
     const result = await pool.query(`
-      SELECT c.*, b.name as brand_name, b.logo_url as brand_logo, b.primary_color as brand_color
+      SELECT c.*, b.name as brand_name, b.primary_color as brand_color
       FROM clients c
       LEFT JOIN brands b ON c.brand_id = b.id
       WHERE c.slug = $1
@@ -422,7 +359,7 @@ class DatabaseHelper {
   
   async getClientByToken(token) {
     const result = await pool.query(`
-      SELECT c.*, b.name as brand_name, b.logo_url as brand_logo, b.primary_color as brand_color
+      SELECT c.*, b.name as brand_name, b.primary_color as brand_color
       FROM clients c
       LEFT JOIN brands b ON c.brand_id = b.id
       WHERE c.public_token = $1
@@ -437,7 +374,7 @@ class DatabaseHelper {
   
   async getClientsForUser(userId) {
     const result = await pool.query(`
-      SELECT c.*, b.name as brand_name, b.logo_url as brand_logo, b.primary_color as brand_color
+      SELECT c.*, b.name as brand_name, b.primary_color as brand_color
       FROM clients c
       LEFT JOIN brands b ON c.brand_id = b.id
       JOIN client_assignments ca ON c.id = ca.client_id
@@ -530,6 +467,14 @@ class DatabaseHelper {
   
   async removeUserFromClient(clientId, userId) {
     await pool.query('DELETE FROM client_assignments WHERE client_id = $1 AND user_id = $2', [clientId, userId]);
+  }
+
+  async userHasAccessToClient(userId, clientId) {
+    const result = await pool.query(
+      'SELECT 1 FROM client_assignments WHERE user_id = $1 AND client_id = $2',
+      [userId, clientId]
+    );
+    return result.rows.length > 0;
   }
 
   // ==========================================
@@ -798,7 +743,11 @@ async function seedInitialData() {
     const existingAdmin = await helper.getUserByEmail('admin@example.com');
     if (!existingAdmin) {
       const hashedPassword = await bcrypt.hash('admin123', 10);
-      await helper.createUser('admin@example.com', hashedPassword, 'Admin User', 'admin');
+      // Use direct query since column name might differ
+      await pool.query(
+        'INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING',
+        ['admin@example.com', hashedPassword, 'Admin User', 'admin']
+      );
       console.log('✓ Created default admin user');
     }
   } catch (e) {
