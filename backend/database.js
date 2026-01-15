@@ -23,64 +23,34 @@ const pool = new Pool({
 async function initializeDatabase() {
   const client = await pool.connect();
   try {
-    // Existing tables (users, clients, brands, etc.)
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        name VARCHAR(255),
-        role VARCHAR(50) DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      
-      CREATE TABLE IF NOT EXISTS brands (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name VARCHAR(255) NOT NULL,
-        logo_url TEXT,
-        primary_color VARCHAR(7) DEFAULT '#6366f1',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      
-      CREATE TABLE IF NOT EXISTS clients (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name VARCHAR(255) NOT NULL,
-        slug VARCHAR(255) UNIQUE,
-        brand_id UUID REFERENCES brands(id),
-        simplifi_org_id INTEGER,
-        public_token VARCHAR(255) UNIQUE,
-        date_range_start DATE,
-        date_range_end DATE,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      
-      CREATE TABLE IF NOT EXISTS client_assignments (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
-        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        created_at TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, user_id)
-      );
-      
-      CREATE TABLE IF NOT EXISTS client_notes (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
-        user_id UUID REFERENCES users(id),
-        content TEXT NOT NULL,
-        is_pinned BOOLEAN DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
+    // NOTE: We assume existing tables (users, clients, brands, client_assignments, client_notes) 
+    // already exist with the correct schema. This migration ONLY creates new cache tables.
+    
+    // Check if clients table exists to determine ID type
+    const clientsCheck = await client.query(`
+      SELECT data_type FROM information_schema.columns 
+      WHERE table_name = 'clients' AND column_name = 'id'
     `);
+    
+    // Determine the ID type used by existing clients table
+    let clientIdType = 'UUID'; // default
+    if (clientsCheck.rows.length > 0) {
+      const dataType = clientsCheck.rows[0].data_type;
+      if (dataType === 'text' || dataType === 'character varying') {
+        clientIdType = 'TEXT';
+      }
+      console.log(`[DB] Existing clients.id type: ${dataType} -> using ${clientIdType} for foreign keys`);
+    }
 
     // ============================================
-    // NEW CACHING TABLES
+    // NEW CACHING TABLES (adapt to existing schema)
     // ============================================
 
     // Cached campaigns
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_campaigns (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         campaign_name TEXT,
         status TEXT,
@@ -99,7 +69,7 @@ async function initializeDatabase() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_campaign_stats (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         stat_date DATE NOT NULL,
         impressions INTEGER DEFAULT 0,
@@ -122,7 +92,7 @@ async function initializeDatabase() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_ads (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         ad_id INTEGER NOT NULL,
         ad_name TEXT,
@@ -140,7 +110,7 @@ async function initializeDatabase() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_ad_stats (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         ad_id INTEGER NOT NULL,
         stat_date DATE NOT NULL,
@@ -148,50 +118,52 @@ async function initializeDatabase() {
         clicks INTEGER DEFAULT 0,
         spend DECIMAL(12,4) DEFAULT 0,
         ctr DECIMAL(10,6) DEFAULT 0,
+        cpm DECIMAL(10,4) DEFAULT 0,
+        video_views INTEGER DEFAULT 0,
+        raw_data JSONB,
         last_synced TIMESTAMP DEFAULT NOW(),
         UNIQUE(client_id, campaign_id, ad_id, stat_date)
       );
-      CREATE INDEX IF NOT EXISTS idx_ad_stats_lookup ON cached_ad_stats(client_id, campaign_id, stat_date);
+      CREATE INDEX IF NOT EXISTS idx_ad_stats_lookup ON cached_ad_stats(client_id, campaign_id, ad_id);
     `);
 
     // Cached keywords
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_keywords (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         keyword TEXT NOT NULL,
         max_bid DECIMAL(10,4),
+        keyword_data JSONB,
         last_synced TIMESTAMP DEFAULT NOW(),
         UNIQUE(client_id, campaign_id, keyword)
       );
-      CREATE INDEX IF NOT EXISTS idx_cached_keywords_campaign ON cached_keywords(client_id, campaign_id);
+      CREATE INDEX IF NOT EXISTS idx_keywords_campaign ON cached_keywords(client_id, campaign_id);
     `);
 
-    // Cached keyword stats (aggregated - Report Center doesn't give daily)
+    // Cached keyword stats
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_keyword_stats (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         keyword TEXT NOT NULL,
-        date_range_start DATE,
-        date_range_end DATE,
+        stat_date DATE,
         impressions INTEGER DEFAULT 0,
         clicks INTEGER DEFAULT 0,
-        ctr DECIMAL(10,6) DEFAULT 0,
         spend DECIMAL(12,4) DEFAULT 0,
+        ctr DECIMAL(10,6) DEFAULT 0,
         last_synced TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, campaign_id, keyword, date_range_start, date_range_end)
+        UNIQUE(client_id, campaign_id, keyword, stat_date)
       );
-      CREATE INDEX IF NOT EXISTS idx_keyword_stats_lookup ON cached_keyword_stats(client_id, campaign_id);
     `);
 
     // Cached geo-fences
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_geo_fences (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         geo_fence_id INTEGER NOT NULL,
         geo_fence_name TEXT,
@@ -199,81 +171,75 @@ async function initializeDatabase() {
         last_synced TIMESTAMP DEFAULT NOW(),
         UNIQUE(client_id, campaign_id, geo_fence_id)
       );
-      CREATE INDEX IF NOT EXISTS idx_cached_geo_fences_campaign ON cached_geo_fences(client_id, campaign_id);
+      CREATE INDEX IF NOT EXISTS idx_geo_fences_campaign ON cached_geo_fences(client_id, campaign_id);
     `);
 
     // Cached geo-fence stats
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_geo_fence_stats (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         geo_fence_id INTEGER NOT NULL,
-        date_range_start DATE,
-        date_range_end DATE,
+        stat_date DATE,
         impressions INTEGER DEFAULT 0,
         clicks INTEGER DEFAULT 0,
         conversions INTEGER DEFAULT 0,
         spend DECIMAL(12,4) DEFAULT 0,
         last_synced TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, campaign_id, geo_fence_id, date_range_start, date_range_end)
+        UNIQUE(client_id, campaign_id, geo_fence_id, stat_date)
       );
-      CREATE INDEX IF NOT EXISTS idx_geo_fence_stats_lookup ON cached_geo_fence_stats(client_id, campaign_id);
     `);
 
-    // Cached location stats (from Report Center)
+    // Cached location stats
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_location_stats (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         city TEXT,
         metro TEXT,
         region TEXT,
         country TEXT,
-        date_range_start DATE,
-        date_range_end DATE,
         impressions INTEGER DEFAULT 0,
         clicks INTEGER DEFAULT 0,
         spend DECIMAL(12,4) DEFAULT 0,
+        ctr DECIMAL(10,6) DEFAULT 0,
         last_synced TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, campaign_id, city, metro, region, date_range_start, date_range_end)
+        UNIQUE(client_id, campaign_id, city, metro, region, country)
       );
-      CREATE INDEX IF NOT EXISTS idx_location_stats_lookup ON cached_location_stats(client_id, campaign_id);
+      CREATE INDEX IF NOT EXISTS idx_location_stats_campaign ON cached_location_stats(client_id, campaign_id);
     `);
 
     // Cached device stats
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_device_stats (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
         device_type TEXT NOT NULL,
-        date_range_start DATE,
-        date_range_end DATE,
         impressions INTEGER DEFAULT 0,
         clicks INTEGER DEFAULT 0,
         spend DECIMAL(12,4) DEFAULT 0,
+        ctr DECIMAL(10,6) DEFAULT 0,
         last_synced TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, campaign_id, device_type, date_range_start, date_range_end)
+        UNIQUE(client_id, campaign_id, device_type)
       );
-      CREATE INDEX IF NOT EXISTS idx_device_stats_lookup ON cached_device_stats(client_id, campaign_id);
     `);
 
-    // Cached viewability stats
+    // Cached viewability metrics
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_viewability (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
-        date_range_start DATE,
-        date_range_end DATE,
-        viewability_rate DECIMAL(10,4) DEFAULT 0,
-        measured_impressions INTEGER DEFAULT 0,
+        viewability_rate DECIMAL(10,6),
+        measured_rate DECIMAL(10,6),
         viewable_impressions INTEGER DEFAULT 0,
-        avg_view_time DECIMAL(10,2) DEFAULT 0,
+        measured_impressions INTEGER DEFAULT 0,
+        raw_data JSONB,
         last_synced TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, campaign_id, date_range_start, date_range_end)
+        UNIQUE(client_id, campaign_id)
       );
     `);
 
@@ -281,15 +247,14 @@ async function initializeDatabase() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS cached_conversions (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+        client_id ${clientIdType} NOT NULL,
         campaign_id INTEGER NOT NULL,
-        conversion_name TEXT,
-        date_range_start DATE,
-        date_range_end DATE,
+        conversion_type TEXT,
         conversions INTEGER DEFAULT 0,
         conversion_value DECIMAL(12,4) DEFAULT 0,
+        raw_data JSONB,
         last_synced TIMESTAMP DEFAULT NOW(),
-        UNIQUE(client_id, campaign_id, conversion_name, date_range_start, date_range_end)
+        UNIQUE(client_id, campaign_id, conversion_type)
       );
     `);
 
@@ -297,20 +262,19 @@ async function initializeDatabase() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS sync_status (
         id SERIAL PRIMARY KEY,
-        client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
-        sync_type TEXT NOT NULL,
-        campaign_id INTEGER,
-        last_sync_start TIMESTAMP,
-        last_sync_end TIMESTAMP,
-        last_sync_status TEXT,
+        client_id ${clientIdType} NOT NULL UNIQUE,
+        last_full_sync TIMESTAMP,
+        last_incremental_sync TIMESTAMP,
+        sync_in_progress BOOLEAN DEFAULT FALSE,
         last_error TEXT,
-        records_synced INTEGER DEFAULT 0,
-        UNIQUE(client_id, sync_type, campaign_id)
+        campaigns_synced INTEGER DEFAULT 0,
+        stats_synced INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
       );
-      CREATE INDEX IF NOT EXISTS idx_sync_status_client ON sync_status(client_id);
     `);
 
-    console.log('✓ Database tables initialized');
+    console.log('[DB] Cache tables initialized successfully');
   } finally {
     client.release();
   }
