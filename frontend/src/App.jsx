@@ -3617,6 +3617,31 @@ function CampaignDetailPage() {
   const [syncing, setSyncing] = useState(false);
   const [dataFromCache, setDataFromCache] = useState(false);
   
+  // Campaign type detection - determines which sections to show
+  const [campaignType, setCampaignType] = useState({
+    isGeoFence: false,
+    isKeyword: false,
+    isOTT: false,
+    isDisplay: false,
+    isVideo: false
+  });
+  
+  // Helper to detect campaign type from name
+  const detectCampaignType = (campaignName) => {
+    const name = (campaignName || '').toLowerCase();
+    return {
+      isGeoFence: name.includes('_gf') || name.includes('geofence') || name.includes('geo_fence') || 
+                  name.includes('geo-fence') || name.includes('geocomp') || name.includes('geo_comp') ||
+                  name.includes('geotarget') || name.includes('_geo_'),
+      isKeyword: name.includes('keyword') || name.includes('search') || name.includes('_kw') ||
+                 name.includes('contextual') || name.includes('_ctx'),
+      isOTT: name.includes('ott') || name.includes('ctv') || name.includes('streaming') ||
+             name.includes('connected_tv') || name.includes('connected-tv'),
+      isDisplay: name.includes('display') || name.includes('banner') || name.includes('_disp'),
+      isVideo: name.includes('video') || name.includes('_vid') || name.includes('preroll')
+    };
+  };
+  
   // Client view mode persists across pages via localStorage
   const [clientViewMode, setClientViewMode] = useState(() => {
     return localStorage.getItem('clientViewMode') === 'true';
@@ -3759,6 +3784,11 @@ function CampaignDetailPage() {
             new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)
           ));
           
+          // Detect campaign type from name
+          const detectedType = detectCampaignType(cachedData.campaign?.name);
+          setCampaignType(detectedType);
+          console.log('[CACHE] Campaign type detected:', detectedType);
+          
           // Ads with stats already merged
           if (cachedData.ads?.length > 0) {
             const enrichedAds = cachedData.ads.map(ad => ({
@@ -3862,6 +3892,11 @@ function CampaignDetailPage() {
     const campaignsData = await api.get(`/api/simplifi/organizations/${clientData.simplifi_org_id}/campaigns`);
     const campaignData = (campaignsData.campaigns || []).find(c => c.id === parseInt(campaignId));
     setCampaign(campaignData);
+    
+    // Detect campaign type
+    const detectedType = detectCampaignType(campaignData?.name);
+    setCampaignType(detectedType);
+    console.log('[API] Campaign type detected:', detectedType);
 
     // Fetch ads directly
     let adsFromApi = [];
@@ -4002,22 +4037,18 @@ function CampaignDetailPage() {
       const startDate = dateRange.startDate;
       const endDate = dateRange.endDate;
       
-      // Determine what enhanced data to fetch based on campaign type - improved detection
-      const campaignName = campaignData?.name?.toLowerCase() || '';
-      const isGeoFence = campaignName.includes('_gf') || 
-                         campaignName.includes('geofence') || campaignName.includes('geo_fence') || campaignName.includes('geo-fence') ||
-                         campaignName.includes('geocomp') || campaignName.includes('geo_comp') || campaignName.includes('geo-comp') ||
-                         campaignName.includes('geotarget') || campaignName.includes('geo_target') ||
-                         campaignName.includes('_geo_');
-      const isOTT = campaignName.includes('ott') ||
-                    campaignName.includes('ctv') ||
-                    campaignName.includes('streaming');
+      // Use the campaign type detection helper
+      const detectedType = detectCampaignType(campaignData?.name);
+      // Also update state if not already set
+      if (!campaignType.isGeoFence && !campaignType.isKeyword) {
+        setCampaignType(detectedType);
+      }
       
-      console.log(`Campaign "${campaignData?.name}" - isGeoFence: ${isGeoFence}, isOTT: ${isOTT}`);
+      console.log(`Campaign "${campaignData?.name}" - Type:`, detectedType);
       
       const promises = [];
       
-      // Always fetch location performance and conversions
+      // ALWAYS fetch location performance (shows on ALL campaign pages)
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/location-performance?startDate=${startDate}&endDate=${endDate}`)
           .then(data => {
@@ -4041,26 +4072,22 @@ function CampaignDetailPage() {
           .catch(e => console.log('Location performance not available:', e.message))
       );
       
+      // Always fetch conversions
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/conversions?startDate=${startDate}&endDate=${endDate}`)
           .then(data => setConversionData(data.conversions || []))
           .catch(e => console.log('Conversion data not available:', e.message))
       );
       
-      promises.push(
-        api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/device-breakdown?startDate=${startDate}&endDate=${endDate}`)
-          .then(data => setEnhancedDeviceStats(data.device_breakdown || []))
-          .catch(e => console.log('Device breakdown not available:', e.message))
-      );
-      
+      // Always fetch viewability
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/viewability?startDate=${startDate}&endDate=${endDate}`)
           .then(data => setViewabilityData(data.viewability || null))
           .catch(e => console.log('Viewability data not available:', e.message))
       );
       
-      // Always fetch geo-fence performance for geo-fence campaigns
-      if (isGeoFence) {
+      // ONLY fetch geo-fence performance for geo-fence campaigns
+      if (detectedType.isGeoFence) {
         promises.push(
           api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/geo-fence-performance?startDate=${startDate}&endDate=${endDate}`)
             .then(data => setGeoFencePerformance(data.geofence_performance || []))
@@ -4068,27 +4095,29 @@ function CampaignDetailPage() {
         );
       }
       
+      // ONLY fetch keyword performance for keyword campaigns
+      if (detectedType.isKeyword) {
+        promises.push(
+          api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/keyword-performance?startDate=${startDate}&endDate=${endDate}`)
+            .then(data => {
+              const kwPerf = data.keyword_performance || [];
+              if (kwPerf.length > 0) {
+                console.log(`Keyword performance loaded: ${kwPerf.length} keywords`);
+                setKeywordPerformance(kwPerf);
+              }
+            })
+            .catch(e => console.log('Keyword performance not available:', e.message))
+        );
+      }
+      
       // Fetch domain performance for OTT campaigns
-      if (isOTT) {
+      if (detectedType.isOTT) {
         promises.push(
           api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/domain-performance?startDate=${startDate}&endDate=${endDate}`)
             .then(data => setDomainPerformance(data.domain_performance || []))
             .catch(e => console.log('Domain performance not available:', e.message))
         );
       }
-      
-      // Fetch keyword performance - always try (not just for campaigns with 'keyword' in name)
-      promises.push(
-        api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/keyword-performance?startDate=${startDate}&endDate=${endDate}`)
-          .then(data => {
-            const kwPerf = data.keyword_performance || [];
-            if (kwPerf.length > 0) {
-              console.log(`Keyword performance loaded: ${kwPerf.length} keywords`);
-              setKeywordPerformance(kwPerf);
-            }
-          })
-          .catch(e => console.log('Keyword performance not available:', e.message))
-      );
       
       await Promise.all(promises);
       
@@ -4495,8 +4524,15 @@ function CampaignDetailPage() {
             return null;
           
           case 'keywordPerformance':
-            // Combined Keywords section - show keyword list + performance data
-            if (keywords.length === 0 && keywordPerformance.length === 0) return null;
+            // Only show for keyword campaigns OR if we have actual keyword data
+            // This prevents showing empty keyword sections on non-keyword campaigns
+            const hasKeywordData = keywords.length > 0 || keywordPerformance.length > 0;
+            const isKeywordCampaign = campaignType.isKeyword;
+            
+            // Skip if not a keyword campaign AND no keyword data
+            if (!hasKeywordData && !isKeywordCampaign) return null;
+            // Also skip if we're still loading and have no data
+            if (!hasKeywordData) return null;
             
             // Check if spend data is actually available and user is admin
             const hasKwSpendData = keywordPerformance.some(kw => (kw.spend || 0) > 0);
@@ -4530,7 +4566,14 @@ function CampaignDetailPage() {
             );
           
           case 'geofences':
-            if (geoFences.length === 0 && geoFencePerformance.length === 0) return null;
+            // Only show for geo-fence campaigns OR if we have actual geo-fence data
+            const hasGeoFenceData = geoFences.length > 0 || geoFencePerformance.length > 0;
+            const isGeoFenceCampaign = campaignType.isGeoFence;
+            
+            // Skip if not a geo-fence campaign AND no geo-fence data
+            if (!hasGeoFenceData && !isGeoFenceCampaign) return null;
+            // Also skip if we have no data
+            if (!hasGeoFenceData) return null;
             
             // Merge geo-fence definitions with performance data
             const mergedGeoFences = geoFences.map(fence => {
