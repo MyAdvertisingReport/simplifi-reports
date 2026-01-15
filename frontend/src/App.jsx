@@ -189,7 +189,39 @@ const formatPercent = (num) => {
   if (num === null || num === undefined) return '—';
   const n = parseFloat(num);
   if (isNaN(n)) return '—';
+  // Assume input is always a decimal (0.0031 for 0.31%)
+  // Use normalizeCtR() before passing to this function if source is API
   return (n * 100).toFixed(2) + '%';
+};
+
+// Normalize CTR from Simpli.fi API
+// API returns CTR in inconsistent formats:
+// - Campaign stats: 0.31 meaning 0.31% (need to divide by 100)
+// - Some endpoints: 0.0031 meaning 0.31% (already decimal)
+// We normalize everything to decimal format (0.0031 for 0.31%)
+const normalizeCtr = (ctr) => {
+  if (ctr === null || ctr === undefined) return 0;
+  const n = parseFloat(ctr);
+  if (isNaN(n)) return 0;
+  // If CTR is between 0 and 1 but greater than typical max CTR (5% = 0.05),
+  // it's likely a percentage that needs converting to decimal
+  // Campaign CTRs are typically 0.05% - 2% (0.0005 - 0.02 as decimal)
+  // If n > 0.05, assume it's a percentage from API
+  if (n > 0.05 && n <= 100) {
+    // Looks like a percentage, convert to decimal
+    return n / 100;
+  }
+  // Already a decimal or very small percentage
+  return n;
+};
+
+// Normalize stats object from API/cache
+const normalizeStats = (stats) => {
+  if (!stats) return null;
+  return {
+    ...stats,
+    ctr: normalizeCtr(stats.ctr)
+  };
 };
 
 // Parse campaign name to extract strategy type
@@ -2090,13 +2122,16 @@ function ClientDetailPage({ publicMode = false }) {
         const allCampaigns = data.campaigns || [];
         setCampaigns(allCampaigns);
         
-        // Create stats map by campaign id
+        // Create stats map by campaign id (normalize CTR)
         const statsMap = {};
         (data.campaignStats || []).forEach(s => {
-          statsMap[s.campaign_id] = s;
+          statsMap[s.campaign_id] = { ...s, ctr: normalizeCtr(s.ctr) };
         });
         setCampaignStats(statsMap);
-        setDailyStats(data.dailyStats || []);
+        setDailyStats((data.dailyStats || []).map(d => ({
+          ...d,
+          ctr: normalizeCtr(d.ctr)
+        })));
         
         // Ad stats are now enriched by the backend
         setAdStats(data.adStats || []);
@@ -2152,10 +2187,10 @@ function ClientDetailPage({ publicMode = false }) {
         `/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byCampaign=true`
       );
       
-      // Create a map of campaign stats by ID
+      // Create a map of campaign stats by ID (normalize CTR)
       const statsMap = {};
       (statsData.campaign_stats || []).forEach(s => {
-        statsMap[s.campaign_id] = s;
+        statsMap[s.campaign_id] = { ...s, ctr: normalizeCtr(s.ctr) };
       });
       setCampaignStats(statsMap);
 
@@ -2163,7 +2198,10 @@ function ClientDetailPage({ publicMode = false }) {
       const dailyData = await api.get(
         `/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byDay=true`
       );
-      setDailyStats((dailyData.campaign_stats || []).sort((a, b) => new Date(a.stat_date) - new Date(b.stat_date)));
+      setDailyStats((dailyData.campaign_stats || []).map(d => ({
+        ...d,
+        ctr: normalizeCtr(d.ctr)
+      })).sort((a, b) => new Date(a.stat_date) - new Date(b.stat_date)));
 
       // Get ad stats for active campaigns only (for top 3 ad sizes)
       const activeCampaigns = allCampaigns.filter(c => c.status?.toLowerCase() === 'active');
@@ -3093,8 +3131,11 @@ function CampaignDetailPage() {
           
           // Set all data from cache
           setCampaign(cachedData.campaign);
-          setStats(cachedData.stats);
-          setDailyStats((cachedData.dailyStats || []).sort((a, b) => 
+          setStats(normalizeStats(cachedData.stats));
+          setDailyStats((cachedData.dailyStats || []).map(d => ({
+            ...d,
+            ctr: normalizeCtr(d.ctr)
+          })).sort((a, b) => 
             new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)
           ));
           
@@ -3303,13 +3344,16 @@ function CampaignDetailPage() {
     const statsData = await api.get(
       `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}`
     );
-    setStats(statsData.campaign_stats?.[0] || null);
+    setStats(normalizeStats(statsData.campaign_stats?.[0] || null));
 
     // Get daily stats
     const dailyData = await api.get(
       `/api/simplifi/organizations/${clientData.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&campaignId=${campaignId}&byDay=true`
     );
-    setDailyStats((dailyData.campaign_stats || []).sort((a, b) => new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)));
+    setDailyStats((dailyData.campaign_stats || []).map(d => ({
+      ...d,
+      ctr: normalizeCtr(d.ctr)
+    })).sort((a, b) => new Date(a.stat_date || a.date) - new Date(b.stat_date || b.date)));
 
     // Get ad stats
     const adData = await api.get(
@@ -3432,9 +3476,9 @@ function CampaignDetailPage() {
                 existing.impressions += loc.impressions || 0;
                 existing.clicks += loc.clicks || 0;
                 existing.spend += loc.spend || 0;
-                existing.ctr = existing.impressions > 0 ? (existing.clicks / existing.impressions * 100) : 0;
+                existing.ctr = existing.impressions > 0 ? (existing.clicks / existing.impressions) : 0;
               } else {
-                locationMap.set(key, { ...loc });
+                locationMap.set(key, { ...loc, ctr: normalizeCtr(loc.ctr) });
               }
             });
             setLocationPerformance(Array.from(locationMap.values()));
@@ -6120,9 +6164,16 @@ function CampaignHistorySection({ data, showSpendData = true }) {
 // VCR (Video Completion Rate) CARD - For OTT/CTV
 // ============================================
 function VCRCard({ vcr, impressions, showLabel = true }) {
-  const percentage = vcr ? (vcr * 100).toFixed(1) : 0;
-  const isGood = vcr >= 0.8; // 80%+ is considered good
-  const color = isGood ? '#10b981' : vcr >= 0.6 ? '#f59e0b' : '#ef4444';
+  // Normalize VCR - API might return as percentage (85) or decimal (0.85)
+  let normalizedVcr = vcr;
+  if (vcr > 1) {
+    // Already a percentage, convert to decimal
+    normalizedVcr = vcr / 100;
+  }
+  
+  const percentage = normalizedVcr ? (normalizedVcr * 100).toFixed(1) : 0;
+  const isGood = normalizedVcr >= 0.8; // 80%+ is considered good
+  const color = isGood ? '#10b981' : normalizedVcr >= 0.6 ? '#f59e0b' : '#ef4444';
   
   return (
     <div style={{ 
@@ -6832,13 +6883,16 @@ function PublicReportPage() {
       
       setCampaigns(data.campaigns || []);
       
-      // Create stats map by campaign id
+      // Create stats map by campaign id (normalize CTR)
       const statsMap = {};
       (data.campaignStats || []).forEach(s => {
-        statsMap[s.campaign_id] = s;
+        statsMap[s.campaign_id] = { ...s, ctr: normalizeCtr(s.ctr) };
       });
       setCampaignStats(statsMap);
-      setDailyStats(data.dailyStats || []);
+      setDailyStats((data.dailyStats || []).map(d => ({
+        ...d,
+        ctr: normalizeCtr(d.ctr)
+      })));
       setAdStats(data.adStats || []);
     } catch (err) {
       console.error('Failed to load stats:', err);
@@ -7356,13 +7410,16 @@ function SlugReportPage() {
       
       setCampaigns(data.campaigns || []);
       
-      // Create stats map by campaign id
+      // Create stats map by campaign id (normalize CTR)
       const statsMap = {};
       (data.campaignStats || []).forEach(s => {
-        statsMap[s.campaign_id] = s;
+        statsMap[s.campaign_id] = { ...s, ctr: normalizeCtr(s.ctr) };
       });
       setCampaignStats(statsMap);
-      setDailyStats(data.dailyStats || []);
+      setDailyStats((data.dailyStats || []).map(d => ({
+        ...d,
+        ctr: normalizeCtr(d.ctr)
+      })));
       setAdStats(data.adStats || []);
     } catch (err) {
       console.error('Failed to load stats:', err);
