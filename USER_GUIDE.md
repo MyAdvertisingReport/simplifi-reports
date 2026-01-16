@@ -1,7 +1,7 @@
 # Simpli.fi Reports - User Guide
 
 ## Overview
-A custom reporting dashboard that displays Simpli.fi programmatic advertising data for clients. Features include campaign performance tracking, ad creative previews, audience insights, and shareable public reports.
+A custom reporting dashboard that displays Simpli.fi programmatic advertising data for clients. Features include campaign performance tracking, ad creative previews, audience insights, shareable public reports, and built-in diagnostics tools.
 
 ## Accessing the Dashboard
 
@@ -11,8 +11,8 @@ A custom reporting dashboard that displays Simpli.fi programmatic advertising da
 3. Select a client from the dashboard
 
 ### Public Reports
-- Each client has a unique public URL: `https://myadvertisingreport.com/public/{client-slug}`
-- Example: `https://myadvertisingreport.com/wsic`
+- Each client has a unique public URL: `https://myadvertisingreport.com/client/{client-slug}/report`
+- Example: `https://myadvertisingreport.com/client/wsic/report`
 - No login required for public reports
 
 ## Dashboard Features
@@ -39,6 +39,7 @@ A custom reporting dashboard that displays Simpli.fi programmatic advertising da
 - Displays actual ad creative preview (image/video)
 - Metrics: Impressions, Clicks, CTR
 - Video/OTT ads autoplay muted
+- Images work on all browsers including Safari
 
 #### 4. Audience Data
 - First-party pixel/segment information
@@ -48,6 +49,12 @@ A custom reporting dashboard that displays Simpli.fi programmatic advertising da
 - List of inactive/stopped campaigns
 - Historical performance data
 
+### Campaign Detail View
+- Click any campaign to see detailed performance
+- Shows all individual ads with previews
+- Metrics per ad: Impressions, Clicks, CTR, Spend, CPM, CPC
+- Campaign flight dates and report period selector
+
 ### Customizing the Layout
 1. Click "Edit Layout" button
 2. Drag sections to reorder
@@ -56,7 +63,7 @@ A custom reporting dashboard that displays Simpli.fi programmatic advertising da
 
 ### Sharing Reports
 1. Click "Share" button
-2. Copy the public URL
+2. Copy the public URL (shown in green box)
 3. Anyone with the link can view (no login needed)
 
 ## Managing Clients (Admin)
@@ -84,19 +91,47 @@ A custom reporting dashboard that displays Simpli.fi programmatic advertising da
 ## Date Range Selection
 - Default: Last 30 days
 - Click date inputs to select custom range
-- Click "Go" to refresh data
+- Click "Go" or "Update" to refresh data
 - All sections update with new date range
+
+## System Diagnostics Tool
+
+### For Admins
+Access the diagnostics panel from:
+- **Settings page**: Click "Open Diagnostics Panel" button
+- **Any client page**: Scroll to bottom, click "System Diagnostics" button
+
+### For Public Report Viewers
+- Scroll to bottom of any public report
+- Click "Report Diagnostics" button in footer
+
+### What It Shows
+1. **Your Device**: Detects if you're on Safari, iOS, or mobile
+2. **Server Status**: Backend health and uptime
+3. **Image Proxy**: Status of Safari image fix
+4. **Database**: Connection status (admin only)
+5. **Simpli.fi API**: API connection status (admin only)
+6. **Client Configuration**: Validates all client setups (admin only)
+7. **Mobile Compatibility Fixes**: Reference for known fixes
+
+### Diagnostic Features
+- **Test Image URL**: Paste any Simpli.fi image URL to test if it loads
+- **Live Preview**: See the actual image when test succeeds
+- **Copy Full Report**: Copies all diagnostic info to clipboard for support tickets
+- **Clear Cache**: Force refresh cached data (admin only)
 
 ## Troubleshooting
 
-### Images Not Loading on Mobile Safari
-- This is a known issue being worked on
-- Video ads should still display
-- Desktop and Chrome mobile work normally
+### Images Not Loading
+1. Open the Diagnostics Panel
+2. Check "Image Proxy" status is OK
+3. Try testing a specific image URL
+4. If issues persist, copy the full report and contact support
 
 ### Data Not Updating
 - Check date range selection
 - Refresh the page
+- Use Diagnostics Panel → Clear Cache (admin)
 - Data may have a short cache delay (5-10 minutes)
 
 ### Campaign Shows No Data
@@ -104,10 +139,18 @@ A custom reporting dashboard that displays Simpli.fi programmatic advertising da
 - Check date range includes campaign flight dates
 - New campaigns may take 24 hours to show data
 
+### Mobile Display Issues
+- Text should wrap properly on all screens
+- If something looks cut off, try rotating device
+- Report the issue via Diagnostics Panel → Copy Full Report
+
 ## Browser Support
-- **Recommended**: Chrome, Firefox, Edge (desktop)
-- **Mobile**: Chrome mobile works best
-- **Safari**: Some image loading issues on iOS (being fixed)
+- **Fully Supported**: Chrome, Firefox, Edge, Safari (desktop and mobile)
+- **Mobile**: All modern mobile browsers work correctly
+- **Safari/iOS**: Images now load correctly via proxy server
 
 ## Support
-For technical issues or feature requests, contact your administrator.
+For technical issues:
+1. Open the Diagnostics Panel
+2. Click "Copy Full Report"
+3. Send the report to your administrator

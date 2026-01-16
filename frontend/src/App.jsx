@@ -1603,6 +1603,7 @@ function ClientsPage() {
   const [syncResults, setSyncResults] = useState(null);
   const [newClient, setNewClient] = useState({ name: '', brandId: '', primaryColor: '#1e3a8a', secondaryColor: '#64748b' });
   const { user } = useAuth();
+  const { isMobile } = useResponsive();
 
   useEffect(() => {
     loadData();
@@ -1823,7 +1824,7 @@ function ClientsPage() {
           </div>
         )}
       </div>
-      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {clients.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center' }}>
             <Building2 size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
@@ -1838,7 +1839,7 @@ function ClientsPage() {
             )}
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
             <thead>
               <tr style={{ background: '#f9fafb' }}>
                 <th style={{ padding: '0.5rem 1rem 0', textAlign: 'left' }}></th>
@@ -3301,8 +3302,8 @@ function CampaignDetailPage({ publicMode = false }) {
     localStorage.setItem('clientViewMode', newValue.toString());
   };
   
-  // Default section order - can be customized (device stats shown only on main client page)
-  const defaultSectionOrder = ['performance', 'vcr', 'conversions', 'charts', 'geo', 'geofences', 'keywords', 'keywordPerformance', 'ads', 'domains', 'daily'];
+  // Default section order - can be customized (device is now shown on campaign pages too)
+  const defaultSectionOrder = ['performance', 'vcr', 'conversions', 'device', 'charts', 'geo', 'geofences', 'keywords', 'keywordPerformance', 'ads', 'domains', 'daily'];
   const [sectionOrder, setSectionOrder] = useState(() => {
     // In public mode, always use default order (don't use localStorage)
     if (publicMode) {
@@ -3313,8 +3314,11 @@ function CampaignDetailPage({ publicMode = false }) {
     const saved = localStorage.getItem('campaignSectionOrder');
     if (saved) {
       let order = JSON.parse(saved);
-      // Filter out 'device' from any saved order since it's now client-level only
-      order = order.filter(s => s !== 'device');
+      // Add 'device' if not present (for backwards compatibility with old saved orders)
+      if (!order.includes('device')) {
+        const convIndex = order.indexOf('conversions');
+        order.splice(convIndex >= 0 ? convIndex + 1 : 3, 0, 'device');
+      }
       // Add any new sections that aren't in the saved order
       defaultSectionOrder.forEach(section => {
         if (!order.includes(section)) {
@@ -3887,6 +3891,18 @@ function CampaignDetailPage({ publicMode = false }) {
       
       const promises = [];
       
+      // ALWAYS fetch device breakdown (useful for all campaigns)
+      promises.push(
+        api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/device-breakdown?startDate=${startDate}&endDate=${endDate}`)
+          .then(data => {
+            const deviceData = data.device_breakdown || [];
+            setEnhancedDeviceStats(deviceData);
+            setDeviceStats(deviceData);
+            console.log('Device breakdown loaded:', deviceData.length, 'devices');
+          })
+          .catch(e => console.log('Device breakdown not available:', e.message))
+      );
+      
       // ALWAYS fetch location performance (shows on ALL campaign pages)
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/location-performance?startDate=${startDate}&endDate=${endDate}`)
@@ -3949,11 +3965,15 @@ function CampaignDetailPage({ publicMode = false }) {
         );
       }
       
-      // Fetch domain performance for OTT campaigns
-      if (detectedType.isOTT) {
+      // Fetch domain performance for OTT campaigns OR any video campaigns
+      if (detectedType.isOTT || detectedType.isVideo) {
         promises.push(
           api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/domain-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => setDomainPerformance(data.domain_performance || []))
+            .then(data => {
+              const domains = data.domain_performance || [];
+              setDomainPerformance(domains);
+              console.log('Domain performance loaded:', domains.length, 'domains');
+            })
             .catch(e => console.log('Domain performance not available:', e.message))
         );
       }
@@ -4311,6 +4331,62 @@ function CampaignDetailPage({ publicMode = false }) {
             return (
               <DraggableReportSection {...sectionProps} title="Performance Trends" icon={TrendingUp} iconColor="#0d9488">
                 <DualPerformanceChart data={dailyStats} title1="Total Range Impressions" title2="Total Range Clicks" />
+              </DraggableReportSection>
+            );
+          
+          case 'device':
+            // Device breakdown from Report Center
+            if (deviceStats.length === 0 && enhancedDeviceStats.length === 0) {
+              if (enhancedDataLoading) {
+                return (
+                  <DraggableReportSection {...sectionProps} title="By Device" icon={Smartphone} iconColor="#6366f1">
+                    <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                      <div className="spinner" style={{ margin: '0 auto 1rem' }} />
+                      <p style={{ fontSize: '0.875rem' }}>Loading device data...</p>
+                    </div>
+                  </DraggableReportSection>
+                );
+              }
+              return null;
+            }
+            
+            const deviceData = enhancedDeviceStats.length > 0 ? enhancedDeviceStats : deviceStats;
+            const totalDeviceImpressions = deviceData.reduce((sum, d) => sum + (d.impressions || 0), 0);
+            
+            return (
+              <DraggableReportSection {...sectionProps} title={`By Device (${deviceData.length} types)`} icon={Smartphone} iconColor="#6366f1">
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${Math.min(deviceData.length, 4)}, 1fr)`, gap: '1rem' }}>
+                  {deviceData.map((device, i) => {
+                    const percentage = totalDeviceImpressions > 0 ? ((device.impressions || 0) / totalDeviceImpressions * 100) : 0;
+                    const DeviceIcon = device.device_type?.toLowerCase().includes('mobile') ? Smartphone : 
+                                       device.device_type?.toLowerCase().includes('tablet') ? Tablet :
+                                       device.device_type?.toLowerCase().includes('tv') || device.device_type?.toLowerCase().includes('ctv') ? Tv : Monitor;
+                    return (
+                      <div key={i} style={{ 
+                        background: '#f9fafb', 
+                        padding: '1.25rem', 
+                        borderRadius: '0.75rem',
+                        textAlign: 'center'
+                      }}>
+                        <DeviceIcon size={28} color="#6366f1" style={{ marginBottom: '0.75rem' }} />
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem' }}>
+                          {device.device_type || 'Unknown'}
+                        </div>
+                        <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#111827', marginBottom: '0.25rem' }}>
+                          {percentage.toFixed(1)}%
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                          {formatNumber(device.impressions)} impressions
+                        </div>
+                        {device.clicks > 0 && (
+                          <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                            {formatNumber(device.clicks)} clicks
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </DraggableReportSection>
             );
           

@@ -15,14 +15,14 @@ Custom reporting dashboard for Simpli.fi programmatic advertising data. Provides
 ```
 simplifi-reports/
 ├── backend/
-│   ├── server.js              # Main Express server (1496 lines)
+│   ├── server.js              # Main Express server (~1733 lines)
 │   ├── simplifi-client.js     # Simpli.fi API wrapper
 │   ├── report-center-service.js
 │   ├── database.js
 │   └── package.json
 ├── frontend/
 │   ├── src/
-│   │   └── App.jsx            # Main React app (8164 lines)
+│   │   └── App.jsx            # Main React app (~8700 lines)
 │   ├── public/
 │   └── package.json
 └── README.md
@@ -36,12 +36,12 @@ simplifi-reports/
 ### URLs
 - Production: https://myadvertisingreport.com
 - Backend API: https://simplifi-reports-production.up.railway.app
-- Public reports: https://myadvertisingreport.com/public/{slug}
+- Public reports: https://myadvertisingreport.com/client/{slug}/report
 
 ## Key Features
 
 ### 1. Client Management
-- Multi-client support with unique slugs
+- Multi-client support with unique slugs (19 clients currently)
 - Client branding (logo, colors)
 - Public shareable report links
 
@@ -69,6 +69,13 @@ simplifi-reports/
 - Device breakdown
 - Paused campaigns
 
+### 6. System Diagnostics Tool (NEW)
+- Admin and public report versions
+- Tests API connectivity, database, image proxy
+- Live image preview testing
+- Copy full report to clipboard for support
+- Access: Settings page or footer of client pages
+
 ## API Endpoints
 
 ### Authentication
@@ -90,8 +97,14 @@ simplifi-reports/
 ### Public Reports
 - `GET /api/public/:slug` - Get public report data (no auth required)
 
-### Image Proxy (NEW)
+### Image Proxy
 - `GET /api/proxy/image?url=<simpli.fi-url>` - Proxies images from media.simpli.fi to avoid Safari cross-origin blocking
+
+### Diagnostics Endpoints
+- `GET /api/diagnostics/public` - Public diagnostics (no auth, limited info)
+- `GET /api/diagnostics/admin` - Full diagnostics (requires auth)
+- `POST /api/diagnostics/clear-cache` - Clear cache (admin only)
+- `GET /api/diagnostics/test-image?url=<url>` - Test if specific image can be proxied
 
 ## Database Schema
 
@@ -135,66 +148,100 @@ FRONTEND_URL=https://myadvertisingreport.com
 VITE_API_URL=https://simplifi-reports-production.up.railway.app
 ```
 
-## Current Issues & Status
+## Resolved Issues
 
-### ACTIVE ISSUE: Safari Mobile Image Loading
-**Problem**: GIF/image ads load on desktop and Chrome mobile emulation, but not on actual iOS Safari. Video/OTT ads load fine.
+### ✅ RESOLVED: Safari Mobile Image Loading
+**Problem**: GIF/image ads loaded on desktop and Chrome mobile emulation, but not on actual iOS Safari. Video/OTT ads worked fine.
 
 **Root Cause**: Safari's strict cross-origin resource blocking for images from `media.simpli.fi` domain.
 
-**Solution Implemented**: Image proxy endpoint (`/api/proxy/image`) that:
-1. Fetches images from media.simpli.fi on the server
-2. Serves them from our own domain with proper CORS headers
-3. Frontend uses proxy URL instead of direct simpli.fi URL
+**Solution Implemented**: 
+1. Image proxy endpoint (`/api/proxy/image`) added to server.js (line ~1387)
+   - **IMPORTANT**: Endpoint must be defined BEFORE the 404 handler in Express
+2. Fetches images from media.simpli.fi on the server
+3. Serves them from our own domain with proper CORS headers
+4. Frontend components use `getProxiedUrl()` helper
 
-**Status**: 
-- Proxy endpoint added to server.js (line 1402-1449)
-- Frontend TopAdCard component updated to use `getProxiedUrl()` helper
-- Need to verify Railway deployed the latest server.js
+**Components Updated**:
+- `TopAdCard` (App.jsx ~line 278) - Main client page ad previews
+- `AdPerformanceCard` (App.jsx ~line 4605) - Campaign detail page ad list
 
-**To Test**:
-1. Visit: `https://simplifi-reports-production.up.railway.app/api/proxy/image?url=test`
-2. Should return: `{"error":"Only Simpli.fi URLs allowed"}`
-3. If 404, backend hasn't deployed the new code
+**Verification**:
+- Test URL: `https://simplifi-reports-production.up.railway.app/api/proxy/image?url=test`
+- Should return: `{"error":"Only Simpli.fi URLs allowed"}`
+- Use Diagnostics Panel to test specific image URLs with live preview
+
+### ✅ RESOLVED: Mobile UI Overflow Issues
+**Problems Fixed**:
+1. Paused campaigns card - "Paused" badge was cut off on mobile
+2. Campaign detail header - Long campaign names overflowed
+3. Public URL box - URL text was cut off on mobile
+
+**Solutions**:
+- Added `wordBreak: 'break-word'`, `overflowWrap: 'break-word'` to text elements
+- Added `flexWrap: 'wrap'` to flex containers
+- Added `flexShrink: 0` to badges/buttons that shouldn't shrink
+- Reduced font sizes on mobile for campaign headers
 
 ### Other Known Issues
-- Notes endpoint returns 500 (`dbHelper.getNotesByClient is not a function`)
-- Header spacing on desktop was fixed
+- Notes endpoint returns 500 (`dbHelper.getNotesByClient is not a function`) - not critical
 
 ## Key Code Sections
 
-### TopAdCard Component (App.jsx ~line 269)
+### TopAdCard Component (App.jsx ~line 271)
 ```jsx
 function TopAdCard({ ad, rank }) {
   const [imageError, setImageError] = useState(false);
-  const isFirst = rank === 0;
-  const hasValidPreview = ad.preview_url && !imageError;
   
   // Proxy image URL through our backend for Safari compatibility
   const getProxiedUrl = (url) => {
     if (!url) return null;
     return `${API_BASE}/api/proxy/image?url=${encodeURIComponent(url)}`;
   };
-  // ... renders image or video based on ad.is_video
+  
+  // Uses getProxiedUrl(ad.preview_url) for <img> src
 }
 ```
 
-### Image Proxy Endpoint (server.js ~line 1402)
+### AdPerformanceCard Component (App.jsx ~line 4586)
+```jsx
+function AdPerformanceCard({ ad, showSpendData = true }) {
+  // Also has getProxiedUrl() helper for Safari compatibility
+  // Used on campaign detail pages
+}
+```
+
+### Image Proxy Endpoint (server.js ~line 1387)
 ```javascript
+// MUST be placed BEFORE the 404 handler!
 app.get('/api/proxy/image', async (req, res) => {
-  // Validates URL is from simpli.fi
+  // Validates URL contains 'simpli.fi'
   // Fetches image and pipes to response
-  // Sets proper CORS and content-type headers
+  // Sets CORS headers: Access-Control-Allow-Origin: *
+  // Sets Cache-Control: public, max-age=86400
+});
+
+// 404 handler comes AFTER
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
 });
 ```
 
-### Ad Size Aggregation (App.jsx ~line 2480)
+### DiagnosticsPanel Component (App.jsx ~line 8100)
+```jsx
+function DiagnosticsPanel({ isPublic = false, onClose }) {
+  // Sections: Device Info, Server Status, Image Proxy, Database, 
+  //           Simpli.fi API, Client Config, Mobile Fixes, Cache
+  // Features: Live image preview, Copy full report to clipboard
+}
+```
+
+### Diagnostics Endpoints (server.js ~line 1383)
 ```javascript
-const adSizeStats = adStats.reduce((acc, ad) => {
-  const size = parseAdSize(ad.name, ad.width, ad.height);
-  // Aggregates impressions, clicks by size
-  // Captures preview_url from first ad with one
-}, {});
+app.get('/api/diagnostics/public', ...)   // No auth required
+app.get('/api/diagnostics/admin', ...)    // Requires Bearer token
+app.post('/api/diagnostics/clear-cache', ...) // Admin only
+app.get('/api/diagnostics/test-image', ...)   // Test specific URL
 ```
 
 ## Git Workflow
@@ -214,30 +261,55 @@ git push
 
 ## Debug Tools
 
+### System Diagnostics Panel (Recommended)
+- **Admin Access**: Settings page → "Open Diagnostics Panel" button, or bottom of any client page
+- **Public Access**: Footer of public report pages → "Report Diagnostics" button
+- **Features**:
+  - Device/browser detection (Safari, iOS, mobile)
+  - Server health check with uptime
+  - Image proxy status + live test with preview
+  - Database connection + client/user counts
+  - Simpli.fi API status
+  - Client configuration validation
+  - Copy full report to clipboard
+
 ### Console Logging (Frontend)
 - `window.debugAdStats` - Raw ad statistics array
 - `window.debugAdSizeStats` - Aggregated stats by size
-- Console logs show ad preview URL status
 
 ### Backend Logs
 - Railway dashboard shows server logs
 - Look for `[CAMPAIGNS]`, `[AD STRUCTURE]`, `Image proxy error` messages
 
-## Recent Changes (This Session)
-1. Fixed TopAdCard placeholder height for banner ads (320x50)
-2. Fixed desktop header spacing (client name + date picker)
-3. Added debug logging for ad preview URLs
-4. Implemented image proxy endpoint for Safari compatibility
-5. Updated TopAdCard to use proxied URLs for images
+## Recent Changes (January 2026 Session)
 
-## Planned Features
+### Safari Image Fix
+1. Added `/api/proxy/image` endpoint to server.js
+2. **Fixed endpoint placement** - moved BEFORE 404 handler (was returning 404)
+3. Updated `TopAdCard` component to use proxy for images
+4. Updated `AdPerformanceCard` component to use proxy for campaign detail images
 
-### Troubleshooting Utility Tool
-After the Safari image loading fix is complete, we plan to add a troubleshooting utility that will help diagnose issues with:
-- API connectivity to Simpli.fi
-- Image/asset loading from media.simpli.fi
-- Database connections
-- Client configuration validation
-- Cache status and clearing
+### Mobile UI Fixes
+1. Fixed paused campaigns card overflow - badge stays visible
+2. Fixed campaign detail header - name wraps properly, smaller font on mobile
+3. Fixed public URL box - URL wraps instead of being cut off
+4. Fixed campaign flight dates section - centers on mobile, wraps properly
 
-This will be an admin-only tool accessible from the dashboard to help quickly identify and resolve issues without needing to check server logs directly.
+### Diagnostics Tool (NEW)
+1. Added 4 backend endpoints for diagnostics
+2. Created `DiagnosticsPanel` component with collapsible sections
+3. Added to Settings page, client detail pages (admin), and public report footer
+4. Features: live image preview, copy report to clipboard
+5. Fixed database queries to use `dbHelper` instead of `pool`
+
+## Current System Status
+As of last check:
+- ✅ Server Status: OK
+- ✅ Image Proxy: OK  
+- ✅ Database: OK (19 clients, 3 users)
+- ✅ Simpli.fi API: OK
+- ✅ Client Configuration: OK (0 issues)
+
+## File Sizes Reference
+- `server.js`: ~1733 lines
+- `App.jsx`: ~8700 lines
