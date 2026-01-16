@@ -4889,22 +4889,22 @@ function CampaignDetailPage({ publicMode = false }) {
             
             return (
               <DraggableReportSection {...sectionProps} title="Conversion Tracking" icon={Target} iconColor="#10b981">
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
-                  <div style={{ background: '#f0fdf4', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? '0.75rem' : '1rem' }}>
+                  <div style={{ background: '#f0fdf4', padding: isMobile ? '0.75rem' : '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.6875rem', color: '#15803d', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Conversions</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#166534' }}>{formatNumberFull(conversionData.totalConversions)}</div>
+                    <div style={{ fontSize: isMobile ? '1.25rem' : '1.5rem', fontWeight: 700, color: '#166534' }}>{formatNumberFull(conversionData.totalConversions)}</div>
                   </div>
-                  <div style={{ background: '#eff6ff', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
+                  <div style={{ background: '#eff6ff', padding: isMobile ? '0.75rem' : '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.6875rem', color: '#1d4ed8', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Click Conversions</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e40af' }}>{formatNumberFull(conversionData.clickConversions)}</div>
+                    <div style={{ fontSize: isMobile ? '1.25rem' : '1.5rem', fontWeight: 700, color: '#1e40af' }}>{formatNumberFull(conversionData.clickConversions)}</div>
                   </div>
-                  <div style={{ background: '#fdf4ff', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
+                  <div style={{ background: '#fdf4ff', padding: isMobile ? '0.75rem' : '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.6875rem', color: '#a21caf', textTransform: 'uppercase', marginBottom: '0.25rem' }}>View Conversions</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#86198f' }}>{formatNumberFull(conversionData.viewConversions)}</div>
+                    <div style={{ fontSize: isMobile ? '1.25rem' : '1.5rem', fontWeight: 700, color: '#86198f' }}>{formatNumberFull(conversionData.viewConversions)}</div>
                   </div>
-                  <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
+                  <div style={{ background: '#f9fafb', padding: isMobile ? '0.75rem' : '1rem', borderRadius: '0.5rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Conversion Rate</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#374151' }}>{conversionData.conversionRate?.toFixed(2) || '0.00'}%</div>
+                    <div style={{ fontSize: isMobile ? '1.25rem' : '1.5rem', fontWeight: 700, color: '#374151' }}>{conversionData.conversionRate?.toFixed(2) || '0.00'}%</div>
                   </div>
                 </div>
               </DraggableReportSection>
@@ -5019,25 +5019,27 @@ function CampaignDetailPage({ publicMode = false }) {
                 {/* Summary Stats */}
                 <div style={{ 
                   display: 'grid', 
-                  gridTemplateColumns: 'repeat(3, 1fr)', 
-                  gap: '1rem', 
+                  gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', 
+                  gap: isMobile ? '0.75rem' : '1rem', 
                   marginBottom: '1.5rem',
-                  padding: '1rem',
+                  padding: isMobile ? '0.75rem' : '1rem',
                   background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
                   borderRadius: '0.75rem'
                 }}>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Placements</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e40af' }}>{sortedDomains.length.toLocaleString()}</div>
+                    <div style={{ fontSize: isMobile ? '1.25rem' : '1.5rem', fontWeight: 700, color: '#1e40af' }}>{sortedDomains.length.toLocaleString()}</div>
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Impressions</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#059669' }}>{formatNumber(totalDomainImpressions)}</div>
+                    <div style={{ fontSize: isMobile ? '1.25rem' : '1.5rem', fontWeight: 700, color: '#059669' }}>{formatNumber(totalDomainImpressions)}</div>
                   </div>
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Top Placement</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 600, color: '#374151' }}>{displayDomains[0]?.domain || '—'}</div>
-                  </div>
+                  {!isMobile && (
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Top Placement</div>
+                      <div style={{ fontSize: '1rem', fontWeight: 600, color: '#374151' }}>{displayDomains[0]?.domain || '—'}</div>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Explanation for non-technical users */}
@@ -5046,27 +5048,29 @@ function CampaignDetailPage({ publicMode = false }) {
                   background: '#f9fafb', 
                   borderRadius: '0.5rem', 
                   marginBottom: '1rem',
-                  fontSize: '0.8125rem',
+                  fontSize: isMobile ? '0.75rem' : '0.8125rem',
                   color: '#6b7280'
                 }}>
-                  <strong style={{ color: '#374151' }}>📺 What is this?</strong> This shows the apps, websites, and streaming services where your video ads were shown. Longer bars = more people saw your ad there.
+                  <strong style={{ color: '#374151' }}>📺 What is this?</strong> This shows the apps, websites, and streaming services where your video ads were shown.
                 </div>
                 
-                <div style={{ maxHeight: '450px', overflow: 'auto' }}>
-                  {/* Header */}
+                <div style={{ maxHeight: isMobile ? '350px' : '450px', overflow: 'auto' }}>
+                  {/* Header - simplified on mobile */}
                   <div style={{ 
                     display: 'grid', 
-                    gridTemplateColumns: hasCompletionRate ? '1.5fr 2fr 1fr' : '1fr 2fr', 
-                    gap: '1rem',
-                    padding: '0.75rem 1rem',
+                    gridTemplateColumns: isMobile ? '1fr 1fr' : (hasCompletionRate ? '1.5fr 2fr 1fr' : '1fr 2fr'), 
+                    gap: isMobile ? '0.5rem' : '1rem',
+                    padding: isMobile ? '0.5rem 0.75rem' : '0.75rem 1rem',
                     borderBottom: '2px solid #e5e7eb',
                     background: '#f9fafb',
                     position: 'sticky',
                     top: 0
                   }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>App / Website</div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Times Shown</div>
-                    {hasCompletionRate && (
+                    <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>App / Website</div>
+                    <div style={{ fontSize: '0.6875rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: isMobile ? 'right' : 'center' }}>
+                      {isMobile ? 'Impressions' : 'Times Shown'}
+                    </div>
+                    {!isMobile && hasCompletionRate && (
                       <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Watched to End</div>
                     )}
                   </div>
@@ -5079,34 +5083,44 @@ function CampaignDetailPage({ publicMode = false }) {
                     return (
                       <div key={i} style={{ 
                         display: 'grid', 
-                        gridTemplateColumns: hasCompletionRate ? '1.5fr 2fr 1fr' : '1fr 2fr', 
-                        gap: '1rem',
-                        padding: '0.625rem 1rem',
+                        gridTemplateColumns: isMobile ? '1fr 1fr' : (hasCompletionRate ? '1.5fr 2fr 1fr' : '1fr 2fr'), 
+                        gap: isMobile ? '0.5rem' : '1rem',
+                        padding: isMobile ? '0.5rem 0.75rem' : '0.625rem 1rem',
                         borderBottom: '1px solid #f3f4f6',
                         alignItems: 'center',
                         background: i % 2 === 0 ? 'white' : '#fafafa'
                       }}>
                         {/* Domain Name with icon */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <div style={{
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '0.375rem',
-                            background: `hsl(${(i * 37) % 360}, 70%, 95%)`,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            color: `hsl(${(i * 37) % 360}, 70%, 35%)`
-                          }}>
-                            {d.domain.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                          {!isMobile && (
+                            <div style={{
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '0.375rem',
+                              background: `hsl(${(i * 37) % 360}, 70%, 95%)`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: `hsl(${(i * 37) % 360}, 70%, 35%)`,
+                              flexShrink: 0
+                            }}>
+                              {d.domain.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                            <div style={{ 
+                              fontSize: isMobile ? '0.75rem' : '0.875rem', 
+                              fontWeight: 500, 
+                              color: '#374151',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}>
                               {d.domain}
                             </div>
-                            {d.count > 1 && (
+                            {!isMobile && d.count > 1 && (
                               <div style={{ fontSize: '0.6875rem', color: '#9ca3af' }}>
                                 {d.count} variants
                               </div>
@@ -5114,48 +5128,55 @@ function CampaignDetailPage({ publicMode = false }) {
                           </div>
                         </div>
                         
-                        {/* Impressions Bar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <div style={{ 
-                            flex: 1, 
-                            height: '24px', 
-                            background: '#e5e7eb', 
-                            borderRadius: '4px',
-                            overflow: 'hidden'
-                          }}>
-                            <div style={{
-                              width: `${impressionPercent}%`,
-                              height: '100%',
-                              background: 'linear-gradient(90deg, #0d9488 0%, #14b8a6 100%)',
-                              borderRadius: '4px',
-                              minWidth: impressionPercent > 0 ? '4px' : '0',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'flex-end',
-                              paddingRight: impressionPercent > 30 ? '0.5rem' : '0'
-                            }}>
-                              {impressionPercent > 30 && (
-                                <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
-                                  {formatNumberFull(d.impressions)}
-                                </span>
-                              )}
-                            </div>
+                        {/* Mobile: Just show number. Desktop: Show bar */}
+                        {isMobile ? (
+                          <div style={{ textAlign: 'right', fontSize: '0.8125rem', fontWeight: 600, color: '#0d9488' }}>
+                            {formatNumber(d.impressions)}
                           </div>
-                          {impressionPercent <= 30 && (
+                        ) : (
+                          /* Impressions Bar */
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <div style={{ 
-                              fontSize: '0.8125rem', 
-                              fontWeight: 500, 
-                              color: '#374151',
-                              minWidth: '55px',
-                              textAlign: 'right'
+                              flex: 1, 
+                              height: '24px', 
+                              background: '#e5e7eb', 
+                              borderRadius: '4px',
+                              overflow: 'hidden'
                             }}>
-                              {formatNumberFull(d.impressions)}
+                              <div style={{
+                                width: `${impressionPercent}%`,
+                                height: '100%',
+                                background: 'linear-gradient(90deg, #0d9488 0%, #14b8a6 100%)',
+                                borderRadius: '4px',
+                                minWidth: impressionPercent > 0 ? '4px' : '0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'flex-end',
+                                paddingRight: impressionPercent > 30 ? '0.5rem' : '0'
+                              }}>
+                                {impressionPercent > 30 && (
+                                  <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                                    {formatNumberFull(d.impressions)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          )}
-                        </div>
+                            {impressionPercent <= 30 && (
+                              <div style={{ 
+                                fontSize: '0.8125rem', 
+                                fontWeight: 500, 
+                                color: '#374151',
+                                minWidth: '55px',
+                                textAlign: 'right'
+                              }}>
+                                {formatNumberFull(d.impressions)}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         
-                        {/* Completion Rate Bar (if available) */}
-                        {hasCompletionRate && (
+                        {/* Completion Rate Bar (if available) - hidden on mobile */}
+                        {!isMobile && hasCompletionRate && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <div style={{ 
                               flex: 1, 
