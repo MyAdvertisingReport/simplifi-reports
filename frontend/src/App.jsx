@@ -2920,61 +2920,111 @@ function ClientDetailPage({ publicMode = false }) {
                 if (inactiveCampaigns.length === 0) return null;
                 return (
                   <DraggableReportSection {...sectionProps} title={`Paused & Stopped Campaigns (${inactiveCampaigns.length})`} icon={Pause} iconColor="#f59e0b">
-                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
+                    {/* Mobile: Card layout */}
+                    <div className="mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '0.75rem' }}>
+                      {inactiveCampaigns.map(campaign => {
+                        const stats = campaignStats[campaign.id] || {};
+                        const statusStyle = getStatusStyle(campaign.status);
+                        const StatusIcon = statusStyle.icon;
+                        return (
+                          <Link 
+                            key={campaign.id} 
+                            to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`}
+                            style={{ 
+                              textDecoration: 'none', 
+                              color: 'inherit',
+                              padding: '1rem', 
+                              background: '#fffbeb', 
+                              borderRadius: '0.5rem',
+                              border: '1px solid #fde68a',
+                              opacity: 0.85
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem', flex: 1, marginRight: '0.5rem' }}>{campaign.name}</div>
+                              <span style={{ 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                gap: '0.25rem',
+                                padding: '0.25rem 0.5rem', 
+                                background: statusStyle.bg, 
+                                color: statusStyle.color,
+                                borderRadius: '0.25rem', 
+                                fontSize: '0.6875rem',
+                                fontWeight: 500,
+                                flexShrink: 0
+                              }}>
+                                <StatusIcon size={10} />
+                                {statusStyle.label}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: '#6b7280' }}>
+                              <span><strong>{formatNumber(stats.impressions)}</strong> impr</span>
+                              <span><strong>{formatNumber(stats.clicks)}</strong> clicks</span>
+                              <ChevronRight size={16} color="#9ca3af" />
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Desktop: Table layout */}
+                    <div className="desktop-table" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                             <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Campaign</th>
                             <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
-                            {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>}
-                            {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>}
+                            <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>
                             <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
-                          <th style={{ padding: '0.75rem', width: '40px' }}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {inactiveCampaigns.map(campaign => {
-                          const stats = campaignStats[campaign.id] || {};
-                          const statusStyle = getStatusStyle(campaign.status);
-                          const StatusIcon = statusStyle.icon;
-                          return (
-                            <tr key={campaign.id} style={{ borderBottom: '1px solid #f3f4f6', opacity: 0.75 }}>
-                              <td style={{ padding: '0.75rem', fontWeight: 500 }}>{campaign.name}</td>
-                              <td style={{ padding: '0.75rem' }}>
-                                <span style={{ 
-                                  display: 'inline-flex', 
-                                  alignItems: 'center', 
-                                  gap: '0.25rem',
-                                  padding: '0.25rem 0.5rem', 
-                                  background: statusStyle.bg, 
-                                  color: statusStyle.color,
-                                  borderRadius: '0.25rem', 
-                                  fontSize: '0.75rem',
-                                  fontWeight: 500
-                                }}>
-                                  <StatusIcon size={12} />
-                                  {statusStyle.label}
-                                </span>
-                              </td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
-                                {campaign.start_date ? new Date(campaign.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
-                              </td>
-                              <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
-                                {campaign.end_date ? new Date(campaign.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
-                              </td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.impressions)}</td>
-                              <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.clicks)}</td>
-                              <td style={{ padding: '0.75rem' }}>
-                                <Link to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
-                                  <ChevronRight size={18} />
-                                </Link>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
+                            <th style={{ padding: '0.75rem', width: '40px' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inactiveCampaigns.map(campaign => {
+                            const stats = campaignStats[campaign.id] || {};
+                            const statusStyle = getStatusStyle(campaign.status);
+                            const StatusIcon = statusStyle.icon;
+                            return (
+                              <tr key={campaign.id} style={{ borderBottom: '1px solid #f3f4f6', opacity: 0.75 }}>
+                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{campaign.name}</td>
+                                <td style={{ padding: '0.75rem' }}>
+                                  <span style={{ 
+                                    display: 'inline-flex', 
+                                    alignItems: 'center', 
+                                    gap: '0.25rem',
+                                    padding: '0.25rem 0.5rem', 
+                                    background: statusStyle.bg, 
+                                    color: statusStyle.color,
+                                    borderRadius: '0.25rem', 
+                                    fontSize: '0.75rem',
+                                    fontWeight: 500
+                                  }}>
+                                    <StatusIcon size={12} />
+                                    {statusStyle.label}
+                                  </span>
+                                </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                  {campaign.start_date ? new Date(campaign.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                                </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                  {campaign.end_date ? new Date(campaign.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                                </td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.impressions)}</td>
+                                <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.clicks)}</td>
+                                <td style={{ padding: '0.75rem' }}>
+                                  <Link to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
+                                    <ChevronRight size={18} />
+                                  </Link>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </DraggableReportSection>
                 );
               
@@ -7882,12 +7932,17 @@ function App() {
             -webkit-overflow-scrolling: touch;
           }
           
-          /* Mobile: Stack everything (under 768px) */
+          /* Mobile: Force EVERYTHING to single column (under 768px) */
           @media (max-width: 767px) {
-            .responsive-grid-4,
-            .responsive-grid-3,
-            .responsive-grid-2 {
+            /* Force ALL grids to single column */
+            [style*="grid"] {
               grid-template-columns: 1fr !important;
+            }
+            
+            /* Force flex containers to column */
+            .header-content {
+              flex-direction: column !important;
+              align-items: stretch !important;
             }
             
             /* Hide less important columns on mobile */
@@ -7900,21 +7955,10 @@ function App() {
               padding: 0.75rem !important;
             }
             
-            /* Stack header content vertically */
-            .header-content {
-              flex-direction: column !important;
-              align-items: stretch !important;
-            }
-            
             /* Stack header elements */
             .header-actions {
               flex-direction: column;
               gap: 0.5rem;
-            }
-            
-            /* Full width buttons */
-            .header-actions button {
-              width: 100%;
             }
             
             /* Smaller fonts on mobile */
@@ -7928,6 +7972,7 @@ function App() {
             }
             .mobile-cards {
               display: flex !important;
+              flex-direction: column !important;
             }
           }
           
