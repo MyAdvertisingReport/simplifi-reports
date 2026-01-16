@@ -275,6 +275,15 @@ function TopAdCard({ ad, rank }) {
   
   const hasValidPreview = ad.preview_url && !imageError;
   
+  // Parse dimensions from size string for placeholder
+  const sizeParts = ad.size?.match(/(\d+)x(\d+)/);
+  const displayWidth = sizeParts ? parseInt(sizeParts[1]) : 300;
+  const displayHeight = sizeParts ? parseInt(sizeParts[2]) : 250;
+  const aspectRatio = displayWidth / displayHeight;
+  
+  // Calculate preview container height based on aspect ratio (max 100px height)
+  const previewHeight = Math.min(100, 150 / aspectRatio);
+  
   return (
     <div style={{ 
       padding: '1.25rem', 
@@ -282,40 +291,68 @@ function TopAdCard({ ad, rank }) {
       borderRadius: '0.75rem',
       color: isFirst ? 'white' : 'inherit'
     }}>
-      {/* Ad Preview Image/Video - only show if we have a URL and no error */}
-      {hasValidPreview && (
-        <div style={{ 
-          marginBottom: '0.75rem', 
-          borderRadius: '0.5rem', 
-          overflow: 'hidden',
-          background: isFirst ? 'rgba(255,255,255,0.1)' : '#e5e7eb',
-          display: imageLoaded || ad.is_video ? 'flex' : 'none',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '60px',
-          maxHeight: '100px'
-        }}>
-          {ad.is_video ? (
+      {/* Ad Preview - show image if available, or size-aware placeholder */}
+      <div style={{ 
+        marginBottom: '0.75rem', 
+        borderRadius: '0.5rem', 
+        overflow: 'hidden',
+        background: isFirst ? 'rgba(255,255,255,0.1)' : '#e5e7eb',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: `${previewHeight}px`,
+        position: 'relative'
+      }}>
+        {hasValidPreview ? (
+          ad.is_video ? (
             <video 
               src={ad.preview_url} 
-              style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '100%', 
+                objectFit: 'contain',
+                display: imageLoaded ? 'block' : 'none'
+              }}
               autoPlay
               loop
               muted
               playsInline
+              onLoadedData={() => setImageLoaded(true)}
               onError={() => setImageError(true)}
             />
           ) : (
             <img 
               src={ad.preview_url} 
               alt={ad.size}
-              style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '100%', 
+                objectFit: 'contain',
+                display: imageLoaded ? 'block' : 'none'
+              }}
               onLoad={() => setImageLoaded(true)}
               onError={() => setImageError(true)}
             />
-          )}
-        </div>
-      )}
+          )
+        ) : null}
+        
+        {/* Show placeholder if no image or while loading */}
+        {(!hasValidPreview || !imageLoaded) && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: isFirst ? 'rgba(255,255,255,0.5)' : '#9ca3af',
+            fontSize: '0.75rem',
+            padding: '0.5rem'
+          }}>
+            <Image size={24} style={{ marginBottom: '0.25rem', opacity: 0.5 }} />
+            <span>{ad.size}</span>
+          </div>
+        )}
+      </div>
+      
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
         <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>{ad.size}</span>
         <span style={{ 
@@ -2427,18 +2464,18 @@ function ClientDetailPage({ publicMode = false }) {
       acc[size] = { 
         impressions: 0, 
         clicks: 0, 
-        preview_url: ad.preview_url, // Use first ad's preview
-        is_video: ad.is_video,
+        preview_url: null,
+        is_video: false,
         width: ad.width,
         height: ad.height
       };
     }
     acc[size].impressions += ad.impressions || 0;
     acc[size].clicks += ad.clicks || 0;
-    // Keep the preview from the ad with most impressions for this size
-    if (!acc[size].preview_url && ad.preview_url) {
+    // Capture preview URL from any ad that has one (prefer non-null)
+    if (ad.preview_url && !acc[size].preview_url) {
       acc[size].preview_url = ad.preview_url;
-      acc[size].is_video = ad.is_video;
+      acc[size].is_video = ad.is_video || false;
       acc[size].width = ad.width;
       acc[size].height = ad.height;
     }
