@@ -394,14 +394,15 @@ class ReportCenterService {
       }
       
       const result = data.map(row => ({
-        domain: row['summary_delivery_events.domain_reporting_name'] ||
+        domain: row['summary_delivery_events.domain_name'] ||  // This is the actual field name!
+                row['summary_delivery_events.domain_reporting_name'] ||
                 row['summary_delivery_events.domain'] || 
                 row['dim_domain.domain_name'] ||
                 row['dim_domain.domain_reporting_name'],
         impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
         clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
         ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-        spend: parseFloat(row['summary_delivery_events.spend'] || row['summary_delivery_events.total_cust'] || 0),
+        spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0),
         // Try to get completion rate if available in this report
         complete_rate: parseFloat(
           row['summary_delivery_events.video_complete_rate'] ||
