@@ -4092,31 +4092,34 @@ function CampaignDetailPage({ publicMode = false }) {
           .catch(e => console.log('Viewability data not available:', e.message))
       );
       
-      // ONLY fetch geo-fence performance for geo-fence campaigns
-      if (detectedType.isGeoFence) {
-        promises.push(
-          api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/geo-fence-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => setGeoFencePerformance(data.geofence_performance || []))
-            .catch(e => console.log('Geo-fence performance not available:', e.message))
-        );
-      }
+      // ALWAYS fetch geo-fence performance - let UI hide if empty
+      // (campaigns can have geo-targeting even if not named "geo-fence")
+      promises.push(
+        api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/geo-fence-performance?startDate=${startDate}&endDate=${endDate}`)
+          .then(data => {
+            const gfPerf = data.geofence_performance || [];
+            setGeoFencePerformance(gfPerf);
+            if (gfPerf.length > 0) {
+              console.log(`Geo-fence performance loaded: ${gfPerf.length} geo-fences`);
+            }
+          })
+          .catch(e => console.log('Geo-fence performance not available:', e.message))
+      );
       
-      // ONLY fetch keyword performance for keyword campaigns
-      if (detectedType.isKeyword) {
-        promises.push(
-          api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/keyword-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => {
-              const kwPerf = data.keyword_performance || [];
-              if (kwPerf.length > 0) {
-                console.log(`Keyword performance loaded: ${kwPerf.length} keywords`);
-                setKeywordPerformance(kwPerf);
-              }
-            })
-            .catch(e => console.log('Keyword performance not available:', e.message))
-        );
-      }
+      // ALWAYS fetch keyword performance - let UI hide if empty
+      promises.push(
+        api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/keyword-performance?startDate=${startDate}&endDate=${endDate}`)
+          .then(data => {
+            const kwPerf = data.keyword_performance || [];
+            if (kwPerf.length > 0) {
+              console.log(`Keyword performance loaded: ${kwPerf.length} keywords`);
+              setKeywordPerformance(kwPerf);
+            }
+          })
+          .catch(e => console.log('Keyword performance not available:', e.message))
+      );
       
-      // Fetch domain performance for ALL campaigns (OTT has completion rate, Display has CTR)
+      // ALWAYS fetch domain performance
       promises.push(
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/domain-performance?startDate=${startDate}&endDate=${endDate}`)
           .then(data => {
@@ -4718,19 +4721,150 @@ function CampaignDetailPage({ publicMode = false }) {
           case 'domains':
             if (domainPerformance.length === 0) return null;
             
+            // Helper to clean up domain names for display
+            const cleanDomainName = (domain) => {
+              if (!domain) return 'Unknown';
+              
+              // Map common app bundle IDs to friendly names
+              const domainMappings = {
+                'com.treemolabs.apps.cbsnews': 'CBS News',
+                'com.cbs.app': 'CBS',
+                'com.roku': 'Roku',
+                'com.pluto.tv': 'Pluto TV',
+                'com.tubitv': 'Tubi TV',
+                'com.amazon.firetv': 'Amazon Fire TV',
+                'com.hulu': 'Hulu',
+                'com.peacock': 'Peacock',
+                'com.paramount': 'Paramount+',
+                'com.discovery': 'Discovery+',
+                'com.fox.now': 'Fox Now',
+                'com.nbc.news': 'NBC News',
+                'com.abc.news': 'ABC News',
+                'com.weather.weather': 'Weather Channel',
+                'mobi.ifunny': 'iFunny',
+                'com.teevee.mobile': 'TeeVee',
+              };
+              
+              // Check for exact match first
+              const lowerDomain = domain.toLowerCase();
+              for (const [key, value] of Object.entries(domainMappings)) {
+                if (lowerDomain.includes(key.toLowerCase())) return value;
+              }
+              
+              // If it's a URL, extract the domain
+              if (domain.startsWith('http')) {
+                try {
+                  const url = new URL(domain);
+                  return url.hostname.replace('www.', '');
+                } catch {}
+              }
+              
+              // If it's an app bundle ID (com.xxx.xxx), try to extract readable name
+              if (domain.includes('.') && !domain.includes(' ')) {
+                const parts = domain.split('.');
+                // Get the last meaningful part
+                const lastPart = parts[parts.length - 1];
+                if (lastPart && lastPart.length > 2 && !/^\d+$/.test(lastPart)) {
+                  // Capitalize and clean up
+                  return lastPart.charAt(0).toUpperCase() + lastPart.slice(1).replace(/([A-Z])/g, ' $1').trim();
+                }
+                // Try second to last part
+                if (parts.length >= 2) {
+                  const secondLast = parts[parts.length - 2];
+                  if (secondLast && secondLast.length > 2 && !/^\d+$/.test(secondLast)) {
+                    return secondLast.charAt(0).toUpperCase() + secondLast.slice(1);
+                  }
+                }
+              }
+              
+              // Return as-is if it's just numbers (likely an ID)
+              if (/^\d+$/.test(domain)) {
+                return `App ID: ${domain}`;
+              }
+              
+              return domain;
+            };
+            
+            // Aggregate domains by cleaned name (in case same app appears multiple times)
+            const aggregatedDomains = {};
+            domainPerformance.forEach(d => {
+              const cleanName = cleanDomainName(d.domain);
+              if (!aggregatedDomains[cleanName]) {
+                aggregatedDomains[cleanName] = {
+                  domain: cleanName,
+                  originalDomain: d.domain,
+                  impressions: 0,
+                  clicks: 0,
+                  spend: 0,
+                  complete_rate: d.complete_rate,
+                  count: 0
+                };
+              }
+              aggregatedDomains[cleanName].impressions += d.impressions || 0;
+              aggregatedDomains[cleanName].clicks += d.clicks || 0;
+              aggregatedDomains[cleanName].spend += d.spend || 0;
+              aggregatedDomains[cleanName].count += 1;
+              // Keep the highest completion rate if multiple
+              if (d.complete_rate && d.complete_rate > (aggregatedDomains[cleanName].complete_rate || 0)) {
+                aggregatedDomains[cleanName].complete_rate = d.complete_rate;
+              }
+            });
+            
+            const sortedDomains = Object.values(aggregatedDomains).sort((a, b) => b.impressions - a.impressions);
+            const displayDomains = sortedDomains.slice(0, 15);
+            
             // Calculate max impressions for bar scaling
-            const maxDomainImpressions = Math.max(...domainPerformance.map(d => d.impressions || 0));
+            const maxDomainImpressions = Math.max(...displayDomains.map(d => d.impressions || 0));
             
             // Check if we have completion rate data (OTT/CTV campaigns)
-            const hasCompletionRate = domainPerformance.some(d => d.complete_rate !== undefined || d.vcr !== undefined);
+            const hasCompletionRate = displayDomains.some(d => d.complete_rate > 0);
+            
+            // Calculate totals
+            const totalDomainImpressions = sortedDomains.reduce((sum, d) => sum + (d.impressions || 0), 0);
             
             return (
-              <DraggableReportSection {...sectionProps} title={`Domain Performance (Top ${Math.min(domainPerformance.length, 15)})`} icon={Globe} iconColor="#6366f1">
-                <div style={{ maxHeight: '500px', overflow: 'auto' }}>
+              <DraggableReportSection {...sectionProps} title="Where Your Ads Appeared" icon={Globe} iconColor="#6366f1">
+                {/* Summary Stats */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(3, 1fr)', 
+                  gap: '1rem', 
+                  marginBottom: '1.5rem',
+                  padding: '1rem',
+                  background: 'linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%)',
+                  borderRadius: '0.75rem'
+                }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Placements</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e40af' }}>{sortedDomains.length.toLocaleString()}</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Total Impressions</div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#059669' }}>{formatNumber(totalDomainImpressions)}</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Top Placement</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 600, color: '#374151' }}>{displayDomains[0]?.domain || '—'}</div>
+                  </div>
+                </div>
+                
+                {/* Explanation for non-technical users */}
+                <div style={{ 
+                  padding: '0.75rem 1rem', 
+                  background: '#f9fafb', 
+                  borderRadius: '0.5rem', 
+                  marginBottom: '1rem',
+                  fontSize: '0.8125rem',
+                  color: '#6b7280'
+                }}>
+                  <strong style={{ color: '#374151' }}>📺 What is this?</strong> This shows the apps, websites, and streaming services where your video ads were shown. Longer bars = more people saw your ad there.
+                </div>
+                
+                <div style={{ maxHeight: '450px', overflow: 'auto' }}>
                   {/* Header */}
                   <div style={{ 
                     display: 'grid', 
-                    gridTemplateColumns: hasCompletionRate ? '1fr 2fr 1fr' : '1fr 2fr', 
+                    gridTemplateColumns: hasCompletionRate ? '1.5fr 2fr 1fr' : '1fr 2fr', 
                     gap: '1rem',
                     padding: '0.75rem 1rem',
                     borderBottom: '2px solid #e5e7eb',
@@ -4738,58 +4872,94 @@ function CampaignDetailPage({ publicMode = false }) {
                     position: 'sticky',
                     top: 0
                   }}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Domain Reporting Name</div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Impressions</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>App / Website</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Times Shown</div>
                     {hasCompletionRate && (
-                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Complete Rate</div>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Watched to End</div>
                     )}
                   </div>
                   
                   {/* Rows */}
-                  {domainPerformance.slice(0, 15).map((d, i) => {
+                  {displayDomains.map((d, i) => {
                     const impressionPercent = maxDomainImpressions > 0 ? ((d.impressions || 0) / maxDomainImpressions * 100) : 0;
-                    const completeRate = d.complete_rate ?? d.vcr ?? null;
+                    const completeRate = d.complete_rate ?? null;
                     
                     return (
                       <div key={i} style={{ 
                         display: 'grid', 
-                        gridTemplateColumns: hasCompletionRate ? '1fr 2fr 1fr' : '1fr 2fr', 
+                        gridTemplateColumns: hasCompletionRate ? '1.5fr 2fr 1fr' : '1fr 2fr', 
                         gap: '1rem',
-                        padding: '0.5rem 1rem',
+                        padding: '0.625rem 1rem',
                         borderBottom: '1px solid #f3f4f6',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        background: i % 2 === 0 ? 'white' : '#fafafa'
                       }}>
-                        {/* Domain Name */}
-                        <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
-                          {d.domain || d.domain_reporting_name || 'Unknown'}
+                        {/* Domain Name with icon */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '0.375rem',
+                            background: `hsl(${(i * 37) % 360}, 70%, 95%)`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            color: `hsl(${(i * 37) % 360}, 70%, 35%)`
+                          }}>
+                            {d.domain.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+                              {d.domain}
+                            </div>
+                            {d.count > 1 && (
+                              <div style={{ fontSize: '0.6875rem', color: '#9ca3af' }}>
+                                {d.count} variants
+                              </div>
+                            )}
+                          </div>
                         </div>
                         
                         {/* Impressions Bar */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <div style={{ 
                             flex: 1, 
-                            height: '20px', 
+                            height: '24px', 
                             background: '#e5e7eb', 
-                            borderRadius: '2px',
+                            borderRadius: '4px',
                             overflow: 'hidden'
                           }}>
                             <div style={{
                               width: `${impressionPercent}%`,
                               height: '100%',
                               background: 'linear-gradient(90deg, #0d9488 0%, #14b8a6 100%)',
-                              borderRadius: '2px',
-                              minWidth: impressionPercent > 0 ? '2px' : '0'
-                            }} />
+                              borderRadius: '4px',
+                              minWidth: impressionPercent > 0 ? '4px' : '0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-end',
+                              paddingRight: impressionPercent > 30 ? '0.5rem' : '0'
+                            }}>
+                              {impressionPercent > 30 && (
+                                <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                                  {formatNumberFull(d.impressions)}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div style={{ 
-                            fontSize: '0.8125rem', 
-                            fontWeight: 500, 
-                            color: '#374151',
-                            minWidth: '60px',
-                            textAlign: 'right'
-                          }}>
-                            {formatNumberFull(d.impressions)}
-                          </div>
+                          {impressionPercent <= 30 && (
+                            <div style={{ 
+                              fontSize: '0.8125rem', 
+                              fontWeight: 500, 
+                              color: '#374151',
+                              minWidth: '55px',
+                              textAlign: 'right'
+                            }}>
+                              {formatNumberFull(d.impressions)}
+                            </div>
+                          )}
                         </div>
                         
                         {/* Completion Rate Bar (if available) */}
@@ -4797,9 +4967,9 @@ function CampaignDetailPage({ publicMode = false }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <div style={{ 
                               flex: 1, 
-                              height: '20px', 
+                              height: '24px', 
                               background: '#e5e7eb', 
-                              borderRadius: '2px',
+                              borderRadius: '4px',
                               overflow: 'hidden'
                             }}>
                               <div style={{
@@ -4807,18 +4977,19 @@ function CampaignDetailPage({ publicMode = false }) {
                                 height: '100%',
                                 background: completeRate >= 95 ? 'linear-gradient(90deg, #16a34a 0%, #22c55e 100%)' :
                                            completeRate >= 80 ? 'linear-gradient(90deg, #0d9488 0%, #14b8a6 100%)' :
-                                           'linear-gradient(90deg, #eab308 0%, #facc15 100%)',
-                                borderRadius: '2px'
+                                           completeRate >= 50 ? 'linear-gradient(90deg, #eab308 0%, #facc15 100%)' :
+                                           'linear-gradient(90deg, #f97316 0%, #fb923c 100%)',
+                                borderRadius: '4px'
                               }} />
                             </div>
                             <div style={{ 
                               fontSize: '0.8125rem', 
                               fontWeight: 500, 
-                              color: '#374151',
-                              minWidth: '65px',
+                              color: completeRate >= 80 ? '#059669' : completeRate >= 50 ? '#d97706' : '#dc2626',
+                              minWidth: '50px',
                               textAlign: 'right'
                             }}>
-                              {completeRate !== null ? `${completeRate.toFixed(3)}%` : '—'}
+                              {completeRate !== null && completeRate > 0 ? `${completeRate.toFixed(1)}%` : '—'}
                             </div>
                           </div>
                         )}
@@ -4826,9 +4997,9 @@ function CampaignDetailPage({ publicMode = false }) {
                     );
                   })}
                 </div>
-                {domainPerformance.length > 15 && (
-                  <div style={{ padding: '0.75rem', textAlign: 'center', color: '#6b7280', fontSize: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
-                    Showing top 15 of {domainPerformance.length} domains
+                {sortedDomains.length > 15 && (
+                  <div style={{ padding: '0.75rem', textAlign: 'center', color: '#6b7280', fontSize: '0.8125rem', borderTop: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                    Showing top 15 of {sortedDomains.length} placements • {formatNumber(totalDomainImpressions)} total impressions
                   </div>
                 )}
               </DraggableReportSection>
