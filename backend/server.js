@@ -1338,13 +1338,17 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/location-perfo
 app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/geo-fence-performance', authenticateToken, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
+    console.log(`[GEO-FENCE PERF] Request for org ${req.params.orgId}, campaign ${req.params.campaignId}, ${startDate} to ${endDate}`);
+    
     if (!reportCenterService) {
+      console.log('[GEO-FENCE PERF] Report Center service not available');
       return res.json({ geofence_performance: [] });
     }
     const data = await reportCenterService.getGeoFencePerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
+    console.log(`[GEO-FENCE PERF] Got ${(data || []).length} geo-fences`);
     res.json({ geofence_performance: data || [] });
   } catch (error) {
-    console.error('Geo-fence performance error:', error);
+    console.error('[GEO-FENCE PERF] Error:', error.message);
     res.json({ geofence_performance: [] });
   }
 });
@@ -1405,13 +1409,17 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/domain-perform
 app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/device-breakdown', authenticateToken, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
+    console.log(`[DEVICE ENDPOINT] Request for org ${req.params.orgId}, campaign ${req.params.campaignId}`);
+    
     if (!reportCenterService) {
+      console.log('[DEVICE ENDPOINT] Report Center service not available');
       return res.json({ device_breakdown: [] });
     }
     const data = await reportCenterService.getDeviceBreakdown(req.params.orgId, req.params.campaignId, startDate, endDate);
+    console.log(`[DEVICE ENDPOINT] Returning ${(data || []).length} device types`);
     res.json({ device_breakdown: data || [] });
   } catch (error) {
-    console.error('Device breakdown error:', error);
+    console.error('[DEVICE ENDPOINT] Error:', error.message);
     res.json({ device_breakdown: [] });
   }
 });

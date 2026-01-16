@@ -216,13 +216,20 @@ class ReportCenterService {
    */
   async getGeoFencePerformance(orgId, campaignId, startDate, endDate) {
     try {
+      console.log(`[REPORT CENTER] Getting geo-fence performance for org ${orgId}, campaign ${campaignId}, ${startDate} to ${endDate}`);
+      
       const reportId = await this.getOrCreateReportModel(
         orgId, 
         TEMPLATES.GEO_FENCE_BY_CAMPAIGN,
         'Geo-Fence Performance'
       );
       
-      if (!reportId) return [];
+      console.log(`[REPORT CENTER] Geo-fence report ID: ${reportId}`);
+      
+      if (!reportId) {
+        console.log('[REPORT CENTER] No report ID for geo-fence performance');
+        return [];
+      }
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
@@ -231,20 +238,41 @@ class ReportCenterService {
 
       const data = await this.runSnapshotAndWait(orgId, reportId, filters);
       
-      if (!data || !Array.isArray(data)) return [];
+      if (!data || !Array.isArray(data)) {
+        console.log('[REPORT CENTER] No data returned from geo-fence snapshot');
+        return [];
+      }
       
-      // Transform the data
-      return data.map(row => ({
-        geoFenceId: row['summary_delivery_events.target_geo_fence_id'],
-        geoFenceName: row['summary_delivery_events.target_geo_fence_name'],
+      console.log(`[REPORT CENTER] Geo-fence snapshot returned ${data.length} rows`);
+      if (data.length > 0) {
+        console.log(`[REPORT CENTER] Geo-fence first row keys:`, Object.keys(data[0]));
+        console.log(`[REPORT CENTER] Geo-fence first row sample:`, JSON.stringify(data[0]).substring(0, 500));
+      }
+      
+      // Transform the data - try multiple field name patterns
+      const result = data.map(row => ({
+        geoFenceId: row['summary_delivery_events.target_geo_fence_id'] || 
+                    row['summary_delivery_events.geo_fence_id'] ||
+                    row['dim_geo_fence.geo_fence_id'],
+        geoFenceName: row['summary_delivery_events.target_geo_fence_name'] ||
+                      row['summary_delivery_events.geo_fence_name'] ||
+                      row['dim_geo_fence.geo_fence_name'] ||
+                      row['dim_geo_fence.name'],
         impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
         clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
         ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-        spend: parseFloat(row['summary_delivery_events.spend'] || 0)
-      })).filter(r => r.geoFenceId);
+        spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0)
+      })).filter(r => r.geoFenceId || r.geoFenceName);
+      
+      console.log(`[REPORT CENTER] Processed ${result.length} geo-fences`);
+      if (result.length > 0) {
+        console.log(`[REPORT CENTER] First geo-fence:`, JSON.stringify(result[0]));
+      }
+      
+      return result;
       
     } catch (error) {
-      console.error('Error getting geo-fence performance:', error.message);
+      console.error('[REPORT CENTER] Error getting geo-fence performance:', error.message);
       return [];
     }
   }
