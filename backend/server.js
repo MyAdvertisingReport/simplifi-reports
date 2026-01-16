@@ -15,7 +15,6 @@ const fs = require('fs');
 
 const SimplifiClient = require('./simplifi-client');
 const { ReportCenterService } = require('./report-center-service');
-const { SyncService } = require('./sync-service');
 const { initializeDatabase, seedInitialData, DatabaseHelper } = require('./database');
 
 // Initialize Express
@@ -71,9 +70,6 @@ let simplifiClient = null;
 
 // Initialize Report Center service
 let reportCenterService = null;
-
-// Initialize Sync service
-let syncService = null;
 
 // ============================================
 // HEALTH CHECK ENDPOINTS (for deployment)
@@ -375,7 +371,7 @@ app.get('/api/clients', authenticateToken, async (req, res) => {
     if (req.user.role === 'admin') {
       clients = await dbHelper.getAllClients();
     } else {
-      clients = await dbHelper.getClientsForUser(req.user.id);
+      clients = await dbHelper.getClientsByUserId(req.user.id);
     }
     res.json(clients);
   } catch (error) {
@@ -443,7 +439,7 @@ app.get('/api/client-assignments', authenticateToken, requireAdmin, async (req, 
 // Get users assigned to a specific client
 app.get('/api/clients/:id/assignments', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const users = await dbHelper.getClientAssignments(req.params.id);
+    const users = await dbHelper.getUsersByClientId(req.params.id);
     res.json(users);
   } catch (error) {
     console.error('Get client assignments error:', error);
@@ -458,7 +454,7 @@ app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, async 
     if (!userId) {
       return res.status(400).json({ error: 'User ID required' });
     }
-    await dbHelper.assignUserToClient(req.params.id, userId);
+    await dbHelper.assignClientToUser(req.params.id, userId);
     res.json({ success: true });
   } catch (error) {
     console.error('Assign client error:', error);
@@ -469,7 +465,7 @@ app.post('/api/clients/:id/assignments', authenticateToken, requireAdmin, async 
 // Remove user from client
 app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    await dbHelper.removeUserFromClient(req.params.id, req.params.userId);
+    await dbHelper.unassignClientFromUser(req.params.id, req.params.userId);
     res.json({ success: true });
   } catch (error) {
     console.error('Unassign client error:', error);
@@ -480,7 +476,7 @@ app.delete('/api/clients/:id/assignments/:userId', authenticateToken, requireAdm
 // Get clients assigned to a specific user
 app.get('/api/users/:id/clients', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const clients = await dbHelper.getClientsForUser(req.params.id);
+    const clients = await dbHelper.getClientsByUserId(req.params.id);
     res.json(clients);
   } catch (error) {
     console.error('Get user clients error:', error);
@@ -509,13 +505,32 @@ app.delete('/api/clients/:id', authenticateToken, requireAdmin, async (req, res)
 });
 
 // ============================================
+// CLIENT REPORT PDF ROUTES
+// ============================================
+
+// PDF report generation endpoint
+app.get('/api/clients/:clientId/report/pdf', authenticateToken, async (req, res) => {
+  try {
+    // For now, return a message that PDF generation needs to be configured
+    // Full implementation requires puppeteer or similar
+    res.status(501).json({ 
+      error: 'PDF generation not yet configured',
+      message: 'PDF report generation requires additional server setup'
+    });
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    res.status(500).json({ error: 'Failed to generate PDF' });
+  }
+});
+
+// ============================================
 // PUBLIC REPORT ROUTES (No auth required)
 // ============================================
 
 // Get client by share token (legacy)
 app.get('/api/public/client/:token', async (req, res) => {
   try {
-    const client = await dbHelper.getClientByToken(req.params.token);
+    const client = await dbHelper.getClientByShareToken(req.params.token);
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
@@ -561,103 +576,25 @@ app.get('/api/public/client/slug/:slug', async (req, res) => {
 // Get public stats by share token (legacy)
 app.get('/api/public/client/:token/stats', async (req, res) => {
   try {
-    const client = await dbHelper.getClientByToken(req.params.token);
+    const client = await dbHelper.getClientByShareToken(req.params.token);
     if (!client || !client.simplifi_org_id) {
       return res.status(404).json({ error: 'Client not found' });
     }
 
     const { startDate, endDate } = req.query;
     
-    // Fetch campaigns with ads included
-    const campaignsData = await simplifiClient.getCampaignsWithAds(client.simplifi_org_id);
+    // Fetch campaigns
+    const campaignsData = await simplifiClient.getCampaigns(client.simplifi_org_id);
     const campaigns = campaignsData.campaigns || [];
 
-    // Build ad details map from campaigns
-    const adDetailsMap = {};
-    campaigns.forEach(campaign => {
-      (campaign.ads || []).forEach(ad => {
-        // Try multiple sources for dimensions
-        let width = null, height = null;
-        
-        // 1. Try original_width/original_height (e.g., "1920 px")
-        if (ad.original_width) width = parseInt(ad.original_width);
-        if (ad.original_height) height = parseInt(ad.original_height);
-        
-        // 2. Try ad_sizes array
-        if ((!width || !height) && ad.ad_sizes && ad.ad_sizes.length > 0) {
-          width = width || ad.ad_sizes[0].width;
-          height = height || ad.ad_sizes[0].height;
-        }
-        
-        // 3. Parse from ad name (e.g., "banner_300x250.gif")
-        if (!width || !height) {
-          const sizeMatch = (ad.name || '').match(/(\d{2,4})x(\d{2,4})/i);
-          if (sizeMatch) {
-            width = width || parseInt(sizeMatch[1]);
-            height = height || parseInt(sizeMatch[2]);
-          }
-        }
-        
-        const adFileType = ad.ad_file_types?.[0]?.name || '';
-        
-        adDetailsMap[ad.id] = {
-          name: ad.name,
-          preview_url: ad.primary_creative_url,
-          width: width,
-          height: height,
-          is_video: adFileType.toLowerCase() === 'video' || (ad.name || '').toLowerCase().includes('.mp4'),
-          file_type: adFileType,
-          campaign_id: campaign.id,
-          campaign_name: campaign.name
-        };
-      });
-    });
-    
-    console.log(`[PUBLIC TOKEN] Built ad details map with ${Object.keys(adDetailsMap).length} ads`);
-
-    // Fetch stats by campaign
+    // Fetch stats
     const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
-    
-    // Fetch daily stats
     const dailyStats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, true, false);
-    
-    // Fetch ad stats and enrich them
-    let enrichedAdStats = [];
-    try {
-      const adStatsData = await simplifiClient.getAdStats(client.simplifi_org_id, { startDate, endDate });
-      const rawAdStats = adStatsData.campaign_stats || [];
-      
-      // Get active campaign IDs
-      const activeCampaignIds = campaigns
-        .filter(c => c.status?.toLowerCase() === 'active')
-        .map(c => c.id);
-      
-      // Enrich ad stats with details from campaigns
-      enrichedAdStats = rawAdStats
-        .filter(stat => activeCampaignIds.includes(stat.campaign_id))
-        .map(stat => {
-          const details = adDetailsMap[stat.ad_id] || {};
-          return {
-            ...stat,
-            name: details.name || stat.name || `Ad ${stat.ad_id}`,
-            preview_url: details.preview_url,
-            width: details.width,
-            height: details.height,
-            is_video: details.is_video || false,
-            file_type: details.file_type || ''
-          };
-        });
-        
-      console.log(`[PUBLIC TOKEN] Enriched ${enrichedAdStats.length} ad stats`);
-    } catch (adErr) {
-      console.log('[PUBLIC TOKEN] Ad stats not available:', adErr.message);
-    }
 
     res.json({
       campaigns,
       campaignStats: stats.campaign_stats || [],
-      dailyStats: dailyStats.campaign_stats || [],
-      adStats: enrichedAdStats
+      dailyStats: dailyStats.campaign_stats || []
     });
   } catch (error) {
     console.error('Get public stats error:', error);
@@ -680,36 +617,19 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
     const campaigns = campaignsData.campaigns || [];
 
     // Build ad details map from campaigns
+    // Note: The include=ads may not return primary_creative_url, so we'll fetch ads separately for active campaigns
     const adDetailsMap = {};
+    
+    // First, populate from included ads (may have limited info)
     campaigns.forEach(campaign => {
       (campaign.ads || []).forEach(ad => {
-        // Try multiple sources for dimensions
-        let width = null, height = null;
-        
-        // 1. Try original_width/original_height (e.g., "1920 px")
-        if (ad.original_width) width = parseInt(ad.original_width);
-        if (ad.original_height) height = parseInt(ad.original_height);
-        
-        // 2. Try ad_sizes array
-        if ((!width || !height) && ad.ad_sizes && ad.ad_sizes.length > 0) {
-          width = width || ad.ad_sizes[0].width;
-          height = height || ad.ad_sizes[0].height;
-        }
-        
-        // 3. Parse from ad name (e.g., "banner_300x250.gif")
-        if (!width || !height) {
-          const sizeMatch = (ad.name || '').match(/(\d{2,4})x(\d{2,4})/i);
-          if (sizeMatch) {
-            width = width || parseInt(sizeMatch[1]);
-            height = height || parseInt(sizeMatch[2]);
-          }
-        }
-        
+        const width = ad.original_width ? parseInt(ad.original_width) : null;
+        const height = ad.original_height ? parseInt(ad.original_height) : null;
         const adFileType = ad.ad_file_types?.[0]?.name || '';
         
         adDetailsMap[ad.id] = {
           name: ad.name,
-          preview_url: ad.primary_creative_url,
+          preview_url: ad.primary_creative_url, // May be null from include
           width: width,
           height: height,
           is_video: adFileType.toLowerCase() === 'video' || (ad.name || '').toLowerCase().includes('.mp4'),
@@ -720,7 +640,37 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
       });
     });
     
-    console.log(`[PUBLIC SLUG] Built ad details map with ${Object.keys(adDetailsMap).length} ads`);
+    // Fetch ads directly for active campaigns to get primary_creative_url
+    const activeCampaigns = campaigns.filter(c => c.status?.toLowerCase() === 'active');
+    for (const campaign of activeCampaigns.slice(0, 10)) { // Limit to first 10 for performance
+      try {
+        const adsData = await simplifiClient.getCampaignAds(client.simplifi_org_id, campaign.id);
+        (adsData.ads || []).forEach(ad => {
+          if (ad.primary_creative_url) {
+            const width = ad.original_width ? parseInt(ad.original_width) : 
+                          (ad.ad_sizes?.[0]?.width || null);
+            const height = ad.original_height ? parseInt(ad.original_height) : 
+                           (ad.ad_sizes?.[0]?.height || null);
+            const adFileType = ad.ad_file_types?.[0]?.name || '';
+            
+            adDetailsMap[ad.id] = {
+              name: ad.name,
+              preview_url: ad.primary_creative_url,
+              width: width,
+              height: height,
+              is_video: adFileType.toLowerCase() === 'video' || (ad.name || '').toLowerCase().includes('.mp4'),
+              file_type: adFileType,
+              campaign_id: campaign.id,
+              campaign_name: campaign.name
+            };
+          }
+        });
+      } catch (adErr) {
+        console.log(`Could not fetch ads for campaign ${campaign.id}:`, adErr.message);
+      }
+    }
+    
+    console.log(`Built adDetailsMap with ${Object.keys(adDetailsMap).length} ads, ${Object.values(adDetailsMap).filter(a => a.preview_url).length} have preview URLs`);
 
     // Fetch stats by campaign
     const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
@@ -884,7 +834,7 @@ app.get('/api/public/report-center/:orgId/campaigns/:campaignId/viewability', as
 
 app.get('/api/clients/:clientId/notes', authenticateToken, async (req, res) => {
   try {
-    const notes = await dbHelper.getClientNotes(req.params.clientId);
+    const notes = await dbHelper.getNotesByClient(req.params.clientId);
     res.json(notes || []);
   } catch (error) {
     console.error('Get notes error:', error);
@@ -1019,14 +969,11 @@ app.get('/api/simplifi/organizations', authenticateToken, async (req, res) => {
 // Get organization campaigns
 app.get('/api/simplifi/organizations/:orgId/campaigns', authenticateToken, async (req, res) => {
   try {
-    if (!simplifiClient) {
-      return res.json({ campaigns: [], error: 'API client not initialized' });
-    }
     const campaigns = await simplifiClient.getCampaigns(req.params.orgId);
-    res.json(campaigns || { campaigns: [] });
+    res.json(campaigns);
   } catch (error) {
-    console.error('Get campaigns error:', error.message);
-    res.json({ campaigns: [], error: error.message });
+    console.error('Get campaigns error:', error);
+    res.status(500).json({ error: 'Failed to get campaigns' });
   }
 });
 
@@ -1036,62 +983,36 @@ app.get('/api/simplifi/organizations/:orgId/campaigns-with-ads', authenticateTok
     const campaigns = await simplifiClient.getCampaignsWithAds(req.params.orgId);
     res.json(campaigns);
   } catch (error) {
-    console.error('Get campaigns with ads error:', error.message);
-    // Return empty instead of 500
-    res.json({ campaigns: [], error: error.message });
+    console.error('Get campaigns with ads error:', error);
+    res.status(500).json({ error: 'Failed to get campaigns with ads' });
   }
 });
 
 // Get organization stats
 app.get('/api/simplifi/organizations/:orgId/stats', authenticateToken, async (req, res) => {
   try {
-    // Check if client is initialized
-    if (!simplifiClient) {
-      console.error('[STATS] Simpli.fi client not initialized');
-      return res.json({ campaign_stats: [], error: 'API client not initialized' });
-    }
-    
-    const { startDate, endDate, byDay, byCampaign, byAd, campaignId } = req.query;
-    
-    console.log(`[STATS] Fetching for org ${req.params.orgId}, dates: ${startDate} to ${endDate}`);
+    const { startDate, endDate, byDay, byCampaign, byAd } = req.query;
     
     // If byAd is requested, use a different method
     if (byAd === 'true') {
       const stats = await simplifiClient.getAdStats(req.params.orgId, {
         startDate,
-        endDate,
-        campaignId
+        endDate
       });
-      return res.json(stats || { campaign_stats: [] });
-    }
-    
-    // If campaignId is specified, get campaign-specific stats
-    if (campaignId) {
-      const stats = await simplifiClient.getCampaignStats(req.params.orgId, {
-        campaignId,
+      res.json(stats);
+    } else {
+      const stats = await simplifiClient.getOrganizationStats(
+        req.params.orgId,
         startDate,
         endDate,
-        byDay: byDay === 'true'
-      });
-      return res.json(stats || { campaign_stats: [] });
+        byDay === 'true',
+        byCampaign === 'true'
+      );
+      res.json(stats);
     }
-    
-    // Otherwise get org-wide stats
-    const stats = await simplifiClient.getOrganizationStats(
-      req.params.orgId,
-      startDate,
-      endDate,
-      byDay === 'true',
-      byCampaign === 'true'
-    );
-    res.json(stats || { campaign_stats: [] });
   } catch (error) {
-    console.error('[STATS] Error:', error.message, error.stack);
-    // Return empty stats instead of 500 error
-    res.json({ 
-      campaign_stats: [],
-      error: error.message 
-    });
+    console.error('Get stats error:', error);
+    res.status(500).json({ error: 'Failed to get stats' });
   }
 });
 
@@ -1114,7 +1035,7 @@ app.get('/api/clients/:clientId/cached-stats', authenticateToken, async (req, re
     
     // Try to get cached data (may fail if tables don't exist yet)
     try {
-      lastCachedDate = await dbHelper.getLastFetchDate(clientId);
+      lastCachedDate = await dbHelper.getLastCachedDate(clientId);
       
       if (lastCachedDate) {
         const lastCached = new Date(lastCachedDate);
@@ -1216,364 +1137,6 @@ function aggregateByCampaign(dailyStats) {
   });
   return Object.values(byCampaign);
 }
-
-// Helper functions for data aggregation
-function aggregateStats(dailyStats) {
-  if (!dailyStats || !dailyStats.length) return {};
-  
-  const result = {
-    impressions: dailyStats.reduce((sum, s) => sum + (parseInt(s.impressions) || 0), 0),
-    clicks: dailyStats.reduce((sum, s) => sum + (parseInt(s.clicks) || 0), 0),
-    total_spend: dailyStats.reduce((sum, s) => sum + (parseFloat(s.total_spend) || 0), 0),
-    conversions: dailyStats.reduce((sum, s) => sum + (parseInt(s.conversions) || 0), 0),
-    video_views: dailyStats.reduce((sum, s) => sum + (parseInt(s.video_views) || 0), 0)
-  };
-  result.ctr = result.impressions > 0 ? (result.clicks / result.impressions * 100) : 0;
-  result.cpm = result.impressions > 0 ? (result.total_spend / result.impressions * 1000) : 0;
-  result.cpc = result.clicks > 0 ? (result.total_spend / result.clicks) : 0;
-  return result;
-}
-
-function mergeAdsWithStats(ads, adStats) {
-  const statsMap = {};
-  (adStats || []).forEach(s => { statsMap[s.ad_id] = s; });
-  
-  return (ads || []).map(ad => {
-    // Parse ad_data if it exists
-    let adData = {};
-    if (ad.ad_data) {
-      try {
-        adData = JSON.parse(ad.ad_data);
-      } catch (e) {}
-    }
-    
-    // Try to get dimensions from multiple sources
-    let width = adData.original_width ? parseInt(adData.original_width) : null;
-    let height = adData.original_height ? parseInt(adData.original_height) : null;
-    
-    // Try ad_sizes array
-    if ((!width || !height) && adData.ad_sizes && adData.ad_sizes.length > 0) {
-      width = width || adData.ad_sizes[0].width;
-      height = height || adData.ad_sizes[0].height;
-    }
-    
-    // Try parsing from name
-    const name = ad.ad_name || adData.name || '';
-    const sizeMatch = name.match(/(\d{2,4})x(\d{2,4})/i);
-    if (sizeMatch && (!width || !height)) {
-      width = width || parseInt(sizeMatch[1]);
-      height = height || parseInt(sizeMatch[2]);
-    }
-    
-    return {
-      id: ad.ad_id,
-      ad_id: ad.ad_id,
-      name: name,
-      status: ad.status,
-      ad_type: ad.ad_type,
-      preview_url: ad.preview_url || adData.primary_creative_url,
-      width,
-      height,
-      impressions: parseInt(statsMap[ad.ad_id]?.impressions) || 0,
-      clicks: parseInt(statsMap[ad.ad_id]?.clicks) || 0,
-      spend: parseFloat(statsMap[ad.ad_id]?.spend) || 0,
-      ...adData
-    };
-  });
-}
-
-function mergeKeywordsWithStats(keywords, keywordStats) {
-  const statsMap = {};
-  (keywordStats || []).forEach(s => { statsMap[s.keyword] = s; });
-  
-  return (keywords || []).map(kw => ({
-    keyword: kw.keyword,
-    max_bid: kw.max_bid,
-    impressions: parseInt(statsMap[kw.keyword]?.impressions) || 0,
-    clicks: parseInt(statsMap[kw.keyword]?.clicks) || 0,
-    spend: parseFloat(statsMap[kw.keyword]?.spend) || 0,
-    ctr: parseFloat(statsMap[kw.keyword]?.ctr) || 0
-  }));
-}
-
-function mergeGeoFencesWithStats(geoFences, geoFenceStats) {
-  const statsMap = {};
-  (geoFenceStats || []).forEach(s => { statsMap[s.geo_fence_id] = s; });
-  
-  return (geoFences || []).map(gf => ({
-    id: gf.geo_fence_id,
-    name: gf.geo_fence_name,
-    impressions: parseInt(statsMap[gf.geo_fence_id]?.impressions) || 0,
-    clicks: parseInt(statsMap[gf.geo_fence_id]?.clicks) || 0,
-    conversions: parseInt(statsMap[gf.geo_fence_id]?.conversions) || 0,
-    spend: parseFloat(statsMap[gf.geo_fence_id]?.spend) || 0,
-    ...(gf.geo_fence_data ? JSON.parse(gf.geo_fence_data) : {})
-  }));
-}
-
-// ============================================
-// DATA SYNC ENDPOINTS (Background sync)
-// ============================================
-
-// Trigger sync for a client
-app.post('/api/clients/:clientId/sync-data', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { fullSync, includeReportCenter } = req.body;
-    
-    if (!syncService) {
-      return res.status(503).json({ error: 'Sync service not available' });
-    }
-    
-    // Start sync in background, return immediately
-    const syncPromise = syncService.syncClient(req.params.clientId, { fullSync, includeReportCenter });
-    
-    // Wait a short time to see if it starts successfully
-    const timeout = new Promise(resolve => setTimeout(() => resolve({ status: 'started' }), 1000));
-    const result = await Promise.race([syncPromise, timeout]);
-    
-    res.json({ 
-      status: result.status || 'started',
-      message: 'Sync initiated. Check sync status for progress.'
-    });
-  } catch (error) {
-    console.error('Trigger sync error:', error);
-    res.status(500).json({ error: 'Failed to trigger sync' });
-  }
-});
-
-// Get sync status for a client
-app.get('/api/clients/:clientId/sync-status', authenticateToken, async (req, res) => {
-  try {
-    const status = await dbHelper.getSyncStatus(req.params.clientId);
-    const lastSync = await dbHelper.getLastSyncTime(req.params.clientId);
-    res.json({ 
-      syncStatus: status,
-      lastSync
-    });
-  } catch (error) {
-    console.error('Get sync status error:', error);
-    res.status(500).json({ error: 'Failed to get sync status' });
-  }
-});
-
-// Sync all clients (admin only, use sparingly)
-app.post('/api/sync/all', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    if (!syncService) {
-      return res.status(503).json({ error: 'Sync service not available' });
-    }
-    
-    // Start in background
-    syncService.syncAllClients({ fullSync: false, includeReportCenter: false });
-    
-    res.json({ status: 'started', message: 'Syncing all clients in background' });
-  } catch (error) {
-    console.error('Sync all error:', error);
-    res.status(500).json({ error: 'Failed to start sync' });
-  }
-});
-
-// ============================================
-// CACHED DATA ENDPOINTS (Fast - reads from PostgreSQL)
-// ============================================
-
-/**
- * Get ALL cached data for a campaign in one call
- * This is the primary endpoint for the frontend - replaces multiple API calls
- */
-app.get('/api/clients/:clientId/campaigns/:campaignId/cached-data', authenticateToken, async (req, res) => {
-  try {
-    const { clientId, campaignId } = req.params;
-    const { startDate, endDate } = req.query;
-    
-    // Get client info first (needed for API fallback)
-    const client = await dbHelper.getClientById(clientId);
-    if (!client?.simplifi_org_id) {
-      return res.status(404).json({ error: 'Client not found' });
-    }
-    
-    // Get all cached data in parallel from PostgreSQL
-    const data = await dbHelper.getAllCachedDataForCampaign(clientId, parseInt(campaignId), startDate, endDate);
-    
-    // Parse campaign data from cache
-    let campaignInfo = null;
-    if (data.campaign?.campaign_data) {
-      try {
-        campaignInfo = JSON.parse(data.campaign.campaign_data);
-      } catch (e) {
-        console.log('Could not parse campaign_data:', e.message);
-      }
-    }
-    
-    // If we have no cached data OR no campaign name, fetch campaign info from API
-    if (!campaignInfo?.name || (!data.stats || !data.stats.length)) {
-      console.log(`[CACHE] No cached data or campaign name for campaign ${campaignId}, fetching from API...`);
-      
-      // Trigger background sync
-      if (syncService && (!data.stats || !data.stats.length)) {
-        syncService.syncClient(clientId, { includeReportCenter: false }).catch(console.error);
-      }
-      
-      // Fetch campaign info from API if we don't have the name
-      if (!campaignInfo?.name) {
-        try {
-          const campaignData = await simplifiClient.getCampaign(client.simplifi_org_id, campaignId);
-          if (campaignData?.campaigns?.[0]) {
-            campaignInfo = campaignData.campaigns[0];
-          }
-        } catch (e) {
-          console.log('Could not fetch campaign from API:', e.message);
-        }
-      }
-      
-      // If we still have no stats, fetch them too
-      if (!data.stats || !data.stats.length) {
-        try {
-          // Fetch stats, ads, and ad stats in parallel
-          const [statsData, adsData, adStatsData] = await Promise.all([
-            simplifiClient.getCampaignStats(client.simplifi_org_id, { 
-              campaignId, startDate, endDate, byDay: true 
-            }),
-            simplifiClient.getCampaignAds(client.simplifi_org_id, campaignId).catch(() => ({ ads: [] })),
-            simplifiClient.getCampaignStats(client.simplifi_org_id, { 
-              campaignId, startDate, endDate, byAd: true 
-            }).catch(() => ({ campaign_stats: [] }))
-          ]);
-          
-          // Merge ads with their stats
-          const adsWithStats = (adsData.ads || []).map(ad => {
-            const adStat = (adStatsData.campaign_stats || []).find(s => s.ad_id === ad.id);
-            // Try to get dimensions from multiple sources
-            let width = ad.original_width ? parseInt(ad.original_width) : null;
-            let height = ad.original_height ? parseInt(ad.original_height) : null;
-            if ((!width || !height) && ad.ad_sizes && ad.ad_sizes.length > 0) {
-              width = width || ad.ad_sizes[0].width;
-              height = height || ad.ad_sizes[0].height;
-            }
-            const sizeMatch = ad.name?.match(/(\d{2,4})x(\d{2,4})/i);
-            if (sizeMatch && (!width || !height)) {
-              width = width || parseInt(sizeMatch[1]);
-              height = height || parseInt(sizeMatch[2]);
-            }
-            return {
-              ...ad,
-              ad_id: ad.id,
-              preview_url: ad.primary_creative_url,
-              width,
-              height,
-              impressions: adStat?.impressions || 0,
-              clicks: adStat?.clicks || 0,
-              spend: parseFloat(adStat?.total_spend) || 0,
-              ctr: adStat?.impressions > 0 ? adStat.clicks / adStat.impressions : 0
-            };
-          });
-          
-          return res.json({
-            campaign: campaignInfo,
-            stats: aggregateStats(statsData.campaign_stats || []),
-            dailyStats: statsData.campaign_stats || [],
-            ads: adsWithStats,
-            keywords: [],
-            geoFences: [],
-            locationStats: [],
-            deviceStats: [],
-            viewability: null,
-            conversions: [],
-            fromCache: false,
-            lastSynced: data.lastSynced,
-            message: 'Data fetched from API. Background sync started.'
-          });
-        } catch (apiError) {
-          console.error('API fetch error:', apiError);
-        }
-      }
-    }
-    
-    // Aggregate daily stats into totals
-    const aggregatedStats = aggregateStats(data.stats || []);
-    
-    // Merge ad data with ad stats
-    const adsWithStats = mergeAdsWithStats(data.ads || [], data.adStats || []);
-    
-    // Merge keywords with stats
-    const keywordsWithStats = mergeKeywordsWithStats(data.keywords || [], data.keywordStats || []);
-    
-    // Merge geo-fences with stats
-    const geoFencesWithStats = mergeGeoFencesWithStats(data.geoFences || [], data.geoFenceStats || []);
-    
-    res.json({
-      campaign: campaignInfo,
-      stats: aggregatedStats,
-      dailyStats: data.stats || [],
-      ads: adsWithStats,
-      keywords: keywordsWithStats,
-      geoFences: geoFencesWithStats,
-      locationStats: data.locationStats || [],
-      deviceStats: data.deviceStats || [],
-      viewability: data.viewability || null,
-      conversions: data.conversions || [],
-      fromCache: true,
-      lastSynced: data.lastSynced
-    });
-  } catch (error) {
-    console.error('Get cached data error:', error);
-    res.status(500).json({ error: 'Failed to get cached data' });
-  }
-});
-
-/**
- * Get cached campaigns list for a client
- */
-app.get('/api/clients/:clientId/cached-campaigns', authenticateToken, async (req, res) => {
-  try {
-    const campaigns = await dbHelper.getCachedCampaigns(req.params.clientId);
-    
-    if (!campaigns || !campaigns.length) {
-      // No cache, get from API
-      const client = await dbHelper.getClientById(req.params.clientId);
-      if (!client?.simplifi_org_id) {
-        return res.json({ campaigns: [], fromCache: false });
-      }
-      
-      const apiData = await simplifiClient.getCampaignsWithAds(client.simplifi_org_id);
-      return res.json({ 
-        campaigns: apiData.campaigns || [], 
-        fromCache: false 
-      });
-    }
-    
-    // Parse campaign data
-    const parsedCampaigns = campaigns.map(c => ({
-      id: c.campaign_id,
-      name: c.campaign_name,
-      status: c.status,
-      start_date: c.start_date,
-      end_date: c.end_date,
-      budget: c.budget,
-      campaign_type: c.campaign_type,
-      ...(c.campaign_data ? JSON.parse(c.campaign_data) : {})
-    }));
-    
-    res.json({ campaigns: parsedCampaigns, fromCache: true });
-  } catch (error) {
-    console.error('Get cached campaigns error:', error);
-    res.status(500).json({ error: 'Failed to get cached campaigns' });
-  }
-});
-
-/**
- * Get cached daily stats for charts
- */
-app.get('/api/clients/:clientId/cached-daily-stats', authenticateToken, async (req, res) => {
-  try {
-    const { startDate, endDate } = req.query;
-    const stats = await dbHelper.getCachedDailyStats(req.params.clientId, startDate, endDate);
-    res.json({ daily_stats: stats, fromCache: true });
-  } catch (error) {
-    console.error('Get cached daily stats error:', error);
-    res.status(500).json({ error: 'Failed to get cached daily stats' });
-  }
-});
 
 // Get campaign details
 app.get('/api/simplifi/campaigns/:campaignId', authenticateToken, async (req, res) => {
@@ -1861,21 +1424,15 @@ async function startServer() {
     reportCenterService = new ReportCenterService(simplifiClient);
     console.log('Report Center service initialized');
 
-    // Initialize Sync service
-    syncService = new SyncService(simplifiClient, reportCenterService, dbHelper);
-    console.log('Sync service initialized');
-
     // Start server
     app.listen(PORT, () => {
       console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║   Simpli.fi Reports Server v2.0                           ║
+║   Simpli.fi Reports Server Running                        ║
 ╠═══════════════════════════════════════════════════════════╣
 ║   Port: ${PORT}                                            ║
 ║   Environment: ${(process.env.NODE_ENV || 'development').padEnd(36)}║
 ║   Health Check: http://localhost:${PORT}/api/health          ║
-║                                                           ║
-║   NEW: PostgreSQL caching + Background sync enabled       ║
 ╚═══════════════════════════════════════════════════════════╝
       `);
     });

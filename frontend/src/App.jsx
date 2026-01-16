@@ -279,10 +279,12 @@ function TopAdCard({ ad, rank }) {
   const sizeParts = ad.size?.match(/(\d+)x(\d+)/);
   const displayWidth = sizeParts ? parseInt(sizeParts[1]) : 300;
   const displayHeight = sizeParts ? parseInt(sizeParts[2]) : 250;
-  const aspectRatio = displayWidth / displayHeight;
   
-  // Calculate preview container height based on aspect ratio (max 100px height)
-  const previewHeight = Math.min(100, 150 / aspectRatio);
+  // For placeholder: always show at reasonable height (60-100px)
+  // For actual image: respect aspect ratio
+  const previewHeight = hasValidPreview && imageLoaded 
+    ? Math.min(100, Math.max(40, (displayHeight / displayWidth) * 200))
+    : Math.max(60, Math.min(100, (displayHeight / displayWidth) * 150));
   
   return (
     <div style={{ 
@@ -300,7 +302,8 @@ function TopAdCard({ ad, rank }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        height: `${previewHeight}px`,
+        minHeight: '60px',
+        maxHeight: '120px',
         position: 'relative'
       }}>
         {hasValidPreview ? (
@@ -309,7 +312,7 @@ function TopAdCard({ ad, rank }) {
               src={ad.preview_url} 
               style={{ 
                 maxWidth: '100%', 
-                maxHeight: '100%', 
+                maxHeight: '120px', 
                 objectFit: 'contain',
                 display: imageLoaded ? 'block' : 'none'
               }}
@@ -326,7 +329,7 @@ function TopAdCard({ ad, rank }) {
               alt={ad.size}
               style={{ 
                 maxWidth: '100%', 
-                maxHeight: '100%', 
+                maxHeight: '120px', 
                 objectFit: 'contain',
                 display: imageLoaded ? 'block' : 'none'
               }}
@@ -345,7 +348,7 @@ function TopAdCard({ ad, rank }) {
             justifyContent: 'center',
             color: isFirst ? 'rgba(255,255,255,0.5)' : '#9ca3af',
             fontSize: '0.75rem',
-            padding: '0.5rem'
+            padding: '0.75rem'
           }}>
             <Image size={24} style={{ marginBottom: '0.25rem', opacity: 0.5 }} />
             <span>{ad.size}</span>
@@ -2306,6 +2309,11 @@ function ClientDetailPage({ publicMode = false }) {
       const adDetailsMap = {};
       allCampaigns.forEach(campaign => {
         (campaign.ads || []).forEach(ad => {
+          // Debug: log first ad to see available fields
+          if (Object.keys(adDetailsMap).length === 0) {
+            console.log('Sample ad object fields:', Object.keys(ad));
+            console.log('Sample ad object:', ad);
+          }
           // Try multiple sources for dimensions
           // 1. original_width/original_height (e.g., "1920 px" -> 1920)
           let width = ad.original_width ? parseInt(ad.original_width) : null;
@@ -2328,12 +2336,21 @@ function ClientDetailPage({ publicMode = false }) {
           
           const adFileType = ad.ad_file_types?.[0]?.name || '';
           
+          // Try multiple URL sources for the creative preview
+          const previewUrl = ad.primary_creative_url 
+            || ad.preview_url 
+            || ad.thumbnail_url 
+            || ad.creative_url
+            || ad.media_url
+            || ad.image_url
+            || ad.asset_url;
+          
           adDetailsMap[ad.id] = {
             ...ad,
             campaign_id: campaign.id,
             campaign_name: campaign.name,
-            // primary_creative_url is the actual media file (image or video)
-            preview_url: ad.primary_creative_url,
+            // Try multiple possible URL fields
+            preview_url: previewUrl,
             width: width,
             height: height,
             is_video: adFileType.toLowerCase() === 'video' || ad.name?.toLowerCase().includes('.mp4'),
