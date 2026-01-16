@@ -294,33 +294,61 @@ class ReportCenterService {
    */
   async getDeviceBreakdown(orgId, campaignId, startDate, endDate) {
     try {
+      console.log(`[REPORT CENTER] Getting device breakdown for org ${orgId}, campaign ${campaignId}, ${startDate} to ${endDate}`);
+      
       const reportId = await this.getOrCreateReportModel(
         orgId,
         TEMPLATES.DEVICE_BY_CAMPAIGN,
         'Device Breakdown'
       );
       
-      if (!reportId) return [];
+      console.log(`[REPORT CENTER] Device breakdown report ID: ${reportId}`);
+      
+      if (!reportId) {
+        console.log('[REPORT CENTER] No report ID for device breakdown');
+        return [];
+      }
 
       const filters = {
         'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
         'summary_delivery_events.campaign_id': campaignId.toString()
       };
-
+      
+      console.log('[REPORT CENTER] Running device breakdown snapshot...');
       const data = await this.runSnapshotAndWait(orgId, reportId, filters);
       
-      if (!data || !Array.isArray(data)) return [];
+      if (!data || !Array.isArray(data)) {
+        console.log('[REPORT CENTER] No data returned from device breakdown snapshot');
+        return [];
+      }
       
-      return data.map(row => ({
-        deviceType: row['dim_device_type.device_type_name'] || row['summary_delivery_events.device_type'],
+      console.log(`[REPORT CENTER] Device breakdown returned ${data.length} rows`);
+      if (data.length > 0) {
+        console.log(`[REPORT CENTER] Device first row keys:`, Object.keys(data[0]));
+        console.log(`[REPORT CENTER] Device first row sample:`, JSON.stringify(data[0]).substring(0, 500));
+      }
+      
+      const result = data.map(row => ({
+        device_type: row['summary_delivery_events.device_type_name'] || 
+                     row['dim_device_type.device_type_name'] || 
+                     row['summary_delivery_events.device_type'] ||
+                     row['device_type_name'] ||
+                     row['device_type'],
         impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
         clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
         ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-        spend: parseFloat(row['summary_delivery_events.spend'] || 0)
-      })).filter(r => r.deviceType);
+        spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0)
+      })).filter(r => r.device_type);
+      
+      console.log(`[REPORT CENTER] Processed ${result.length} device types`);
+      if (result.length > 0) {
+        console.log(`[REPORT CENTER] First device result:`, JSON.stringify(result[0]));
+      }
+      
+      return result;
       
     } catch (error) {
-      console.error('Error getting device breakdown:', error.message);
+      console.error('[REPORT CENTER] Error getting device breakdown:', error.message);
       return [];
     }
   }
