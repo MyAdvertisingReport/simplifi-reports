@@ -2380,36 +2380,36 @@ function ClientDetailPage({ publicMode = false }) {
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
       }}>
         {/* Top section with logo and client info */}
-        <div style={{ padding: '1.5rem', color: 'white' }} className="section-padding">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: '1 1 auto' }}>
+        <div style={{ padding: isMobile ? '1rem' : '1.5rem', color: 'white' }} className="section-padding">
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
               {/* Client Logo */}
               {client?.logo_path ? (
                 <img 
                   src={client.logo_path} 
                   alt={client.name} 
-                  style={{ height: '56px', width: 'auto', borderRadius: '0.5rem', background: 'white', padding: '0.5rem', flexShrink: 0 }}
+                  style={{ height: isMobile ? '40px' : '56px', width: 'auto', borderRadius: '0.5rem', background: 'white', padding: '0.375rem', flexShrink: 0 }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
               ) : (
                 <div style={{ 
-                  width: '56px', 
-                  height: '56px',
+                  width: isMobile ? '40px' : '56px', 
+                  height: isMobile ? '40px' : '56px',
                   flexShrink: 0, 
                   borderRadius: '0.5rem', 
                   background: 'rgba(255,255,255,0.2)', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
-                  fontSize: '1.5rem',
+                  fontSize: isMobile ? '1.125rem' : '1.5rem',
                   fontWeight: 700
                 }}>
                   {client?.name?.charAt(0) || '?'}
                 </div>
               )}
               <div style={{ minWidth: 0, flex: 1 }}>
-                <h2 style={{ margin: 0, fontSize: 'clamp(1.25rem, 5vw, 1.75rem)', fontWeight: 700, wordBreak: 'break-word' }}>{client?.name}</h2>
-                {client?.campaign_goal && (
+                <h2 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : 'clamp(1.25rem, 5vw, 1.75rem)', fontWeight: 700, wordBreak: 'break-word' }}>{client?.name}</h2>
+                {client?.campaign_goal && !isMobile && (
                   <p style={{ margin: '0.25rem 0 0', opacity: 0.9, fontSize: 'clamp(0.8125rem, 2vw, 0.9375rem)' }}>
                     {client.campaign_goal}
                   </p>
@@ -2420,13 +2420,13 @@ function ClientDetailPage({ publicMode = false }) {
             {/* Date Range Picker - Combined with Report Period */}
             <div style={{ 
               background: 'rgba(255,255,255,0.15)', 
-              padding: '0.75rem 1rem', 
+              padding: isMobile ? '0.625rem' : '0.75rem 1rem', 
               borderRadius: '0.5rem',
               textAlign: 'center',
-              flexShrink: 0
+              width: isMobile ? '100%' : 'auto'
             }}>
-              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', opacity: 0.8, marginBottom: '0.5rem' }}>Report Period</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', opacity: 0.8, marginBottom: '0.375rem' }}>Report Period</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                 <input 
                   type="date" 
                   value={dateRange.startDate} 
@@ -2671,7 +2671,7 @@ function ClientDetailPage({ publicMode = false }) {
                 return (
                   <DraggableReportSection {...sectionProps} title={`Active Campaigns (${activeCampaigns.length})`} icon={Play} iconColor="#10b981">
                     {/* Summary Stats with Sparklines */}
-                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 1 : isTablet ? 2 : (showSpendData ? 4 : 3)}, 1fr)`, gap: '1rem', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 2 : isTablet ? 2 : (showSpendData ? 4 : 3)}, 1fr)`, gap: isMobile ? '0.5rem' : '1rem', marginBottom: '1.5rem' }}>
                       <StatCardWithSparkline label="Impressions" value={formatNumber(activeTotals.impressions)} data={dailyStats} dataKey="impressions" color="#0d9488" />
                       <StatCardWithSparkline label="Clicks" value={formatNumber(activeTotals.clicks)} data={dailyStats} dataKey="clicks" color="#3b82f6" />
                       <StatCardWithSparkline label="CTR" value={formatPercent(activeTotals.ctr)} data={dailyStats} dataKey="ctr" color="#8b5cf6" showTrend={false} />
@@ -2681,19 +2681,54 @@ function ClientDetailPage({ publicMode = false }) {
                     {/* Active Campaigns Table */}
                     {activeCampaigns.length === 0 ? (
                       <p style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>No active campaigns</p>
+                    ) : isMobile ? (
+                      /* Mobile: Card layout instead of table */
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {activeCampaigns.map(campaign => {
+                          const stats = campaignStats[campaign.id] || {};
+                          return (
+                            <Link 
+                              key={campaign.id} 
+                              to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`}
+                              style={{ 
+                                textDecoration: 'none', 
+                                color: 'inherit',
+                                padding: '1rem', 
+                                background: '#f9fafb', 
+                                borderRadius: '0.5rem',
+                                border: '1px solid #e5e7eb'
+                              }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.9375rem', flex: 1, marginRight: '0.5rem' }}>{campaign.name}</div>
+                                <span style={{ padding: '0.25rem 0.5rem', background: '#e5e7eb', borderRadius: '0.25rem', fontSize: '0.6875rem', flexShrink: 0 }}>
+                                  {parseStrategy(campaign.name)}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                <span><strong style={{ color: '#0d9488' }}>{formatNumber(stats.impressions)}</strong> impr</span>
+                                <span><strong style={{ color: '#3b82f6' }}>{formatNumber(stats.clicks)}</strong> clicks</span>
+                                <span><strong>{formatPercent(stats.ctr)}</strong> CTR</span>
+                                <ChevronRight size={16} color="#9ca3af" />
+                              </div>
+                            </Link>
+                          );
+                        })}
+                      </div>
                     ) : (
+                      /* Desktop/Tablet: Table layout */
                       <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? '600px' : 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                           <thead>
                             <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
                               <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Campaign</th>
                               <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Strategy</th>
-                              {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>}
-                              {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>}
+                              {!isTablet && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>}
+                              {!isTablet && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>}
                               <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
                               <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
-                              {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>}
-                              {showSpendData && !isMobile && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
+                              <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>
+                              {showSpendData && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
                               <th style={{ padding: '0.75rem', width: '40px' }}></th>
                             </tr>
                           </thead>
@@ -2708,16 +2743,16 @@ function ClientDetailPage({ publicMode = false }) {
                                     {parseStrategy(campaign.name)}
                                   </span>
                                 </td>
-                                {!isMobile && <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                {!isTablet && <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
                                   {campaign.start_date ? new Date(campaign.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
                                 </td>}
-                                {!isMobile && <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                {!isTablet && <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
                                   {campaign.end_date ? new Date(campaign.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
                                 </td>}
                                 <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.impressions)}</td>
                                 <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.clicks)}</td>
-                                {!isMobile && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(stats.ctr)}</td>}
-                                {showSpendData && !isMobile && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(stats.total_spend)}</td>}
+                                <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(stats.ctr)}</td>
+                                {showSpendData && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(stats.total_spend)}</td>}
                                 <td style={{ padding: '0.75rem' }}>
                                   <Link to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
                                     <ChevronRight size={18} />
@@ -7803,9 +7838,14 @@ function App() {
           }
           
           /* Responsive utilities */
-          html, body {
+          html, body, #root {
             overflow-x: hidden;
             max-width: 100vw;
+            width: 100%;
+          }
+          
+          * {
+            box-sizing: border-box;
           }
           
           /* Responsive grid classes */
