@@ -2781,14 +2781,14 @@ function ClientDetailPage({ publicMode = false }) {
       )}
 
       {reportLink && (
-        <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <Check size={18} color="#10b981" />
-          <code style={{ flex: 1, fontSize: '0.8125rem', color: '#065f46' }}>
+        <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <Check size={18} color="#10b981" style={{ flexShrink: 0 }} />
+          <code style={{ flex: '1 1 auto', fontSize: '0.8125rem', color: '#065f46', wordBreak: 'break-all', overflowWrap: 'break-word', minWidth: 0 }}>
             {client?.slug 
               ? `https://myadvertisingreport.com/client/${client.slug}/report`
               : `https://myadvertisingreport.com/report/${reportLink.token}`}
           </code>
-          <button onClick={copyLink} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.375rem 0.75rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.8125rem', cursor: 'pointer' }}>
+          <button onClick={copyLink} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.375rem 0.75rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.8125rem', cursor: 'pointer', flexShrink: 0 }}>
             {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
@@ -4600,6 +4600,12 @@ function AdPerformanceCard({ ad, showSpendData = true }) {
   const displayHeight = displayWidth / aspectRatio;
 
   const mediaUrl = ad.preview_url; // This is primary_creative_url from Simpli.fi
+  
+  // Proxy image URL through our backend for Safari compatibility
+  const getProxiedUrl = (url) => {
+    if (!url) return null;
+    return `${API_BASE}/api/proxy/image?url=${encodeURIComponent(url)}`;
+  };
 
   return (
     <div style={{ 
@@ -4637,7 +4643,7 @@ function AdPerformanceCard({ ad, showSpendData = true }) {
               />
             ) : (
               <img 
-                src={mediaUrl} 
+                src={getProxiedUrl(mediaUrl)} 
                 alt={ad.name} 
                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
                 onError={() => setImageError(true)} 
