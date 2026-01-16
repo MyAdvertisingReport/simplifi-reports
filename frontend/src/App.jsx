@@ -4116,18 +4116,16 @@ function CampaignDetailPage({ publicMode = false }) {
         );
       }
       
-      // Fetch domain performance for OTT campaigns OR any video campaigns
-      if (detectedType.isOTT || detectedType.isVideo) {
-        promises.push(
-          api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/domain-performance?startDate=${startDate}&endDate=${endDate}`)
-            .then(data => {
-              const domains = data.domain_performance || [];
-              setDomainPerformance(domains);
-              console.log('Domain performance loaded:', domains.length, 'domains');
-            })
-            .catch(e => console.log('Domain performance not available:', e.message))
-        );
-      }
+      // Fetch domain performance for ALL campaigns (OTT has completion rate, Display has CTR)
+      promises.push(
+        api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/domain-performance?startDate=${startDate}&endDate=${endDate}`)
+          .then(data => {
+            const domains = data.domain_performance || [];
+            setDomainPerformance(domains);
+            console.log('Domain performance loaded:', domains.length, 'domains');
+          })
+          .catch(e => console.log('Domain performance not available:', e.message))
+      );
       
       await Promise.all(promises);
       
@@ -4719,40 +4717,118 @@ function CampaignDetailPage({ publicMode = false }) {
           
           case 'domains':
             if (domainPerformance.length === 0) return null;
+            
+            // Calculate max impressions for bar scaling
+            const maxDomainImpressions = Math.max(...domainPerformance.map(d => d.impressions || 0));
+            
+            // Check if we have completion rate data (OTT/CTV campaigns)
+            const hasCompletionRate = domainPerformance.some(d => d.complete_rate !== undefined || d.vcr !== undefined);
+            
             return (
-              <DraggableReportSection {...sectionProps} title={`Domain/Placement Performance (${domainPerformance.length})`} icon={Globe} iconColor="#6366f1">
-                <div style={{ maxHeight: '350px', overflow: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead style={{ position: 'sticky', top: 0, background: 'white' }}>
-                      <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                        <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Domain/App</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
-                        <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>
-                        {showSpendData && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {domainPerformance.slice(0, 20).map((d, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={{ padding: '0.75rem', fontWeight: 500 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <Globe size={14} color="#6366f1" />
-                              {d.domain}
+              <DraggableReportSection {...sectionProps} title={`Domain Performance (Top ${Math.min(domainPerformance.length, 15)})`} icon={Globe} iconColor="#6366f1">
+                <div style={{ maxHeight: '500px', overflow: 'auto' }}>
+                  {/* Header */}
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: hasCompletionRate ? '1fr 2fr 1fr' : '1fr 2fr', 
+                    gap: '1rem',
+                    padding: '0.75rem 1rem',
+                    borderBottom: '2px solid #e5e7eb',
+                    background: '#f9fafb',
+                    position: 'sticky',
+                    top: 0
+                  }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Domain Reporting Name</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Impressions</div>
+                    {hasCompletionRate && (
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', textAlign: 'center' }}>Complete Rate</div>
+                    )}
+                  </div>
+                  
+                  {/* Rows */}
+                  {domainPerformance.slice(0, 15).map((d, i) => {
+                    const impressionPercent = maxDomainImpressions > 0 ? ((d.impressions || 0) / maxDomainImpressions * 100) : 0;
+                    const completeRate = d.complete_rate ?? d.vcr ?? null;
+                    
+                    return (
+                      <div key={i} style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: hasCompletionRate ? '1fr 2fr 1fr' : '1fr 2fr', 
+                        gap: '1rem',
+                        padding: '0.5rem 1rem',
+                        borderBottom: '1px solid #f3f4f6',
+                        alignItems: 'center'
+                      }}>
+                        {/* Domain Name */}
+                        <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+                          {d.domain || d.domain_reporting_name || 'Unknown'}
+                        </div>
+                        
+                        {/* Impressions Bar */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{ 
+                            flex: 1, 
+                            height: '20px', 
+                            background: '#e5e7eb', 
+                            borderRadius: '2px',
+                            overflow: 'hidden'
+                          }}>
+                            <div style={{
+                              width: `${impressionPercent}%`,
+                              height: '100%',
+                              background: 'linear-gradient(90deg, #0d9488 0%, #14b8a6 100%)',
+                              borderRadius: '2px',
+                              minWidth: impressionPercent > 0 ? '2px' : '0'
+                            }} />
+                          </div>
+                          <div style={{ 
+                            fontSize: '0.8125rem', 
+                            fontWeight: 500, 
+                            color: '#374151',
+                            minWidth: '60px',
+                            textAlign: 'right'
+                          }}>
+                            {formatNumberFull(d.impressions)}
+                          </div>
+                        </div>
+                        
+                        {/* Completion Rate Bar (if available) */}
+                        {hasCompletionRate && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ 
+                              flex: 1, 
+                              height: '20px', 
+                              background: '#e5e7eb', 
+                              borderRadius: '2px',
+                              overflow: 'hidden'
+                            }}>
+                              <div style={{
+                                width: `${completeRate ?? 0}%`,
+                                height: '100%',
+                                background: completeRate >= 95 ? 'linear-gradient(90deg, #16a34a 0%, #22c55e 100%)' :
+                                           completeRate >= 80 ? 'linear-gradient(90deg, #0d9488 0%, #14b8a6 100%)' :
+                                           'linear-gradient(90deg, #eab308 0%, #facc15 100%)',
+                                borderRadius: '2px'
+                              }} />
                             </div>
-                          </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(d.impressions)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(d.clicks)}</td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{d.ctr?.toFixed(2) || '0.00'}%</td>
-                          {showSpendData && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(d.spend)}</td>}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            <div style={{ 
+                              fontSize: '0.8125rem', 
+                              fontWeight: 500, 
+                              color: '#374151',
+                              minWidth: '65px',
+                              textAlign: 'right'
+                            }}>
+                              {completeRate !== null ? `${completeRate.toFixed(3)}%` : '—'}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                {domainPerformance.length > 20 && (
-                  <div style={{ padding: '0.75rem', textAlign: 'center', color: '#6b7280', fontSize: '0.75rem' }}>
-                    Showing top 20 of {domainPerformance.length} domains
+                {domainPerformance.length > 15 && (
+                  <div style={{ padding: '0.75rem', textAlign: 'center', color: '#6b7280', fontSize: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                    Showing top 15 of {domainPerformance.length} domains
                   </div>
                 )}
               </DraggableReportSection>
