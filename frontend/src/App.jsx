@@ -319,6 +319,8 @@ function TopAdCard({ ad, rank }) {
               src={ad.preview_url} 
               alt={ad.size}
               loading="eager"
+              crossOrigin="anonymous"
+              referrerPolicy="no-referrer"
               style={{ 
                 maxWidth: '100%', 
                 maxHeight: '120px', 
@@ -326,7 +328,10 @@ function TopAdCard({ ad, rank }) {
                 width: 'auto',
                 height: 'auto'
               }}
-              onError={() => setImageError(true)}
+              onError={(e) => {
+                console.log('Image failed to load:', ad.preview_url);
+                setImageError(true);
+              }}
             />
           )
         ) : (
