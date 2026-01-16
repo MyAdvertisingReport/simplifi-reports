@@ -3022,11 +3022,12 @@ function ClientDetailPage({ publicMode = false }) {
                               background: '#fffbeb', 
                               borderRadius: '0.5rem',
                               border: '1px solid #fde68a',
-                              opacity: 0.85
+                              opacity: 0.85,
+                              overflow: 'hidden'
                             }}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem', flex: 1, marginRight: '0.5rem' }}>{campaign.name}</div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem', gap: '0.5rem' }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem', flex: '1 1 0', minWidth: 0, wordWrap: 'break-word', overflowWrap: 'break-word' }}>{campaign.name}</div>
                               <span style={{ 
                                 display: 'inline-flex', 
                                 alignItems: 'center', 
@@ -3037,7 +3038,8 @@ function ClientDetailPage({ publicMode = false }) {
                                 borderRadius: '0.25rem', 
                                 fontSize: '0.6875rem',
                                 fontWeight: 500,
-                                flexShrink: 0
+                                flexShrink: 0,
+                                whiteSpace: 'nowrap'
                               }}>
                                 <StatusIcon size={10} />
                                 {statusStyle.label}
@@ -3956,8 +3958,8 @@ function CampaignDetailPage({ publicMode = false }) {
                 </div>
               )}
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                  <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>{campaign?.name || 'Campaign'}</h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                  <h2 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '1.5rem', fontWeight: 700, wordBreak: 'break-word', overflowWrap: 'break-word' }}>{campaign?.name || 'Campaign'}</h2>
                   <span style={{ 
                     display: 'inline-flex', 
                     alignItems: 'center', 
@@ -3989,7 +3991,7 @@ function CampaignDetailPage({ publicMode = false }) {
             </div>
             
             {/* Campaign Date Range & Report Period */}
-            <div style={{ textAlign: 'right' }}>
+            <div style={{ textAlign: isMobile ? 'center' : 'right', width: isMobile ? '100%' : 'auto' }}>
               {/* Campaign Flight Dates */}
               {(campaign?.start_date || campaign?.end_date) && (
                 <div style={{ 
@@ -3997,7 +3999,7 @@ function CampaignDetailPage({ publicMode = false }) {
                   padding: '0.5rem 1rem', 
                   borderRadius: '0.375rem',
                   marginBottom: '0.75rem',
-                  fontSize: '0.8125rem'
+                  fontSize: isMobile ? '0.75rem' : '0.8125rem'
                 }}>
                   <span style={{ opacity: 0.8 }}>Campaign Flight: </span>
                   <span style={{ fontWeight: 600 }}>
@@ -4015,7 +4017,7 @@ function CampaignDetailPage({ publicMode = false }) {
                 textAlign: 'center'
               }}>
                 <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', opacity: 0.8, marginBottom: '0.5rem' }}>Report Period</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                   <input 
                     type="date" 
                     value={dateRange.startDate} 
