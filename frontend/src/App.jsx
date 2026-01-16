@@ -2582,23 +2582,29 @@ function ClientDetailPage({ publicMode = false }) {
   // Load Report Center enhanced data - Only loading device stats for client page
   // Keywords, Geo-fences, and Domains are loaded on individual campaign pages
   const loadEnhancedData = async () => {
-    if (!client?.simplifi_org_id || activeCampaigns.length === 0) {
+    // Compute active campaigns inside the function to avoid closure issues
+    const activeOnes = campaigns.filter(c => c.status?.toLowerCase() === 'active');
+    
+    if (!client?.simplifi_org_id || activeOnes.length === 0) {
       setEnhancedDataLoading(false);
       return;
     }
     
     setEnhancedDataLoading(true);
+    console.log(`[DEVICE] Loading device data for ${activeOnes.length} active campaigns`);
     
     try {
       // Aggregate device stats across all active campaigns
       const deviceAggregated = {};
       
       // Fetch device breakdown for each active campaign and aggregate
-      const devicePromises = activeCampaigns.slice(0, 5).map(async (campaign) => {
+      const devicePromises = activeOnes.slice(0, 5).map(async (campaign) => {
         try {
           const endpoint = publicMode 
             ? `/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
             : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
+          
+          console.log(`[DEVICE] Fetching device data for campaign ${campaign.id}`);
           
           const response = publicMode 
             ? await fetch(`${API_BASE}${endpoint}`)
@@ -2606,6 +2612,8 @@ function ClientDetailPage({ publicMode = false }) {
           
           const data = publicMode ? await response.json() : response;
           const devices = data.device_breakdown || [];
+          
+          console.log(`[DEVICE] Campaign ${campaign.id} returned ${devices.length} device types`);
           
           devices.forEach(d => {
             const deviceType = d.device_type || 'Unknown';
@@ -2616,7 +2624,7 @@ function ClientDetailPage({ publicMode = false }) {
             deviceAggregated[deviceType].clicks += d.clicks || 0;
           });
         } catch (e) {
-          console.log(`Device data not available for campaign ${campaign.id}`);
+          console.log(`[DEVICE] Error loading device data for campaign ${campaign.id}:`, e.message);
         }
       });
       
@@ -2624,10 +2632,10 @@ function ClientDetailPage({ publicMode = false }) {
       
       const deviceArray = Object.values(deviceAggregated).sort((a, b) => b.impressions - a.impressions);
       setDeviceStats(deviceArray);
-      console.log('Device stats loaded:', deviceArray.length, 'device types');
+      console.log('[DEVICE] Final aggregated stats:', deviceArray.length, 'device types', deviceArray);
       
     } catch (err) {
-      console.error('Error loading device data:', err);
+      console.error('[DEVICE] Error loading device data:', err);
     }
     
     setEnhancedDataLoading(false);
