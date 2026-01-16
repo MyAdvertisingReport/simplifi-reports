@@ -4421,7 +4421,37 @@ function CampaignDetailPage({ publicMode = false }) {
             if (dailyStats.length === 0) return null;
             return (
               <DraggableReportSection {...sectionProps} title="Daily Breakdown" icon={Calendar} iconColor="#6b7280">
-                <div style={{ maxHeight: '400px', overflow: 'auto' }}>
+                {/* Mobile: Card layout */}
+                <div className="mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '0.5rem', maxHeight: '400px', overflow: 'auto' }}>
+                  {dailyStats.map((d, i) => {
+                    const clicks = d.clicks || d.click_count || d.total_clicks || 0;
+                    const impressions = d.impressions || d.impression_count || d.total_impressions || 0;
+                    const ctr = d.ctr || (impressions > 0 ? clicks / impressions : 0);
+                    const spend = d.total_spend || d.spend || d.cost || 0;
+                    
+                    return (
+                      <div key={d.stat_date || d.date || i} style={{ 
+                        padding: '0.75rem', 
+                        background: '#f9fafb', 
+                        borderRadius: '0.5rem',
+                        border: '1px solid #e5e7eb'
+                      }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem', color: '#374151' }}>
+                          {new Date(d.stat_date || d.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8125rem' }}>
+                          <span><strong style={{ color: '#0d9488' }}>{formatNumber(impressions)}</strong> impr</span>
+                          <span><strong style={{ color: '#3b82f6' }}>{formatNumber(clicks)}</strong> clicks</span>
+                          <span><strong>{formatPercent(ctr)}</strong></span>
+                          {showSpendData && <span style={{ color: '#059669' }}>{formatCurrency(spend)}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Desktop: Table layout */}
+                <div className="desktop-table" style={{ maxHeight: '400px', overflow: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead style={{ position: 'sticky', top: 0, background: 'white' }}>
                       <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
@@ -4434,7 +4464,6 @@ function CampaignDetailPage({ publicMode = false }) {
                     </thead>
                     <tbody>
                       {dailyStats.map((d, i) => {
-                        // Handle different field names from Simpli.fi API
                         const clicks = d.clicks || d.click_count || d.total_clicks || 0;
                         const impressions = d.impressions || d.impression_count || d.total_impressions || 0;
                         const ctr = d.ctr || (impressions > 0 ? clicks / impressions : 0);
@@ -5215,7 +5244,7 @@ function ExpandableLocationTable({ locations, showSpend, formatNumber, formatCur
             const barWidth = (loc.impressions / maxImpressions) * 100;
             const ctr = loc.impressions > 0 ? (loc.clicks / loc.impressions) * 100 : 0;
             return (
-              <div key={i} style={{ position: 'relative' }}>
+              <div key={i} style={{ position: 'relative', overflow: 'hidden', borderRadius: '0.5rem' }}>
                 {/* Background bar */}
                 <div style={{
                   position: 'absolute',
@@ -5234,20 +5263,23 @@ function ExpandableLocationTable({ locations, showSpend, formatNumber, formatCur
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '0.75rem 1rem',
+                  padding: '0.75rem',
+                  flexWrap: 'wrap',
+                  gap: '0.5rem'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', minWidth: '120px' }}>
                     <div style={{ 
-                      width: '24px', 
-                      height: '24px', 
+                      width: '22px', 
+                      height: '22px', 
                       borderRadius: '50%', 
                       background: '#10b981',
                       color: 'white',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '0.75rem',
-                      fontWeight: 700
+                      fontSize: '0.6875rem',
+                      fontWeight: 700,
+                      flexShrink: 0
                     }}>
                       {i + 1}
                     </div>
@@ -5258,18 +5290,18 @@ function ExpandableLocationTable({ locations, showSpend, formatNumber, formatCur
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-                    <div style={{ textAlign: 'right' }}>
+                  <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'right', minWidth: '50px' }}>
                       <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase' }}>Impressions</div>
-                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#065f46' }}>{formatNumber(loc.impressions)}</div>
+                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#065f46', fontSize: '0.875rem' }}>{formatNumber(loc.impressions)}</div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', minWidth: '40px' }}>
                       <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase' }}>Clicks</div>
-                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#3b82f6' }}>{formatNumber(loc.clicks)}</div>
+                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#3b82f6', fontSize: '0.875rem' }}>{formatNumber(loc.clicks)}</div>
                     </div>
-                    <div style={{ textAlign: 'right', minWidth: '60px' }}>
+                    <div style={{ textAlign: 'right', minWidth: '45px' }}>
                       <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase' }}>CTR</div>
-                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#7c3aed' }}>{ctr.toFixed(2)}%</div>
+                      <div style={{ fontWeight: 600, fontFamily: 'monospace', color: '#7c3aed', fontSize: '0.875rem' }}>{ctr.toFixed(2)}%</div>
                     </div>
                   </div>
                 </div>
