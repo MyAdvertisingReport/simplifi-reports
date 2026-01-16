@@ -1381,24 +1381,6 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/viewability', 
 });
 
 // ============================================
-// ERROR HANDLING
-// ============================================
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
-
-// ============================================
 // IMAGE PROXY - For Safari cross-origin issues
 // ============================================
 
@@ -1446,6 +1428,24 @@ app.get('/api/proxy/image', async (req, res) => {
     console.error('Image proxy error:', error);
     res.status(500).json({ error: 'Proxy failed' });
   }
+});
+
+// ============================================
+// ERROR HANDLING
+// ============================================
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 // ============================================
