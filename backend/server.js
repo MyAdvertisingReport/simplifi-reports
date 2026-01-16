@@ -1450,14 +1450,18 @@ app.get('/api/diagnostics/admin', async (req, res) => {
 
   // Test database connection
   try {
-    const clientCount = await pool.query('SELECT COUNT(*) FROM clients');
-    const userCount = await pool.query('SELECT COUNT(*) FROM users');
-    results.database = {
-      status: 'ok',
-      message: 'Database connected',
-      clients: parseInt(clientCount.rows[0].count),
-      users: parseInt(userCount.rows[0].count)
-    };
+    if (!dbHelper) {
+      results.database = { status: 'error', message: 'Database helper not initialized' };
+    } else {
+      const clients = await dbHelper.getAllClients();
+      const users = await dbHelper.getAllUsers();
+      results.database = {
+        status: 'ok',
+        message: 'Database connected',
+        clients: clients.length,
+        users: users.length
+      };
+    }
   } catch (error) {
     results.database = { status: 'error', message: error.message };
   }
@@ -1488,26 +1492,30 @@ app.get('/api/diagnostics/admin', async (req, res) => {
 
   // Client configuration check
   try {
-    const clientsResult = await pool.query('SELECT id, name, slug, simplifi_org_id, logo_path FROM clients');
-    const clientIssues = [];
-    
-    for (const client of clientsResult.rows) {
-      const issues = [];
-      if (!client.simplifi_org_id) issues.push('Missing Simpli.fi Org ID');
-      if (!client.slug) issues.push('Missing slug');
-      if (client.slug && !/^[a-z0-9-]+$/.test(client.slug)) issues.push('Invalid slug format');
+    if (!dbHelper) {
+      results.clients = { status: 'error', message: 'Database helper not initialized' };
+    } else {
+      const allClients = await dbHelper.getAllClients();
+      const clientIssues = [];
       
-      if (issues.length > 0) {
-        clientIssues.push({ name: client.name, id: client.id, issues });
+      for (const client of allClients) {
+        const issues = [];
+        if (!client.simplifi_org_id) issues.push('Missing Simpli.fi Org ID');
+        if (!client.slug) issues.push('Missing slug');
+        if (client.slug && !/^[a-z0-9-]+$/.test(client.slug)) issues.push('Invalid slug format');
+        
+        if (issues.length > 0) {
+          clientIssues.push({ name: client.name, id: client.id, issues });
+        }
       }
+      
+      results.clients = {
+        status: clientIssues.length === 0 ? 'ok' : 'warning',
+        total: allClients.length,
+        withIssues: clientIssues.length,
+        issues: clientIssues
+      };
     }
-    
-    results.clients = {
-      status: clientIssues.length === 0 ? 'ok' : 'warning',
-      total: clientsResult.rows.length,
-      withIssues: clientIssues.length,
-      issues: clientIssues
-    };
   } catch (error) {
     results.clients = { status: 'error', message: error.message };
   }

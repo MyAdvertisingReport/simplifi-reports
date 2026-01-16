@@ -8101,6 +8101,9 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
   const [imageTestResult, setImageTestResult] = useState(null);
   const [testingImage, setTestingImage] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
+  const [reportCopied, setReportCopied] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
   const { isMobile } = useResponsive();
   const { user, token } = useAuth();
 
@@ -8127,6 +8130,8 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
     if (!testImageUrl) return;
     setTestingImage(true);
     setImageTestResult(null);
+    setPreviewLoaded(false);
+    setPreviewError(false);
     
     try {
       const response = await fetch(`${API_BASE}/api/diagnostics/test-image?url=${encodeURIComponent(testImageUrl)}`);
@@ -8136,6 +8141,71 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
       setImageTestResult({ status: 'error', message: error.message });
     }
     setTestingImage(false);
+  };
+
+  const copyDiagnosticsReport = () => {
+    const deviceInfo = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+      isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+      screenWidth: window.innerWidth,
+      screenHeight: window.innerHeight
+    };
+
+    const report = `
+=== SIMPLI.FI REPORTS DIAGNOSTICS ===
+Generated: ${new Date().toISOString()}
+
+--- DEVICE INFO ---
+Safari: ${deviceInfo.isSafari ? 'Yes' : 'No'}
+iOS: ${deviceInfo.isIOS ? 'Yes' : 'No'}
+Mobile: ${deviceInfo.isMobile ? 'Yes' : 'No'}
+Screen: ${deviceInfo.screenWidth} x ${deviceInfo.screenHeight}
+Platform: ${deviceInfo.platform}
+User Agent: ${deviceInfo.userAgent}
+
+--- SERVER STATUS ---
+Status: ${diagnostics?.server?.status || 'Unknown'}
+Uptime: ${diagnostics?.server?.uptime ? Math.floor(diagnostics.server.uptime / 60) + ' minutes' : 'N/A'}
+
+--- IMAGE PROXY ---
+Status: ${diagnostics?.imageProxy?.status || 'Unknown'}
+Endpoint: ${diagnostics?.imageProxy?.endpoint || '/api/proxy/image'}
+
+--- DATABASE ---
+Status: ${diagnostics?.database?.status || 'Unknown'}
+Message: ${diagnostics?.database?.message || 'N/A'}
+Clients: ${diagnostics?.database?.clients ?? 'N/A'}
+Users: ${diagnostics?.database?.users ?? 'N/A'}
+
+--- SIMPLI.FI API ---
+Status: ${diagnostics?.simplifiApi?.status || 'Unknown'}
+Message: ${diagnostics?.simplifiApi?.message || 'N/A'}
+
+--- CLIENT CONFIGURATION ---
+Status: ${diagnostics?.clients?.status || 'Unknown'}
+Total Clients: ${diagnostics?.clients?.total ?? 'N/A'}
+With Issues: ${diagnostics?.clients?.withIssues ?? 'N/A'}
+${diagnostics?.clients?.issues?.length > 0 ? 'Issues:\n' + diagnostics.clients.issues.map(c => `  - ${c.name}: ${c.issues.join(', ')}`).join('\n') : ''}
+
+--- ENVIRONMENT ---
+Node Env: ${diagnostics?.environment?.nodeEnv || 'N/A'}
+Has Simpli.fi App Key: ${diagnostics?.environment?.hasSimplifiAppKey ? 'Yes' : 'No'}
+Has Simpli.fi User Key: ${diagnostics?.environment?.hasSimplifiUserKey ? 'Yes' : 'No'}
+Has Database URL: ${diagnostics?.environment?.hasDatabaseUrl ? 'Yes' : 'No'}
+Has JWT Secret: ${diagnostics?.environment?.hasJwtSecret ? 'Yes' : 'No'}
+
+=== END OF REPORT ===
+    `.trim();
+
+    navigator.clipboard.writeText(report).then(() => {
+      setReportCopied(true);
+      setTimeout(() => setReportCopied(false), 2000);
+    }).catch(err => {
+      alert('Failed to copy: ' + err.message);
+    });
   };
 
   const clearCache = async (clientId = null) => {
@@ -8376,6 +8446,47 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
                           <strong>Proxy URL:</strong> <code>{imageTestResult.proxyUrl}</code>
                         </div>
                       )}
+                      
+                      {/* Live Image Preview */}
+                      {imageTestResult.status === 'ok' && imageTestResult.proxyUrl && (
+                        <div style={{ marginTop: '0.75rem' }}>
+                          <strong>Live Preview:</strong>
+                          <div style={{ 
+                            marginTop: '0.5rem', 
+                            padding: '0.5rem', 
+                            background: '#f3f4f6', 
+                            borderRadius: '0.25rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            minHeight: '60px'
+                          }}>
+                            {!previewLoaded && !previewError && (
+                              <span style={{ color: '#6b7280', fontSize: '0.75rem' }}>Loading preview...</span>
+                            )}
+                            {previewError && (
+                              <span style={{ color: '#dc2626', fontSize: '0.75rem' }}>❌ Preview failed to load</span>
+                            )}
+                            <img 
+                              src={`${API_BASE}${imageTestResult.proxyUrl}`}
+                              alt="Preview"
+                              style={{ 
+                                maxWidth: '100%', 
+                                maxHeight: '150px', 
+                                objectFit: 'contain',
+                                display: previewLoaded ? 'block' : 'none'
+                              }}
+                              onLoad={() => setPreviewLoaded(true)}
+                              onError={() => setPreviewError(true)}
+                            />
+                          </div>
+                          {previewLoaded && (
+                            <div style={{ marginTop: '0.25rem', color: '#166534', fontSize: '0.75rem' }}>
+                              ✅ Image loads successfully through proxy!
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -8480,7 +8591,7 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
               )}
 
               {/* Refresh Button */}
-              <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+              <div style={{ textAlign: 'center', marginTop: '1rem', display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <button
                   onClick={runDiagnostics}
                   style={{
@@ -8497,6 +8608,24 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
                 >
                   <RefreshCw size={14} />
                   Refresh Diagnostics
+                </button>
+                <button
+                  onClick={copyDiagnosticsReport}
+                  style={{
+                    padding: '0.5rem 1.5rem',
+                    background: reportCopied ? '#dcfce7' : '#f3f4f6',
+                    border: `1px solid ${reportCopied ? '#86efac' : '#d1d5db'}`,
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    color: reportCopied ? '#166534' : 'inherit'
+                  }}
+                >
+                  {reportCopied ? <Check size={14} /> : <Copy size={14} />}
+                  {reportCopied ? 'Copied!' : 'Copy Full Report'}
                 </button>
               </div>
             </>
