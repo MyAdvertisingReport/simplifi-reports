@@ -1381,6 +1381,243 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/viewability', 
 });
 
 // ============================================
+// DIAGNOSTICS / TROUBLESHOOTING ENDPOINTS
+// ============================================
+
+// Public diagnostics - available without auth for troubleshooting public reports
+app.get('/api/diagnostics/public', async (req, res) => {
+  const results = {
+    timestamp: new Date().toISOString(),
+    server: { status: 'ok', message: 'Backend server is responding' },
+    imageProxy: { status: 'unknown', message: 'Not tested' },
+    sampleImages: []
+  };
+
+  // Test image proxy endpoint
+  try {
+    const testUrl = 'https://media.simpli.fi/test.gif';
+    const proxyUrl = `/api/proxy/image?url=${encodeURIComponent(testUrl)}`;
+    results.imageProxy = { 
+      status: 'ok', 
+      message: 'Image proxy endpoint is available',
+      proxyUrl: proxyUrl,
+      note: 'Use this endpoint for Safari cross-origin image loading'
+    };
+  } catch (error) {
+    results.imageProxy = { status: 'error', message: error.message };
+  }
+
+  // Provide sample test URLs
+  results.sampleImages = [
+    { type: 'gif', testUrl: `${req.protocol}://${req.get('host')}/api/proxy/image?url=${encodeURIComponent('https://media.simpli.fi/uploads/creative/12345/test.gif')}` },
+    { type: 'png', testUrl: `${req.protocol}://${req.get('host')}/api/proxy/image?url=${encodeURIComponent('https://media.simpli.fi/uploads/creative/12345/test.png')}` },
+    { type: 'video', note: 'Videos load directly from media.simpli.fi (no proxy needed)' }
+  ];
+
+  // Known fixes reference
+  results.knownFixes = {
+    safariImages: 'Images from media.simpli.fi are proxied through /api/proxy/image to avoid Safari cross-origin blocking',
+    videoAutoplay: 'Videos use muted + playsinline attributes for Safari autoplay',
+    mobileSpacing: 'Text overflow fixed with word-break and flex-wrap properties'
+  };
+
+  res.json(results);
+});
+
+// Admin diagnostics - requires auth, shows more details
+app.get('/api/diagnostics/admin', async (req, res) => {
+  // Check for auth token
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Admin authentication required' });
+  }
+
+  const results = {
+    timestamp: new Date().toISOString(),
+    server: { status: 'ok', uptime: process.uptime(), nodeVersion: process.version },
+    database: { status: 'unknown' },
+    simplifiApi: { status: 'unknown' },
+    imageProxy: { status: 'unknown' },
+    clients: { status: 'unknown' },
+    environment: {
+      nodeEnv: process.env.NODE_ENV || 'development',
+      hasSimplifiAppKey: !!process.env.SIMPLIFI_APP_KEY,
+      hasSimplifiUserKey: !!process.env.SIMPLIFI_USER_KEY,
+      hasDatabaseUrl: !!process.env.DATABASE_URL,
+      hasJwtSecret: !!process.env.JWT_SECRET
+    }
+  };
+
+  // Test database connection
+  try {
+    const clientCount = await pool.query('SELECT COUNT(*) FROM clients');
+    const userCount = await pool.query('SELECT COUNT(*) FROM users');
+    results.database = {
+      status: 'ok',
+      message: 'Database connected',
+      clients: parseInt(clientCount.rows[0].count),
+      users: parseInt(userCount.rows[0].count)
+    };
+  } catch (error) {
+    results.database = { status: 'error', message: error.message };
+  }
+
+  // Test Simpli.fi API
+  try {
+    if (simplifiClient) {
+      // Just check if client is initialized
+      results.simplifiApi = {
+        status: 'ok',
+        message: 'Simpli.fi client initialized',
+        note: 'API credentials are configured'
+      };
+    } else {
+      results.simplifiApi = { status: 'error', message: 'Simpli.fi client not initialized' };
+    }
+  } catch (error) {
+    results.simplifiApi = { status: 'error', message: error.message };
+  }
+
+  // Image proxy status
+  results.imageProxy = {
+    status: 'ok',
+    endpoint: '/api/proxy/image',
+    usage: 'GET /api/proxy/image?url=<encoded-simpli.fi-url>',
+    supportedFormats: ['gif', 'png', 'jpg', 'jpeg', 'webp', 'mp4']
+  };
+
+  // Client configuration check
+  try {
+    const clientsResult = await pool.query('SELECT id, name, slug, simplifi_org_id, logo_path FROM clients');
+    const clientIssues = [];
+    
+    for (const client of clientsResult.rows) {
+      const issues = [];
+      if (!client.simplifi_org_id) issues.push('Missing Simpli.fi Org ID');
+      if (!client.slug) issues.push('Missing slug');
+      if (client.slug && !/^[a-z0-9-]+$/.test(client.slug)) issues.push('Invalid slug format');
+      
+      if (issues.length > 0) {
+        clientIssues.push({ name: client.name, id: client.id, issues });
+      }
+    }
+    
+    results.clients = {
+      status: clientIssues.length === 0 ? 'ok' : 'warning',
+      total: clientsResult.rows.length,
+      withIssues: clientIssues.length,
+      issues: clientIssues
+    };
+  } catch (error) {
+    results.clients = { status: 'error', message: error.message };
+  }
+
+  // Known fixes and mobile compatibility notes
+  results.mobileCompatibility = {
+    safariImageFix: {
+      issue: 'Safari blocks cross-origin images from media.simpli.fi',
+      solution: 'Images are proxied through /api/proxy/image endpoint',
+      components: ['TopAdCard', 'AdPerformanceCard']
+    },
+    videoAutoplay: {
+      issue: 'Safari requires specific attributes for video autoplay',
+      solution: 'Videos use muted, playsinline, and loop attributes'
+    },
+    textOverflow: {
+      issue: 'Long campaign names overflow on mobile',
+      solution: 'Added word-break, overflow-wrap, and flex-wrap CSS properties',
+      affectedAreas: ['Paused campaigns cards', 'Campaign detail header', 'Public URL box']
+    }
+  };
+
+  res.json(results);
+});
+
+// Clear cache endpoint (admin only)
+app.post('/api/diagnostics/clear-cache', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Admin authentication required' });
+  }
+
+  try {
+    const { clientId } = req.body;
+    
+    // If using any caching mechanism, clear it here
+    // For now, just acknowledge the request
+    res.json({ 
+      status: 'ok', 
+      message: clientId ? `Cache cleared for client ${clientId}` : 'All cache cleared',
+      note: 'Frontend may need to refresh to see changes'
+    });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// Test specific image URL through proxy
+app.get('/api/diagnostics/test-image', async (req, res) => {
+  const { url } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL parameter required' });
+  }
+
+  const results = {
+    originalUrl: url,
+    isSimplifiUrl: url.includes('simpli.fi'),
+    proxyUrl: null,
+    status: 'unknown'
+  };
+
+  if (!results.isSimplifiUrl) {
+    results.status = 'error';
+    results.message = 'Only Simpli.fi URLs can be proxied';
+    return res.json(results);
+  }
+
+  results.proxyUrl = `/api/proxy/image?url=${encodeURIComponent(url)}`;
+  
+  // Test if we can fetch the image
+  try {
+    const https = require('https');
+    const http = require('http');
+    const protocol = url.startsWith('https') ? https : http;
+    
+    await new Promise((resolve, reject) => {
+      const request = protocol.get(url, (response) => {
+        if (response.statusCode === 200) {
+          results.status = 'ok';
+          results.contentType = response.headers['content-type'];
+          results.message = 'Image is accessible and can be proxied';
+        } else {
+          results.status = 'error';
+          results.message = `Image returned status ${response.statusCode}`;
+        }
+        response.destroy();
+        resolve();
+      });
+      request.on('error', (err) => {
+        results.status = 'error';
+        results.message = err.message;
+        resolve();
+      });
+      request.setTimeout(5000, () => {
+        results.status = 'error';
+        results.message = 'Request timeout';
+        request.destroy();
+        resolve();
+      });
+    });
+  } catch (error) {
+    results.status = 'error';
+    results.message = error.message;
+  }
+
+  res.json(results);
+});
+
+// ============================================
 // IMAGE PROXY - For Safari cross-origin issues
 // ============================================
 

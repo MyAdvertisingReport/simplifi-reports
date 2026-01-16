@@ -2164,6 +2164,7 @@ function ClientDetailPage({ publicMode = false }) {
   const [statsLoading, setStatsLoading] = useState(false);
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   
   // Report Center Enhanced Data (aggregated across all active campaigns)
   const [locationPerformance, setLocationPerformance] = useState([]);
@@ -3166,10 +3167,61 @@ function ClientDetailPage({ publicMode = false }) {
         </Modal>
       )}
       
+      {/* Diagnostics Panel */}
+      {showDiagnostics && (
+        <DiagnosticsPanel 
+          isPublic={publicMode} 
+          onClose={() => setShowDiagnostics(false)} 
+        />
+      )}
+      
       {/* Footer for public reports */}
       {publicMode && (
         <div style={{ textAlign: 'center', marginTop: '2rem', padding: '1.5rem', color: '#9ca3af', fontSize: '0.875rem' }}>
-          Powered by WSIC Digital Advertising
+          <div>Powered by WSIC Digital Advertising</div>
+          <button
+            onClick={() => setShowDiagnostics(true)}
+            style={{
+              marginTop: '0.75rem',
+              padding: '0.375rem 0.75rem',
+              background: 'transparent',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.25rem',
+              color: '#9ca3af',
+              fontSize: '0.75rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.375rem'
+            }}
+          >
+            <Settings size={12} />
+            Report Diagnostics
+          </button>
+        </div>
+      )}
+      
+      {/* Diagnostics button for admin view (non-public) */}
+      {!publicMode && user && (
+        <div style={{ textAlign: 'center', marginTop: '1.5rem', marginBottom: '1rem' }}>
+          <button
+            onClick={() => setShowDiagnostics(true)}
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#f3f4f6',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.375rem',
+              color: '#6b7280',
+              fontSize: '0.8125rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <Settings size={14} />
+            System Diagnostics
+          </button>
         </div>
       )}
     </div>
@@ -7449,6 +7501,7 @@ function SettingsPage() {
   const [status, setStatus] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   
   // Password change state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -7770,6 +7823,47 @@ function SettingsPage() {
           </div>
         </div>
       )}
+      
+      {/* System Diagnostics Section */}
+      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', marginTop: '1.5rem' }}>
+        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f3f4f6' }}>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Settings size={18} />
+            System Diagnostics
+          </h3>
+        </div>
+        <div style={{ padding: '1.5rem' }}>
+          <p style={{ color: '#6b7280', marginBottom: '1rem', fontSize: '0.875rem' }}>
+            Run system diagnostics to check API connectivity, image proxy status, database health, and client configuration.
+          </p>
+          <button
+            onClick={() => setShowDiagnostics(true)}
+            style={{
+              padding: '0.625rem 1.25rem',
+              background: '#6366f1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              cursor: 'pointer',
+              fontWeight: 500,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <Settings size={16} />
+            Open Diagnostics Panel
+          </button>
+        </div>
+      </div>
+      
+      {/* Diagnostics Panel Modal */}
+      {showDiagnostics && (
+        <DiagnosticsPanel 
+          isPublic={false} 
+          onClose={() => setShowDiagnostics(false)} 
+        />
+      )}
     </div>
   );
 }
@@ -7991,6 +8085,422 @@ function SlugReportPage() {
         {/* Footer */}
         <div style={{ textAlign: 'center', marginTop: '2rem', color: '#9ca3af', fontSize: '0.875rem' }}>
           Powered by WSIC Digital Advertising
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// DIAGNOSTICS PANEL
+// ============================================
+function DiagnosticsPanel({ isPublic = false, onClose }) {
+  const [loading, setLoading] = useState(true);
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [testImageUrl, setTestImageUrl] = useState('');
+  const [imageTestResult, setImageTestResult] = useState(null);
+  const [testingImage, setTestingImage] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+  const { isMobile } = useResponsive();
+  const { user, token } = useAuth();
+
+  useEffect(() => {
+    runDiagnostics();
+  }, []);
+
+  const runDiagnostics = async () => {
+    setLoading(true);
+    try {
+      const endpoint = isPublic ? '/api/diagnostics/public' : '/api/diagnostics/admin';
+      const headers = isPublic ? {} : { 'Authorization': `Bearer ${token}` };
+      
+      const response = await fetch(`${API_BASE}${endpoint}`, { headers });
+      const data = await response.json();
+      setDiagnostics(data);
+    } catch (error) {
+      setDiagnostics({ error: error.message });
+    }
+    setLoading(false);
+  };
+
+  const testImageProxy = async () => {
+    if (!testImageUrl) return;
+    setTestingImage(true);
+    setImageTestResult(null);
+    
+    try {
+      const response = await fetch(`${API_BASE}/api/diagnostics/test-image?url=${encodeURIComponent(testImageUrl)}`);
+      const data = await response.json();
+      setImageTestResult(data);
+    } catch (error) {
+      setImageTestResult({ status: 'error', message: error.message });
+    }
+    setTestingImage(false);
+  };
+
+  const clearCache = async (clientId = null) => {
+    setClearingCache(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/diagnostics/clear-cache`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ clientId })
+      });
+      const data = await response.json();
+      alert(data.message || 'Cache cleared');
+    } catch (error) {
+      alert('Error clearing cache: ' + error.message);
+    }
+    setClearingCache(false);
+  };
+
+  const StatusBadge = ({ status }) => {
+    const colors = {
+      ok: { bg: '#dcfce7', color: '#166534', icon: CheckCircle },
+      warning: { bg: '#fef3c7', color: '#92400e', icon: AlertCircle },
+      error: { bg: '#fee2e2', color: '#991b1b', icon: AlertCircle },
+      unknown: { bg: '#f3f4f6', color: '#6b7280', icon: Clock }
+    };
+    const style = colors[status] || colors.unknown;
+    const Icon = style.icon;
+    
+    return (
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        padding: '0.25rem 0.5rem',
+        background: style.bg,
+        color: style.color,
+        borderRadius: '0.25rem',
+        fontSize: '0.75rem',
+        fontWeight: 600
+      }}>
+        <Icon size={12} />
+        {status.toUpperCase()}
+      </span>
+    );
+  };
+
+  const Section = ({ title, children, defaultOpen = true }) => {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+      <div style={{ marginBottom: '1rem', border: '1px solid #e5e7eb', borderRadius: '0.5rem', overflow: 'hidden' }}>
+        <button
+          onClick={() => setOpen(!open)}
+          style={{
+            width: '100%',
+            padding: '0.75rem 1rem',
+            background: '#f9fafb',
+            border: 'none',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            fontWeight: 600,
+            fontSize: '0.875rem'
+          }}
+        >
+          {title}
+          {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+        {open && <div style={{ padding: '1rem' }}>{children}</div>}
+      </div>
+    );
+  };
+
+  // Get browser/device info
+  const deviceInfo = {
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+    isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+    isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+    screenWidth: window.innerWidth,
+    screenHeight: window.innerHeight
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 9999,
+      padding: isMobile ? '0.5rem' : '2rem'
+    }}>
+      <div style={{
+        background: 'white',
+        borderRadius: '0.75rem',
+        width: '100%',
+        maxWidth: '700px',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '1rem 1.5rem',
+          borderBottom: '1px solid #e5e7eb',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          position: 'sticky',
+          top: 0,
+          background: 'white',
+          zIndex: 1
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Settings size={20} color="#6366f1" />
+            <h2 style={{ margin: 0, fontSize: '1.125rem' }}>
+              {isPublic ? 'Report Diagnostics' : 'System Diagnostics'}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '0.25rem'
+            }}
+          >
+            <X size={20} color="#6b7280" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: '1rem 1.5rem' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '2rem' }}>
+              <RefreshCw size={24} className="spin" color="#6366f1" />
+              <p style={{ marginTop: '0.5rem', color: '#6b7280' }}>Running diagnostics...</p>
+            </div>
+          ) : diagnostics?.error ? (
+            <div style={{ padding: '1rem', background: '#fee2e2', borderRadius: '0.5rem', color: '#991b1b' }}>
+              Error: {diagnostics.error}
+            </div>
+          ) : (
+            <>
+              {/* Device Info */}
+              <Section title="📱 Your Device">
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '0.5rem', fontSize: '0.8125rem' }}>
+                  <div><strong>Safari:</strong> {deviceInfo.isSafari ? '✅ Yes' : '❌ No'}</div>
+                  <div><strong>iOS:</strong> {deviceInfo.isIOS ? '✅ Yes' : '❌ No'}</div>
+                  <div><strong>Mobile:</strong> {deviceInfo.isMobile ? '✅ Yes' : '❌ No'}</div>
+                  <div><strong>Screen:</strong> {deviceInfo.screenWidth} × {deviceInfo.screenHeight}</div>
+                </div>
+                {deviceInfo.isSafari && deviceInfo.isIOS && (
+                  <div style={{ marginTop: '0.75rem', padding: '0.5rem', background: '#fef3c7', borderRadius: '0.25rem', fontSize: '0.8125rem' }}>
+                    ⚠️ You're on iOS Safari. Images use our proxy server for compatibility.
+                  </div>
+                )}
+              </Section>
+
+              {/* Server Status */}
+              <Section title="🖥️ Server Status">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                  <span>Backend Server:</span>
+                  <StatusBadge status={diagnostics?.server?.status || 'unknown'} />
+                </div>
+                {diagnostics?.server?.uptime && (
+                  <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                    Uptime: {Math.floor(diagnostics.server.uptime / 3600)}h {Math.floor((diagnostics.server.uptime % 3600) / 60)}m
+                  </div>
+                )}
+              </Section>
+
+              {/* Image Proxy */}
+              <Section title="🖼️ Image Proxy (Safari Fix)">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <span>Proxy Status:</span>
+                  <StatusBadge status={diagnostics?.imageProxy?.status || 'unknown'} />
+                </div>
+                <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '1rem' }}>
+                  {diagnostics?.imageProxy?.message || diagnostics?.imageProxy?.note}
+                </div>
+                
+                {/* Image Test Tool */}
+                <div style={{ padding: '0.75rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, marginBottom: '0.5rem' }}>Test Image URL</div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      value={testImageUrl}
+                      onChange={(e) => setTestImageUrl(e.target.value)}
+                      placeholder="https://media.simpli.fi/..."
+                      style={{
+                        flex: 1,
+                        minWidth: '200px',
+                        padding: '0.5rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.8125rem'
+                      }}
+                    />
+                    <button
+                      onClick={testImageProxy}
+                      disabled={testingImage || !testImageUrl}
+                      style={{
+                        padding: '0.5rem 1rem',
+                        background: testingImage ? '#9ca3af' : '#6366f1',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.25rem',
+                        cursor: testingImage ? 'wait' : 'pointer',
+                        fontSize: '0.8125rem'
+                      }}
+                    >
+                      {testingImage ? 'Testing...' : 'Test'}
+                    </button>
+                  </div>
+                  {imageTestResult && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      padding: '0.5rem',
+                      background: imageTestResult.status === 'ok' ? '#dcfce7' : '#fee2e2',
+                      borderRadius: '0.25rem',
+                      fontSize: '0.8125rem'
+                    }}>
+                      <strong>Result:</strong> {imageTestResult.message}
+                      {imageTestResult.proxyUrl && (
+                        <div style={{ marginTop: '0.25rem', wordBreak: 'break-all' }}>
+                          <strong>Proxy URL:</strong> <code>{imageTestResult.proxyUrl}</code>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Section>
+
+              {/* Admin-only sections */}
+              {!isPublic && diagnostics?.database && (
+                <Section title="🗄️ Database">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span>Connection:</span>
+                    <StatusBadge status={diagnostics.database.status} />
+                  </div>
+                  {diagnostics.database.clients !== undefined && (
+                    <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                      Clients: {diagnostics.database.clients} | Users: {diagnostics.database.users}
+                    </div>
+                  )}
+                </Section>
+              )}
+
+              {!isPublic && diagnostics?.simplifiApi && (
+                <Section title="🔌 Simpli.fi API">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span>API Status:</span>
+                    <StatusBadge status={diagnostics.simplifiApi.status} />
+                  </div>
+                  <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>
+                    {diagnostics.simplifiApi.message}
+                  </div>
+                </Section>
+              )}
+
+              {!isPublic && diagnostics?.clients && (
+                <Section title="👥 Client Configuration" defaultOpen={diagnostics.clients.withIssues > 0}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <span>Status:</span>
+                    <StatusBadge status={diagnostics.clients.status} />
+                  </div>
+                  <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                    Total: {diagnostics.clients.total} | With Issues: {diagnostics.clients.withIssues}
+                  </div>
+                  {diagnostics.clients.issues?.length > 0 && (
+                    <div style={{ marginTop: '0.5rem' }}>
+                      {diagnostics.clients.issues.map((client, i) => (
+                        <div key={i} style={{ padding: '0.5rem', background: '#fef3c7', borderRadius: '0.25rem', marginBottom: '0.5rem', fontSize: '0.8125rem' }}>
+                          <strong>{client.name}:</strong> {client.issues.join(', ')}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Section>
+              )}
+
+              {/* Known Fixes Reference */}
+              <Section title="🔧 Mobile Compatibility Fixes" defaultOpen={false}>
+                <div style={{ fontSize: '0.8125rem' }}>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <strong>Safari Image Loading</strong>
+                    <div style={{ color: '#6b7280', marginTop: '0.25rem' }}>
+                      Images from media.simpli.fi are proxied through our server to avoid Safari's cross-origin blocking.
+                      Affected components: TopAdCard, AdPerformanceCard
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <strong>Video Autoplay</strong>
+                    <div style={{ color: '#6b7280', marginTop: '0.25rem' }}>
+                      Videos use muted, playsinline, and loop attributes for Safari autoplay compatibility.
+                    </div>
+                  </div>
+                  <div>
+                    <strong>Text Overflow</strong>
+                    <div style={{ color: '#6b7280', marginTop: '0.25rem' }}>
+                      Long campaign names use word-break and flex-wrap to prevent overflow on mobile.
+                      Fixed areas: Paused campaigns, Campaign headers, Public URL box
+                    </div>
+                  </div>
+                </div>
+              </Section>
+
+              {/* Cache Management - Admin only */}
+              {!isPublic && (
+                <Section title="🗑️ Cache Management" defaultOpen={false}>
+                  <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                    Clear cached data if you're seeing stale information.
+                  </div>
+                  <button
+                    onClick={() => clearCache()}
+                    disabled={clearingCache}
+                    style={{
+                      padding: '0.5rem 1rem',
+                      background: clearingCache ? '#9ca3af' : '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.25rem',
+                      cursor: clearingCache ? 'wait' : 'pointer',
+                      fontSize: '0.8125rem'
+                    }}
+                  >
+                    {clearingCache ? 'Clearing...' : 'Clear All Cache'}
+                  </button>
+                </Section>
+              )}
+
+              {/* Refresh Button */}
+              <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                <button
+                  onClick={runDiagnostics}
+                  style={{
+                    padding: '0.5rem 1.5rem',
+                    background: '#f3f4f6',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '0.25rem',
+                    cursor: 'pointer',
+                    fontSize: '0.8125rem',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  <RefreshCw size={14} />
+                  Refresh Diagnostics
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
