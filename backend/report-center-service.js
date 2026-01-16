@@ -18,6 +18,7 @@ const TEMPLATES = {
   DEVICE_BY_CAMPAIGN: 53593,              // Device Type by Campaign
   VIEWABILITY_BY_CAMPAIGN: 105322,        // Viewability Average by Campaign
   DOMAIN_BY_CAMPAIGN: 53602,              // Domain Performance by Campaign
+  DOMAIN_VIDEO_INTERACTION: 177969,       // Domain Video Interaction - includes completion rate for OTT
   KEYWORD_BY_CAMPAIGN: 53622,             // Keyword Performance by Campaign
 };
 
@@ -353,37 +354,123 @@ class ReportCenterService {
   }
 
   /**
-   * Get domain/placement performance (for OTT campaigns)
+   * Get domain/placement performance (for OTT campaigns includes completion rate)
    */
   async getDomainPerformance(orgId, campaignId, startDate, endDate) {
     try {
+      console.log(`[REPORT CENTER] Getting domain performance for org ${orgId}, campaign ${campaignId}, ${startDate} to ${endDate}`);
+      
+      // First try the Domain Video Interaction report (has completion rate for OTT)
+      const videoReportId = await this.getOrCreateReportModel(
+        orgId,
+        TEMPLATES.DOMAIN_VIDEO_INTERACTION,
+        'Domain Video Interaction'
+      );
+      
+      console.log(`[REPORT CENTER] Domain Video Interaction report ID: ${videoReportId}`);
+      
+      const filters = {
+        'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
+        'summary_delivery_events.campaign_id': campaignId.toString()
+      };
+      
+      let data = null;
+      
+      // Try video interaction report first (has completion rates)
+      if (videoReportId) {
+        console.log('[REPORT CENTER] Running Domain Video Interaction snapshot...');
+        data = await this.runSnapshotAndWait(orgId, videoReportId, filters);
+        
+        if (data && Array.isArray(data) && data.length > 0) {
+          console.log(`[REPORT CENTER] Domain Video Interaction returned ${data.length} rows`);
+          console.log(`[REPORT CENTER] First row keys:`, Object.keys(data[0]));
+          console.log(`[REPORT CENTER] First row sample:`, JSON.stringify(data[0]).substring(0, 500));
+          
+          // Map video interaction data - includes completion rate (vcr)
+          const result = data.map(row => ({
+            domain: row['summary_delivery_events.domain_reporting_name'] || 
+                    row['summary_delivery_events.domain'] || 
+                    row['dim_domain.domain_name'] ||
+                    row['dim_domain.domain_reporting_name'],
+            impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
+            clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
+            ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
+            spend: parseFloat(row['summary_delivery_events.spend'] || row['summary_delivery_events.total_cust'] || 0),
+            // Video completion rate - try multiple field names
+            complete_rate: parseFloat(
+              row['summary_delivery_events.video_complete_rate'] ||
+              row['summary_delivery_events.vcr'] ||
+              row['summary_delivery_events.complete_rate'] ||
+              row['summary_video_interaction_events.video_complete_rate'] ||
+              row['summary_video_interaction_events.vcr'] ||
+              0
+            ) * 100, // Convert to percentage if needed
+            video_completions: parseInt(row['summary_delivery_events.video_completions'] || 
+                                        row['summary_video_interaction_events.video_completions'] || 0),
+            video_starts: parseInt(row['summary_delivery_events.video_starts'] || 
+                                   row['summary_video_interaction_events.video_starts'] || 0)
+          })).filter(r => r.domain).sort((a, b) => b.impressions - a.impressions);
+          
+          // If we got video completions, calculate completion rate manually if not present
+          result.forEach(r => {
+            if (r.complete_rate === 0 && r.video_starts > 0 && r.video_completions > 0) {
+              r.complete_rate = (r.video_completions / r.video_starts) * 100;
+            }
+          });
+          
+          console.log(`[REPORT CENTER] Processed ${result.length} domains with video data`);
+          if (result.length > 0) {
+            console.log(`[REPORT CENTER] First domain result:`, JSON.stringify(result[0]));
+          }
+          
+          return result;
+        }
+      }
+      
+      // Fallback to regular Domain Performance report (no completion rate)
+      console.log('[REPORT CENTER] Falling back to regular Domain Performance report...');
       const reportId = await this.getOrCreateReportModel(
         orgId,
         TEMPLATES.DOMAIN_BY_CAMPAIGN,
         'Domain Performance'
       );
       
-      if (!reportId) return [];
-
-      const filters = {
-        'summary_delivery_events.event_date': `${startDate} to ${endDate}`,
-        'summary_delivery_events.campaign_id': campaignId.toString()
-      };
-
-      const data = await this.runSnapshotAndWait(orgId, reportId, filters);
+      console.log(`[REPORT CENTER] Domain Performance report ID: ${reportId}`);
       
-      if (!data || !Array.isArray(data)) return [];
+      if (!reportId) {
+        console.log('[REPORT CENTER] No report ID for domain performance');
+        return [];
+      }
+
+      data = await this.runSnapshotAndWait(orgId, reportId, filters);
       
-      return data.map(row => ({
-        domain: row['summary_delivery_events.domain'] || row['dim_domain.domain_name'],
+      if (!data || !Array.isArray(data)) {
+        console.log('[REPORT CENTER] No data returned from domain snapshot');
+        return [];
+      }
+      
+      console.log(`[REPORT CENTER] Domain Performance returned ${data.length} rows`);
+      if (data.length > 0) {
+        console.log(`[REPORT CENTER] First row keys:`, Object.keys(data[0]));
+      }
+      
+      const result = data.map(row => ({
+        domain: row['summary_delivery_events.domain_reporting_name'] ||
+                row['summary_delivery_events.domain'] || 
+                row['dim_domain.domain_name'] ||
+                row['dim_domain.domain_reporting_name'],
         impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
         clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
         ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-        spend: parseFloat(row['summary_delivery_events.spend'] || 0)
+        spend: parseFloat(row['summary_delivery_events.spend'] || row['summary_delivery_events.total_cust'] || 0)
       })).filter(r => r.domain).sort((a, b) => b.impressions - a.impressions);
       
+      console.log(`[REPORT CENTER] Processed ${result.length} domains`);
+      
+      return result;
+      
     } catch (error) {
-      console.error('Error getting domain performance:', error.message);
+      console.error('[REPORT CENTER] Error getting domain performance:', error.message);
       return [];
     }
   }

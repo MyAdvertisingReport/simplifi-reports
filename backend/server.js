@@ -1339,13 +1339,23 @@ app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/conversions', 
 app.get('/api/simplifi/organizations/:orgId/campaigns/:campaignId/domain-performance', authenticateToken, async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
+    console.log(`[DOMAIN PERF] Request for org ${req.params.orgId}, campaign ${req.params.campaignId}, ${startDate} to ${endDate}`);
+    
     if (!reportCenterService) {
+      console.log('[DOMAIN PERF] Report Center service not available');
       return res.json({ domain_performance: [] });
     }
+    
+    if (!reportCenterService.getDomainPerformance) {
+      console.log('[DOMAIN PERF] getDomainPerformance method not implemented');
+      return res.json({ domain_performance: [] });
+    }
+    
     const data = await reportCenterService.getDomainPerformance(req.params.orgId, req.params.campaignId, startDate, endDate);
+    console.log(`[DOMAIN PERF] Got ${(data || []).length} domains`);
     res.json({ domain_performance: data || [] });
   } catch (error) {
-    console.error('Domain performance error:', error);
+    console.error('[DOMAIN PERF] Error:', error.message);
     res.json({ domain_performance: [] });
   }
 });
