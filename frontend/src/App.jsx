@@ -6740,7 +6740,7 @@ function ExpandableKeywordPerformance({ keywords, keywordPerformance, showSpend,
 // ============================================
 // EXPANDABLE GEO-FENCE LIST - Shows top 4 with View All
 // ============================================
-function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
+function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats, campaignStats }) {
   const [expanded, setExpanded] = useState(false);
   
   // Calculate totals for summary
@@ -6748,89 +6748,118 @@ function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
   const totalClicks = fences.reduce((sum, f) => sum + (f.clicks || 0), 0);
   const overallCTR = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
   
-  // Sort by impressions for the chart
-  const sortedFences = [...fences].sort((a, b) => (b.impressions || 0) - (a.impressions || 0));
+  // Check if we have per-location stats or just location names
+  const hasPerLocationStats = fences.some(f => (f.impressions || 0) > 0 || (f.clicks || 0) > 0);
+  
+  // Sort by impressions (or alphabetically if no stats)
+  const sortedFences = [...fences].sort((a, b) => {
+    if (hasPerLocationStats) {
+      return (b.impressions || 0) - (a.impressions || 0);
+    }
+    return (a.name || '').localeCompare(b.name || '');
+  });
   const maxImpressions = sortedFences[0]?.impressions || 1;
   
   const displayFences = expanded ? sortedFences : sortedFences.slice(0, 6);
   const hasMore = fences.length > 6;
-  
-  // Use prop if provided, otherwise check locally
-  const showStats = hasStats !== undefined ? hasStats : fences.some(f => f.impressions > 0 || f.clicks > 0);
   
   // Colors for the bars
   const barColors = ['#0d9488', '#14b8a6', '#2dd4bf', '#5eead4', '#99f6e4', '#ccfbf1'];
   
   return (
     <div>
-      {/* Summary Stats Cards */}
-      {showStats && (
+      {/* Summary Stats Cards - Always show for geo-fence targeting */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', 
+        gap: isMobile ? '0.5rem' : '1rem',
+        marginBottom: '1.25rem'
+      }}>
         <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', 
-          gap: isMobile ? '0.5rem' : '1rem',
-          marginBottom: '1.25rem'
+          background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
+          padding: isMobile ? '0.75rem' : '1rem', 
+          borderRadius: '0.75rem',
+          border: '1px solid #99f6e4'
         }}>
-          <div style={{ 
-            background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
-            padding: isMobile ? '0.75rem' : '1rem', 
-            borderRadius: '0.75rem',
-            border: '1px solid #99f6e4'
-          }}>
-            <div style={{ fontSize: '0.6875rem', color: '#0f766e', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Total Locations
-            </div>
-            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#0d9488' }}>
-              {fences.length}
-            </div>
+          <div style={{ fontSize: '0.6875rem', color: '#0f766e', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+            Target Locations
           </div>
-          
-          <div style={{ 
-            background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
-            padding: isMobile ? '0.75rem' : '1rem', 
-            borderRadius: '0.75rem',
-            border: '1px solid #99f6e4'
-          }}>
-            <div style={{ fontSize: '0.6875rem', color: '#0f766e', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Total Impressions
-            </div>
-            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#0d9488' }}>
-              {formatNumber(totalImpressions)}
-            </div>
-          </div>
-          
-          <div style={{ 
-            background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', 
-            padding: isMobile ? '0.75rem' : '1rem', 
-            borderRadius: '0.75rem',
-            border: '1px solid #93c5fd'
-          }}>
-            <div style={{ fontSize: '0.6875rem', color: '#1d4ed8', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Total Clicks
-            </div>
-            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#3b82f6' }}>
-              {formatNumber(totalClicks)}
-            </div>
-          </div>
-          
-          <div style={{ 
-            background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)', 
-            padding: isMobile ? '0.75rem' : '1rem', 
-            borderRadius: '0.75rem',
-            border: '1px solid #d8b4fe'
-          }}>
-            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
-              Avg CTR
-            </div>
-            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#8b5cf6' }}>
-              {overallCTR.toFixed(2)}%
-            </div>
+          <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#0d9488' }}>
+            {fences.length}
           </div>
         </div>
-      )}
+        
+        {hasPerLocationStats ? (
+          <>
+            <div style={{ 
+              background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
+              padding: isMobile ? '0.75rem' : '1rem', 
+              borderRadius: '0.75rem',
+              border: '1px solid #99f6e4'
+            }}>
+              <div style={{ fontSize: '0.6875rem', color: '#0f766e', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+                Total Impressions
+              </div>
+              <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#0d9488' }}>
+                {formatNumber(totalImpressions)}
+              </div>
+            </div>
+            
+            <div style={{ 
+              background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', 
+              padding: isMobile ? '0.75rem' : '1rem', 
+              borderRadius: '0.75rem',
+              border: '1px solid #93c5fd'
+            }}>
+              <div style={{ fontSize: '0.6875rem', color: '#1d4ed8', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+                Total Clicks
+              </div>
+              <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#3b82f6' }}>
+                {formatNumber(totalClicks)}
+              </div>
+            </div>
+            
+            <div style={{ 
+              background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)', 
+              padding: isMobile ? '0.75rem' : '1rem', 
+              borderRadius: '0.75rem',
+              border: '1px solid #d8b4fe'
+            }}>
+              <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+                Avg CTR
+              </div>
+              <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#8b5cf6' }}>
+                {overallCTR.toFixed(2)}%
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Show campaign-level stats context when per-location isn't available */}
+            <div style={{ 
+              background: 'linear-gradient(135deg, #fefce8 0%, #fef9c3 100%)', 
+              padding: isMobile ? '0.75rem' : '1rem', 
+              borderRadius: '0.75rem',
+              border: '1px solid #fde047',
+              gridColumn: isMobile ? 'span 1' : 'span 3'
+            }}>
+              <div style={{ fontSize: '0.6875rem', color: '#a16207', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+                How It Works
+              </div>
+              <div style={{ fontSize: isMobile ? '0.75rem' : '0.8125rem', color: '#854d0e', lineHeight: 1.4 }}>
+                {isMobile ? (
+                  'Visitors to these locations become your target audience for ads.'
+                ) : (
+                  'People who visit these locations have their devices captured and become part of your target audience. Campaign impressions are shown in the Performance section above.'
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
       
-      {/* Horizontal Bar Chart - Top Performers */}
-      {showStats && sortedFences.length > 0 && (
+      {/* Horizontal Bar Chart - Only show if we have per-location stats */}
+      {hasPerLocationStats && sortedFences.length > 0 && (
         <div style={{ 
           background: '#f9fafb', 
           borderRadius: '0.75rem', 
@@ -6989,8 +7018,8 @@ function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
                   </div>
                 )}
                 
-                {/* Stats row */}
-                {showStats && (
+                {/* Stats row - only show if we have per-location stats */}
+                {hasPerLocationStats && (
                   <div style={{ 
                     display: 'flex', 
                     gap: isMobile ? '1rem' : '1.5rem', 
@@ -7016,6 +7045,21 @@ function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
                         {((fence.ctr || 0) * (fence.ctr > 1 ? 1 : 100)).toFixed(2)}%
                       </div>
                     </div>
+                  </div>
+                )}
+                
+                {/* Show a subtle indicator for target fences without stats */}
+                {!hasPerLocationStats && (
+                  <div style={{ 
+                    marginTop: '0.5rem',
+                    paddingTop: '0.5rem',
+                    borderTop: '1px solid #f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem'
+                  }}>
+                    <Target size={12} color="#10b981" />
+                    <span style={{ fontSize: '0.6875rem', color: '#6b7280' }}>Target Zone Active</span>
                   </div>
                 )}
               </div>
