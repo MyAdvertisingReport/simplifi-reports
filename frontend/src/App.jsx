@@ -315,23 +315,17 @@ function TopAdCard({ ad, rank }) {
               onError={() => setImageError(true)}
             />
           ) : (
-            <img 
-              src={ad.preview_url} 
-              alt={ad.size}
-              loading="eager"
-              crossOrigin="anonymous"
-              referrerPolicy="no-referrer"
+            <div 
               style={{ 
-                maxWidth: '100%', 
-                maxHeight: '120px', 
-                objectFit: 'contain',
-                width: 'auto',
-                height: 'auto'
+                width: '100%',
+                height: '80px',
+                backgroundImage: `url(${ad.preview_url})`,
+                backgroundSize: 'contain',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat'
               }}
-              onError={(e) => {
-                console.log('Image failed to load:', ad.preview_url);
-                setImageError(true);
-              }}
+              role="img"
+              aria-label={ad.size}
             />
           )
         ) : (
