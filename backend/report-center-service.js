@@ -149,6 +149,7 @@ class ReportCenterService {
   async runSnapshotAndWait(orgId, reportId, filters = {}, maxWaitMs = 60000) {
     try {
       // Create snapshot
+      console.log(`[REPORT CENTER] Creating snapshot for report ${reportId} with filters:`, JSON.stringify(filters));
       const snapshotResponse = await this.client.post(
         `/organizations/${orgId}/report_center/reports/${reportId}/schedules/create_snapshot`,
         {
@@ -160,36 +161,51 @@ class ReportCenterService {
       
       const snapshotId = snapshotResponse.data.snapshots?.[0]?.id;
       if (!snapshotId) {
+        console.log('[REPORT CENTER] No snapshot ID returned, response:', JSON.stringify(snapshotResponse.data).substring(0, 300));
         throw new Error('No snapshot ID returned');
       }
+      
+      console.log(`[REPORT CENTER] Snapshot ${snapshotId} created, polling for completion...`);
 
       // Poll for completion
       const startTime = Date.now();
+      let pollCount = 0;
       while (Date.now() - startTime < maxWaitMs) {
         await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        pollCount++;
         
         const statusResponse = await this.client.get(
           `/organizations/${orgId}/report_center/reports/${reportId}/schedules/snapshots/${snapshotId}`
         );
         
         const snapshot = statusResponse.data.snapshots?.[0];
+        const status = snapshot?.status || 'unknown';
+        
+        if (pollCount % 3 === 0) {
+          console.log(`[REPORT CENTER] Snapshot ${snapshotId} status: ${status} (poll ${pollCount})`);
+        }
+        
         if (snapshot?.download_link) {
+          console.log(`[REPORT CENTER] Snapshot ${snapshotId} ready, downloading data...`);
           // Download the data
           const dataResponse = await this.client.get(
             snapshot.download_link.replace(BASE_URL, '')
           );
+          console.log(`[REPORT CENTER] Snapshot ${snapshotId} data downloaded, ${Array.isArray(dataResponse.data) ? dataResponse.data.length : 'non-array'} rows`);
           return dataResponse.data;
         }
         
         if (snapshot?.status === 'failed') {
+          console.log(`[REPORT CENTER] Snapshot ${snapshotId} failed`);
           throw new Error('Snapshot generation failed');
         }
       }
       
+      console.log(`[REPORT CENTER] Snapshot ${snapshotId} timed out after ${maxWaitMs}ms`);
       throw new Error('Snapshot generation timed out');
       
     } catch (error) {
-      console.error('Error running snapshot:', error.message);
+      console.error('[REPORT CENTER] Error running snapshot:', error.message);
       return null;
     }
   }
@@ -365,17 +381,32 @@ class ReportCenterService {
         console.log(`[REPORT CENTER] Device first row sample:`, JSON.stringify(data[0]).substring(0, 500));
       }
       
-      const result = data.map(row => ({
-        device_type: row['summary_delivery_events.device_type_name'] || 
-                     row['dim_device_type.device_type_name'] || 
-                     row['summary_delivery_events.device_type'] ||
-                     row['device_type_name'] ||
-                     row['device_type'],
-        impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
-        clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
-        ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-        spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0)
-      })).filter(r => r.device_type);
+      const result = data.map(row => {
+        // Try many possible field names for device type
+        let deviceType = row['summary_delivery_events.device_type_name'] || 
+                         row['dim_device_type.device_type_name'] || 
+                         row['summary_delivery_events.device_type'] ||
+                         row['device_type_name'] ||
+                         row['device_type'];
+        
+        // If still not found, look for any key containing 'device'
+        if (!deviceType) {
+          const keys = Object.keys(row);
+          const deviceKey = keys.find(k => k.toLowerCase().includes('device'));
+          if (deviceKey) {
+            deviceType = row[deviceKey];
+            console.log(`[REPORT CENTER] Found device type in field '${deviceKey}': ${deviceType}`);
+          }
+        }
+        
+        return {
+          device_type: deviceType,
+          impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
+          clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
+          ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
+          spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0)
+        };
+      }).filter(r => r.device_type);
       
       console.log(`[REPORT CENTER] Processed ${result.length} device types`);
       if (result.length > 0) {
