@@ -71,29 +71,37 @@ class ReportCenterService {
       const existingResponse = await this.client.get(
         `/organizations/${orgId}/report_center/reports?size=100`
       );
+      
+      // template_id in the response might be string or number, so compare loosely
       const existing = (existingResponse.data.reports || []).find(
-        r => r.template_id === templateId
+        r => String(r.template_id) === String(templateId)
       );
       
       if (existing) {
+        console.log(`[REPORT CENTER] Found existing report model ${existing.id} for template ${templateId}`);
         this.reportModelCache.set(cacheKey, existing.id);
         return existing.id;
       }
 
-      // Create new report model
+      // Create new report model - ensure template_id is an integer
+      console.log(`[REPORT CENTER] Creating new report model for template ${templateId} in org ${orgId}`);
       const createResponse = await this.client.post(
         `/organizations/${orgId}/report_center/reports`,
-        { template_id: templateId, title }
+        { template_id: parseInt(templateId, 10), title }
       );
       
       const reportId = createResponse.data.reports?.[0]?.id;
       if (reportId) {
+        console.log(`[REPORT CENTER] Created report model ${reportId} for template ${templateId}`);
         this.reportModelCache.set(cacheKey, reportId);
       }
       return reportId;
       
     } catch (error) {
-      console.error(`Error getting/creating report model for template ${templateId}:`, error.message);
+      // Log more details about the error
+      const errorDetails = error.response?.data || error.message;
+      console.error(`[REPORT CENTER] Error getting/creating report model for template ${templateId}:`, 
+        typeof errorDetails === 'object' ? JSON.stringify(errorDetails) : errorDetails);
       return null;
     }
   }
