@@ -3978,41 +3978,49 @@ function CampaignDetailPage({ publicMode = false }) {
       // Try to load additional data from public report center endpoints
       const orgId = clientData.simplifi_org_id;
       
-      // Load geo-fence data if it's a geo-fence campaign
-      if (detectedType.isGeoFence) {
-        try {
-          const gfResponse = await fetch(
-            `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/geo-fence-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
-          );
-          if (gfResponse.ok) {
-            const gfData = await gfResponse.json();
-            // API returns geofence_performance (no underscore)
-            const rawGeoFenceData = gfData.geofence_performance || gfData.geo_fence_performance || [];
-            // Map geoFenceName to name for the component
-            const geoFenceData = rawGeoFenceData.map(gf => ({
-              ...gf,
-              id: gf.geoFenceId,
-              name: gf.geoFenceName || gf.name
-            }));
-            setGeoFencePerformance(geoFenceData);
-            setGeoFences(geoFenceData);
-          }
-        } catch (e) { console.log('Geo-fence data not available'); }
-      }
+      // Load geo-fence data (always try, let UI hide if empty)
+      try {
+        const gfResponse = await fetch(
+          `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/geo-fence-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+        );
+        if (gfResponse.ok) {
+          const gfData = await gfResponse.json();
+          // API returns geofence_performance (no underscore)
+          const rawGeoFenceData = gfData.geofence_performance || gfData.geo_fence_performance || [];
+          // Map geoFenceName to name for the component
+          const geoFenceData = rawGeoFenceData.map(gf => ({
+            ...gf,
+            id: gf.geoFenceId,
+            name: gf.geoFenceName || gf.name
+          }));
+          setGeoFencePerformance(geoFenceData);
+          setGeoFences(geoFenceData);
+        }
+      } catch (e) { console.log('Geo-fence data not available'); }
       
-      // Load keyword data if it's a keyword campaign
-      if (detectedType.isKeyword) {
-        try {
-          const kwResponse = await fetch(
-            `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/keyword-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
-          );
-          if (kwResponse.ok) {
-            const kwData = await kwResponse.json();
-            setKeywordPerformance(kwData.keyword_performance || []);
-            setKeywords(kwData.keyword_performance || []);
-          }
-        } catch (e) { console.log('Keyword data not available'); }
-      }
+      // Load keyword data (always try, let UI hide if empty)
+      try {
+        const kwResponse = await fetch(
+          `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/keyword-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+        );
+        if (kwResponse.ok) {
+          const kwData = await kwResponse.json();
+          setKeywordPerformance(kwData.keyword_performance || []);
+          setKeywords(kwData.keyword_performance || []);
+        }
+      } catch (e) { console.log('Keyword data not available'); }
+      
+      // Load domain performance (always try)
+      try {
+        const domainResponse = await fetch(
+          `${API_BASE}/api/public/report-center/${orgId}/campaigns/${campaignId}/domain-performance?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+        );
+        if (domainResponse.ok) {
+          const domainData = await domainResponse.json();
+          setDomainPerformance(domainData.domain_performance || []);
+          console.log('[PUBLIC] Domain performance loaded:', (domainData.domain_performance || []).length, 'domains');
+        }
+      } catch (e) { console.log('Domain data not available'); }
       
       // Load location performance
       try {
