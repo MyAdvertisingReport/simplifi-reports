@@ -2323,6 +2323,7 @@ function ClientDetailPage({ publicMode = false }) {
   const [geoFencePerformance, setGeoFencePerformance] = useState([]);
   const [keywordPerformance, setKeywordPerformance] = useState([]);
   const [domainPerformance, setDomainPerformance] = useState([]);
+  const [deviceStats, setDeviceStats] = useState([]);
   const [conversionData, setConversionData] = useState(null);
   const [enhancedDataLoading, setEnhancedDataLoading] = useState(false);
   
@@ -2355,13 +2356,20 @@ function ClientDetailPage({ publicMode = false }) {
   // Determine if we should show spend data (only for logged-in users NOT in client view mode, never in public mode)
   const showSpendData = !publicMode && user && !clientViewMode;
 
-  // Default section order for main client page - now includes Report Center sections
-  const defaultMainSectionOrder = ['active', 'charts', 'location', 'topads', 'keywords', 'geofences', 'domains', 'history', 'pixel', 'paused'];
+  // Default section order for main client page - now includes Report Center sections including device
+  const defaultMainSectionOrder = ['active', 'device', 'charts', 'location', 'topads', 'keywords', 'geofences', 'domains', 'history', 'pixel', 'paused'];
   const [sectionOrder, setSectionOrder] = useState(() => {
     const saved = localStorage.getItem('clientMainSectionOrder');
-    // Filter out 'device' from any saved order since it's not available via API
-    const order = saved ? JSON.parse(saved) : defaultMainSectionOrder;
-    return order.filter(s => s !== 'device');
+    if (saved) {
+      let order = JSON.parse(saved);
+      // Add 'device' if not present (for backwards compatibility)
+      if (!order.includes('device')) {
+        const activeIndex = order.indexOf('active');
+        order.splice(activeIndex >= 0 ? activeIndex + 1 : 0, 0, 'device');
+      }
+      return order;
+    }
+    return defaultMainSectionOrder;
   });
 
   // Drag and drop handlers
@@ -2571,11 +2579,57 @@ function ClientDetailPage({ publicMode = false }) {
     setStatsLoading(false);
   };
 
-  // Load Report Center enhanced data - DISABLED on client page for performance
-  // Keywords, Geo-fences, and Domains are now only loaded on individual campaign pages
+  // Load Report Center enhanced data - Only loading device stats for client page
+  // Keywords, Geo-fences, and Domains are loaded on individual campaign pages
   const loadEnhancedData = async () => {
-    // Intentionally empty - enhanced data is now loaded per-campaign only
-    // This significantly improves client page load time
+    if (!client?.simplifi_org_id || activeCampaigns.length === 0) {
+      setEnhancedDataLoading(false);
+      return;
+    }
+    
+    setEnhancedDataLoading(true);
+    
+    try {
+      // Aggregate device stats across all active campaigns
+      const deviceAggregated = {};
+      
+      // Fetch device breakdown for each active campaign and aggregate
+      const devicePromises = activeCampaigns.slice(0, 5).map(async (campaign) => {
+        try {
+          const endpoint = publicMode 
+            ? `/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
+          
+          const response = publicMode 
+            ? await fetch(`${API_BASE}${endpoint}`)
+            : await api.get(endpoint);
+          
+          const data = publicMode ? await response.json() : response;
+          const devices = data.device_breakdown || [];
+          
+          devices.forEach(d => {
+            const deviceType = d.device_type || 'Unknown';
+            if (!deviceAggregated[deviceType]) {
+              deviceAggregated[deviceType] = { device_type: deviceType, impressions: 0, clicks: 0 };
+            }
+            deviceAggregated[deviceType].impressions += d.impressions || 0;
+            deviceAggregated[deviceType].clicks += d.clicks || 0;
+          });
+        } catch (e) {
+          console.log(`Device data not available for campaign ${campaign.id}`);
+        }
+      });
+      
+      await Promise.all(devicePromises);
+      
+      const deviceArray = Object.values(deviceAggregated).sort((a, b) => b.impressions - a.impressions);
+      setDeviceStats(deviceArray);
+      console.log('Device stats loaded:', deviceArray.length, 'device types');
+      
+    } catch (err) {
+      console.error('Error loading device data:', err);
+    }
+    
     setEnhancedDataLoading(false);
   };
 
@@ -3079,6 +3133,139 @@ function ClientDetailPage({ publicMode = false }) {
                   </DraggableReportSection>
                 );
               
+              case 'device':
+                // Device breakdown aggregated across all active campaigns
+                if (deviceStats.length === 0) {
+                  if (enhancedDataLoading) {
+                    return (
+                      <DraggableReportSection {...sectionProps} title="Performance by Device" icon={Smartphone} iconColor="#6366f1">
+                        <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                          <div className="spinner" style={{ margin: '0 auto 1rem' }} />
+                          <p style={{ fontSize: '0.875rem' }}>Loading device data...</p>
+                        </div>
+                      </DraggableReportSection>
+                    );
+                  }
+                  return null;
+                }
+                
+                const totalDeviceImpressions = deviceStats.reduce((sum, d) => sum + (d.impressions || 0), 0);
+                
+                // Device icon mapping
+                const getDeviceIcon = (deviceType) => {
+                  const type = (deviceType || '').toLowerCase();
+                  if (type.includes('mobile') || type.includes('phone')) return Smartphone;
+                  if (type.includes('tablet') || type.includes('ipad')) return Tablet;
+                  if (type.includes('tv') || type.includes('ctv') || type.includes('connected')) return Tv;
+                  if (type.includes('desktop') || type.includes('computer')) return Monitor;
+                  return Monitor;
+                };
+                
+                // Device color mapping
+                const getDeviceColor = (deviceType, index) => {
+                  const type = (deviceType || '').toLowerCase();
+                  if (type.includes('mobile')) return { bg: '#dbeafe', color: '#1e40af', bar: '#3b82f6' };
+                  if (type.includes('tablet')) return { bg: '#fae8ff', color: '#86198f', bar: '#d946ef' };
+                  if (type.includes('tv') || type.includes('ctv')) return { bg: '#dcfce7', color: '#166534', bar: '#22c55e' };
+                  if (type.includes('desktop')) return { bg: '#fef3c7', color: '#92400e', bar: '#f59e0b' };
+                  // Fallback colors
+                  const colors = [
+                    { bg: '#e0e7ff', color: '#3730a3', bar: '#6366f1' },
+                    { bg: '#ccfbf1', color: '#115e59', bar: '#14b8a6' },
+                    { bg: '#fee2e2', color: '#991b1b', bar: '#ef4444' }
+                  ];
+                  return colors[index % colors.length];
+                };
+                
+                return (
+                  <DraggableReportSection {...sectionProps} title="Performance by Device" icon={Smartphone} iconColor="#6366f1">
+                    {/* Explanation */}
+                    <div style={{ 
+                      padding: '0.75rem 1rem', 
+                      background: '#f9fafb', 
+                      borderRadius: '0.5rem', 
+                      marginBottom: '1rem',
+                      fontSize: '0.8125rem',
+                      color: '#6b7280'
+                    }}>
+                      <strong style={{ color: '#374151' }}>📱 What is this?</strong> This shows what types of devices people used when they saw your ads across all active campaigns.
+                    </div>
+                    
+                    {/* Device Cards */}
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : `repeat(${Math.min(deviceStats.length, 4)}, 1fr)`, 
+                      gap: '1rem',
+                      marginBottom: '1.5rem'
+                    }}>
+                      {deviceStats.slice(0, 4).map((device, i) => {
+                        const percentage = totalDeviceImpressions > 0 ? ((device.impressions || 0) / totalDeviceImpressions * 100) : 0;
+                        const DeviceIcon = getDeviceIcon(device.device_type);
+                        const colors = getDeviceColor(device.device_type, i);
+                        
+                        return (
+                          <div key={i} style={{ 
+                            background: colors.bg, 
+                            padding: '1.25rem', 
+                            borderRadius: '0.75rem',
+                            textAlign: 'center',
+                            border: `1px solid ${colors.bar}20`
+                          }}>
+                            <DeviceIcon size={32} color={colors.color} style={{ marginBottom: '0.75rem' }} />
+                            <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.color, marginBottom: '0.5rem' }}>
+                              {device.device_type || 'Unknown'}
+                            </div>
+                            <div style={{ fontSize: '2rem', fontWeight: 700, color: colors.color, marginBottom: '0.25rem' }}>
+                              {percentage.toFixed(1)}%
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                              {formatNumber(device.impressions)} impressions
+                            </div>
+                            {device.clicks > 0 && (
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                                {formatNumber(device.clicks)} clicks
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Visual Bar Chart */}
+                    <div style={{ background: '#f9fafb', padding: '1rem', borderRadius: '0.75rem' }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
+                        Device Distribution
+                      </div>
+                      {deviceStats.map((device, i) => {
+                        const percentage = totalDeviceImpressions > 0 ? ((device.impressions || 0) / totalDeviceImpressions * 100) : 0;
+                        const colors = getDeviceColor(device.device_type, i);
+                        
+                        return (
+                          <div key={i} style={{ marginBottom: i < deviceStats.length - 1 ? '0.75rem' : 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                              <span style={{ fontSize: '0.8125rem', fontWeight: 500 }}>{device.device_type}</span>
+                              <span style={{ fontSize: '0.8125rem', color: '#6b7280' }}>{percentage.toFixed(1)}%</span>
+                            </div>
+                            <div style={{ height: '8px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{
+                                width: `${percentage}%`,
+                                height: '100%',
+                                background: colors.bar,
+                                borderRadius: '4px',
+                                transition: 'width 0.5s ease'
+                              }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#9ca3af', textAlign: 'center' }}>
+                      Based on {formatNumber(totalDeviceImpressions)} total impressions across {activeCampaigns.length} active campaign{activeCampaigns.length !== 1 ? 's' : ''}
+                    </div>
+                  </DraggableReportSection>
+                );
+              
               case 'charts':
                 if (dailyStats.length === 0) return null;
                 // Calculate totals for the date range
@@ -3453,8 +3640,8 @@ function CampaignDetailPage({ publicMode = false }) {
     localStorage.setItem('clientViewMode', newValue.toString());
   };
   
-  // Default section order - can be customized (device is now shown on campaign pages too)
-  const defaultSectionOrder = ['performance', 'vcr', 'conversions', 'device', 'charts', 'geo', 'geofences', 'keywords', 'keywordPerformance', 'ads', 'domains', 'daily'];
+  // Default section order - can be customized (device is on main client page only)
+  const defaultSectionOrder = ['performance', 'vcr', 'conversions', 'charts', 'geo', 'geofences', 'keywords', 'keywordPerformance', 'ads', 'domains', 'daily'];
   const [sectionOrder, setSectionOrder] = useState(() => {
     // In public mode, always use default order (don't use localStorage)
     if (publicMode) {
@@ -3465,11 +3652,8 @@ function CampaignDetailPage({ publicMode = false }) {
     const saved = localStorage.getItem('campaignSectionOrder');
     if (saved) {
       let order = JSON.parse(saved);
-      // Add 'device' if not present (for backwards compatibility with old saved orders)
-      if (!order.includes('device')) {
-        const convIndex = order.indexOf('conversions');
-        order.splice(convIndex >= 0 ? convIndex + 1 : 3, 0, 'device');
-      }
+      // Remove 'device' from campaign pages (it's now on main client page only)
+      order = order.filter(s => s !== 'device');
       // Add any new sections that aren't in the saved order
       defaultSectionOrder.forEach(section => {
         if (!order.includes(section)) {
