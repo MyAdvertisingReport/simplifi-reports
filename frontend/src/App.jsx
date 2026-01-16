@@ -267,6 +267,85 @@ const normalizeStats = (stats) => {
   };
 };
 
+// Top Ad Card component with image error handling
+function TopAdCard({ ad, rank }) {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const isFirst = rank === 0;
+  
+  const hasValidPreview = ad.preview_url && !imageError;
+  
+  return (
+    <div style={{ 
+      padding: '1.25rem', 
+      background: isFirst ? 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' : '#f9fafb', 
+      borderRadius: '0.75rem',
+      color: isFirst ? 'white' : 'inherit'
+    }}>
+      {/* Ad Preview Image/Video - only show if we have a URL and no error */}
+      {hasValidPreview && (
+        <div style={{ 
+          marginBottom: '0.75rem', 
+          borderRadius: '0.5rem', 
+          overflow: 'hidden',
+          background: isFirst ? 'rgba(255,255,255,0.1)' : '#e5e7eb',
+          display: imageLoaded || ad.is_video ? 'flex' : 'none',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '60px',
+          maxHeight: '100px'
+        }}>
+          {ad.is_video ? (
+            <video 
+              src={ad.preview_url} 
+              style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
+              autoPlay
+              loop
+              muted
+              playsInline
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <img 
+              src={ad.preview_url} 
+              alt={ad.size}
+              style={{ maxWidth: '100%', maxHeight: '100px', objectFit: 'contain' }}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageError(true)}
+            />
+          )}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>{ad.size}</span>
+        <span style={{ 
+          padding: '0.25rem 0.5rem', 
+          background: isFirst ? 'rgba(255,255,255,0.2)' : '#e5e7eb', 
+          borderRadius: '0.25rem', 
+          fontSize: '0.75rem', 
+          fontWeight: 600 
+        }}>
+          #{rank + 1}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', fontSize: '0.8125rem' }}>
+        <div style={{ flex: '1 1 auto', minWidth: '60px' }}>
+          <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>Impressions</div>
+          <div style={{ fontWeight: 600 }}>{formatNumber(ad.impressions)}</div>
+        </div>
+        <div style={{ flex: '1 1 auto', minWidth: '50px' }}>
+          <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>Clicks</div>
+          <div style={{ fontWeight: 600 }}>{formatNumber(ad.clicks)}</div>
+        </div>
+        <div style={{ flex: '1 1 auto', minWidth: '50px' }}>
+          <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>CTR</div>
+          <div style={{ fontWeight: 600 }}>{formatPercent(ad.ctr)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Parse campaign name to extract strategy type
 const parseStrategy = (campaignName) => {
   if (!campaignName) return 'Display';
@@ -2847,70 +2926,7 @@ function ClientDetailPage({ publicMode = false }) {
                   <DraggableReportSection {...sectionProps} title="Top 3 Ads by Size (Active Campaigns)" icon={Image} iconColor="#6366f1">
                     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 1 : isTablet ? 2 : 3}, 1fr)`, gap: '1rem' }}>
                       {topAdSizes.map((ad, i) => (
-                        <div key={ad.size} style={{ 
-                          padding: '1.25rem', 
-                          background: i === 0 ? 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' : '#f9fafb', 
-                          borderRadius: '0.75rem',
-                          color: i === 0 ? 'white' : 'inherit'
-                        }}>
-                          {/* Ad Preview Image/Video */}
-                          {ad.preview_url && (
-                            <div style={{ 
-                              marginBottom: '0.75rem', 
-                              borderRadius: '0.5rem', 
-                              overflow: 'hidden',
-                              background: i === 0 ? 'rgba(255,255,255,0.1)' : '#e5e7eb',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              height: '80px'
-                            }}>
-                              {ad.is_video ? (
-                                <video 
-                                  src={ad.preview_url} 
-                                  style={{ maxWidth: '100%', maxHeight: '80px', objectFit: 'contain' }}
-                                  autoPlay
-                                  loop
-                                  muted
-                                  playsInline
-                                />
-                              ) : (
-                                <img 
-                                  src={ad.preview_url} 
-                                  alt={ad.size}
-                                  style={{ maxWidth: '100%', maxHeight: '80px', objectFit: 'contain' }}
-                                  onError={(e) => { e.target.style.display = 'none'; }}
-                                />
-                              )}
-                            </div>
-                          )}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                            <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>{ad.size}</span>
-                            <span style={{ 
-                              padding: '0.25rem 0.5rem', 
-                              background: i === 0 ? 'rgba(255,255,255,0.2)' : '#e5e7eb', 
-                              borderRadius: '0.25rem', 
-                              fontSize: '0.75rem', 
-                              fontWeight: 600 
-                            }}>
-                              #{i + 1}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', fontSize: '0.8125rem' }}>
-                            <div style={{ flex: '1 1 auto', minWidth: '60px' }}>
-                              <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>Impressions</div>
-                              <div style={{ fontWeight: 600 }}>{formatNumber(ad.impressions)}</div>
-                            </div>
-                            <div style={{ flex: '1 1 auto', minWidth: '50px' }}>
-                              <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>Clicks</div>
-                              <div style={{ fontWeight: 600 }}>{formatNumber(ad.clicks)}</div>
-                            </div>
-                            <div style={{ flex: '1 1 auto', minWidth: '50px' }}>
-                              <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>CTR</div>
-                              <div style={{ fontWeight: 600 }}>{formatPercent(ad.ctr)}</div>
-                            </div>
-                          </div>
-                        </div>
+                        <TopAdCard key={ad.size} ad={ad} rank={i} />
                       ))}
                     </div>
                   </DraggableReportSection>
