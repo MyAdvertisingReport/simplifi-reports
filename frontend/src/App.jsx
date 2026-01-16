@@ -270,24 +270,14 @@ const normalizeStats = (stats) => {
 // Top Ad Card component with image error handling
 function TopAdCard({ ad, rank }) {
   const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
   const isFirst = rank === 0;
   
   const hasValidPreview = ad.preview_url && !imageError;
-  
-  // Debug logging
-  console.log(`TopAdCard ${rank}: size=${ad.size}, hasPreview=${hasValidPreview}, is_video=${ad.is_video}, url=${ad.preview_url}, loaded=${imageLoaded}, error=${imageError}`);
   
   // Parse dimensions from size string for placeholder
   const sizeParts = ad.size?.match(/(\d+)x(\d+)/);
   const displayWidth = sizeParts ? parseInt(sizeParts[1]) : 300;
   const displayHeight = sizeParts ? parseInt(sizeParts[2]) : 250;
-  
-  // For placeholder: always show at reasonable height (60-100px)
-  // For actual image: respect aspect ratio
-  const previewHeight = hasValidPreview && imageLoaded 
-    ? Math.min(100, Math.max(40, (displayHeight / displayWidth) * 200))
-    : Math.max(60, Math.min(100, (displayHeight / displayWidth) * 150));
   
   return (
     <div style={{ 
@@ -296,7 +286,7 @@ function TopAdCard({ ad, rank }) {
       borderRadius: '0.75rem',
       color: isFirst ? 'white' : 'inherit'
     }}>
-      {/* Ad Preview - show image if available, or size-aware placeholder */}
+      {/* Ad Preview - show image if available, or placeholder */}
       <div style={{ 
         marginBottom: '0.75rem', 
         borderRadius: '0.5rem', 
@@ -316,34 +306,30 @@ function TopAdCard({ ad, rank }) {
               style={{ 
                 maxWidth: '100%', 
                 maxHeight: '120px', 
-                objectFit: 'contain',
-                display: imageLoaded ? 'block' : 'none'
+                objectFit: 'contain'
               }}
               autoPlay
               loop
               muted
               playsInline
-              onLoadedData={() => setImageLoaded(true)}
               onError={() => setImageError(true)}
             />
           ) : (
             <img 
               src={ad.preview_url} 
               alt={ad.size}
+              loading="eager"
               style={{ 
                 maxWidth: '100%', 
                 maxHeight: '120px', 
                 objectFit: 'contain',
-                display: imageLoaded ? 'block' : 'none'
+                width: 'auto',
+                height: 'auto'
               }}
-              onLoad={() => setImageLoaded(true)}
               onError={() => setImageError(true)}
             />
           )
-        ) : null}
-        
-        {/* Show placeholder if no image or while loading */}
-        {(!hasValidPreview || !imageLoaded) && (
+        ) : (
           <div style={{
             display: 'flex',
             flexDirection: 'column',
