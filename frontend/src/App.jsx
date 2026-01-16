@@ -4299,8 +4299,19 @@ function CampaignDetailPage({ publicMode = false }) {
           .then(data => {
             const gfPerf = data.geofence_performance || [];
             setGeoFencePerformance(gfPerf);
+            // Also set geoFences if we don't have any yet (Report Center data can serve as geo-fence definitions)
             if (gfPerf.length > 0) {
               console.log(`Geo-fence performance loaded: ${gfPerf.length} geo-fences`);
+              // Map to geoFences format for display
+              const gfData = gfPerf.map((gf, idx) => ({
+                id: gf.geoFenceId || `gf-${idx}`,
+                name: gf.geoFenceName || (gf.geoFenceId ? `Geo-Fence ${gf.geoFenceId}` : `Location ${idx + 1}`),
+                impressions: gf.impressions,
+                clicks: gf.clicks,
+                ctr: gf.ctr,
+                spend: gf.spend
+              }));
+              setGeoFences(prev => prev.length > 0 ? prev : gfData);
             }
           })
           .catch(e => console.log('Geo-fence performance not available:', e.message))
@@ -4860,9 +4871,9 @@ function CampaignDetailPage({ publicMode = false }) {
             
             // If we have performance data but no fence definitions, use performance data
             const displayFences = mergedGeoFences.length > 0 ? mergedGeoFences : 
-              geoFencePerformance.map(p => ({
-                id: p.geoFenceId,
-                name: p.geoFenceName,
+              geoFencePerformance.map((p, idx) => ({
+                id: p.geoFenceId || `gf-${idx}`,
+                name: p.geoFenceName || (p.geoFenceId ? `Geo-Fence ${p.geoFenceId}` : `Location ${idx + 1}`),
                 impressions: p.impressions,
                 clicks: p.clicks,
                 ctr: p.ctr,

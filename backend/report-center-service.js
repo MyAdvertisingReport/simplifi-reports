@@ -274,22 +274,56 @@ class ReportCenterService {
       console.log(`[REPORT CENTER] Geo-fence filtered from ${data.length} to ${filteredData.length} rows for campaign ${campaignId}`);
       
       // Transform the data - try multiple field name patterns
-      const result = filteredData.map(row => ({
-        geoFenceId: row['summary_delivery_events.target_geo_fence_id'] || 
+      const result = filteredData.map(row => {
+        // Try to find geo-fence ID
+        let geoFenceId = row['summary_delivery_events.target_geo_fence_id'] || 
                     row['summary_delivery_events.geo_fence_id'] ||
                     row['dim_geo_fence.geo_fence_id'] ||
-                    row['dim_target_geo_fence.geo_fence_id'],
-        geoFenceName: row['summary_delivery_events.target_geo_fence_name'] ||
+                    row['dim_target_geo_fence.geo_fence_id'] ||
+                    row['dim_geo_fence.id'];
+        
+        // Try to find geo-fence name from many possible fields
+        let geoFenceName = row['summary_delivery_events.target_geo_fence_name'] ||
                       row['summary_delivery_events.geo_fence_name'] ||
                       row['dim_geo_fence.geo_fence_name'] ||
                       row['dim_geo_fence.name'] ||
                       row['dim_target_geo_fence.name'] ||
-                      row['dim_target_geo_fence.geo_fence_name'],
-        impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
-        clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
-        ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
-        spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0)
-      })).filter(r => r.geoFenceId || r.geoFenceName);
+                      row['dim_target_geo_fence.geo_fence_name'] ||
+                      row['summary_delivery_events.geo_fence_reporting_name'] ||
+                      row['geo_fence_name'] ||
+                      row['target_geo_fence_name'];
+        
+        // If still no name, look for any key containing 'geo_fence' and 'name'
+        if (!geoFenceName) {
+          const keys = Object.keys(row);
+          const nameKey = keys.find(k => 
+            k.toLowerCase().includes('geo') && 
+            (k.toLowerCase().includes('name') || k.toLowerCase().includes('fence'))
+          );
+          if (nameKey && typeof row[nameKey] === 'string') {
+            geoFenceName = row[nameKey];
+            console.log(`[REPORT CENTER] Found geo-fence name in field '${nameKey}': ${geoFenceName}`);
+          }
+        }
+        
+        // If still no ID, try to find one
+        if (!geoFenceId) {
+          const keys = Object.keys(row);
+          const idKey = keys.find(k => k.toLowerCase().includes('geo') && k.toLowerCase().includes('id'));
+          if (idKey) {
+            geoFenceId = row[idKey];
+          }
+        }
+        
+        return {
+          geoFenceId,
+          geoFenceName,
+          impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
+          clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
+          ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
+          spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0)
+        };
+      }).filter(r => r.geoFenceId || r.geoFenceName || r.impressions > 0);
       
       console.log(`[REPORT CENTER] Processed ${result.length} geo-fences`);
       if (result.length > 0) {
