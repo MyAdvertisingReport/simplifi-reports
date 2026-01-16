@@ -1824,7 +1824,7 @@ function ClientsPage() {
           </div>
         )}
       </div>
-      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
         {clients.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center' }}>
             <Building2 size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
@@ -1838,8 +1838,159 @@ function ClientsPage() {
               </button>
             )}
           </div>
+        ) : isMobile ? (
+          /* Mobile: Card layout with all data visible */
+          <div>
+            {clients.map((c, idx) => {
+              const stats = clientStats[c.id];
+              const status = getStatusIndicator(stats);
+              return (
+                <div key={c.id} style={{ 
+                  padding: '1rem', 
+                  borderBottom: idx < clients.length - 1 ? '1px solid #f3f4f6' : 'none'
+                }}>
+                  {/* Row 1: Logo, Name, Status Badge */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                    {c.logo_path ? (
+                      <img src={c.logo_path} alt={c.name} style={{ width: 36, height: 36, borderRadius: '0.5rem', objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
+                    ) : (
+                      <div style={{ width: 36, height: 36, borderRadius: '0.5rem', background: c.primary_color || '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: '0.875rem', flexShrink: 0 }}>{c.name.charAt(0)}</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.9375rem' }}>{c.name}</div>
+                        <span style={{ 
+                          padding: '0.25rem 0.5rem', 
+                          background: status.bg, 
+                          color: status.color,
+                          borderRadius: '9999px', 
+                          fontSize: '0.6875rem',
+                          fontWeight: 500,
+                          flexShrink: 0
+                        }}>
+                          {status.label}
+                        </span>
+                      </div>
+                      {/* Strategy Tags */}
+                      {stats && !stats.error && stats.strategies && stats.strategies.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
+                          {stats.strategies.map(strategy => (
+                            <span key={strategy} style={{ 
+                              padding: '0.125rem 0.375rem', 
+                              background: '#f3f4f6', 
+                              borderRadius: '0.25rem', 
+                              fontSize: '0.625rem',
+                              color: '#6b7280',
+                              fontWeight: 500
+                            }}>
+                              {strategy}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Row 2: Stats Grid */}
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(4, 1fr)', 
+                    gap: '0.5rem',
+                    background: '#f9fafb',
+                    padding: '0.75rem',
+                    borderRadius: '0.5rem',
+                    marginBottom: '0.5rem'
+                  }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Campaigns</div>
+                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: stats?.activeCampaigns > 0 ? '#10b981' : '#9ca3af' }}>
+                        {stats && !stats.error ? stats.activeCampaigns : '—'}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Impr</div>
+                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#374151' }}>
+                        {stats && !stats.error ? formatNumber(stats.impressions) : '—'}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Clicks</div>
+                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#374151' }}>
+                        {stats && !stats.error ? formatNumber(stats.clicks) : '—'}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Spend</div>
+                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#374151' }}>
+                        {stats && !stats.error ? formatCurrency(stats.spend) : '—'}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Row 3: View Button */}
+                  <Link 
+                    to={`/client/${c.slug}`} 
+                    style={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.25rem',
+                      padding: '0.5rem',
+                      background: '#f3f4f6',
+                      color: '#374151',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.8125rem',
+                      textDecoration: 'none',
+                      fontWeight: 500
+                    }}
+                  >
+                    View Report <ChevronRight size={14} />
+                  </Link>
+                </div>
+              );
+            })}
+            
+            {/* Mobile Totals */}
+            <div style={{ 
+              padding: '1rem', 
+              background: 'linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%)',
+              borderTop: '2px solid #a7f3d0'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                <BarChart3 size={16} color="#059669" />
+                <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.875rem' }}>Total ({clients.length} clients) - Past 30 Days</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Campaigns</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
+                    {Object.values(clientStats).reduce((sum, s) => sum + (s?.activeCampaigns || 0), 0)}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Impr</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
+                    {formatNumber(Object.values(clientStats).reduce((sum, s) => sum + (s?.impressions || 0), 0))}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Clicks</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
+                    {formatNumber(Object.values(clientStats).reduce((sum, s) => sum + (s?.clicks || 0), 0))}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Spend</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
+                    {formatCurrency(Object.values(clientStats).reduce((sum, s) => sum + (s?.spend || 0), 0))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+          /* Desktop: Original table layout */
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: '#f9fafb' }}>
                 <th style={{ padding: '0.5rem 1rem 0', textAlign: 'left' }}></th>
