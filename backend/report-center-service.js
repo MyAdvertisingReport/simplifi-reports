@@ -275,15 +275,17 @@ class ReportCenterService {
       
       // Transform the data - try multiple field name patterns
       const result = filteredData.map(row => {
-        // Try to find geo-fence ID
-        let geoFenceId = row['summary_delivery_events.target_geo_fence_id'] || 
+        // Try to find geo-fence ID - prefer conversion fence over target fence
+        let geoFenceId = row['summary_delivery_events.conversion_geo_fence_id'] ||
+                    row['summary_delivery_events.target_geo_fence_id'] || 
                     row['summary_delivery_events.geo_fence_id'] ||
                     row['dim_geo_fence.geo_fence_id'] ||
                     row['dim_target_geo_fence.geo_fence_id'] ||
                     row['dim_geo_fence.id'];
         
-        // Try to find geo-fence name from many possible fields
-        let geoFenceName = row['summary_delivery_events.target_geo_fence_name'] ||
+        // Try to find geo-fence name - prefer conversion fence over target fence (target is often "Unknown")
+        let geoFenceName = row['summary_delivery_events.conversion_geo_fence_name'] ||
+                      row['summary_delivery_events.target_geo_fence_name'] ||
                       row['summary_delivery_events.geo_fence_name'] ||
                       row['dim_geo_fence.geo_fence_name'] ||
                       row['dim_geo_fence.name'] ||
@@ -293,12 +295,19 @@ class ReportCenterService {
                       row['geo_fence_name'] ||
                       row['target_geo_fence_name'];
         
+        // Skip if name is literally "Unknown" and we have a conversion fence name
+        if (geoFenceName === 'Unknown' && row['summary_delivery_events.conversion_geo_fence_name']) {
+          geoFenceName = row['summary_delivery_events.conversion_geo_fence_name'];
+        }
+        
         // If still no name, look for any key containing 'geo_fence' and 'name'
-        if (!geoFenceName) {
+        if (!geoFenceName || geoFenceName === 'Unknown') {
           const keys = Object.keys(row);
           const nameKey = keys.find(k => 
             k.toLowerCase().includes('geo') && 
-            (k.toLowerCase().includes('name') || k.toLowerCase().includes('fence'))
+            k.toLowerCase().includes('name') &&
+            row[k] && 
+            row[k] !== 'Unknown'
           );
           if (nameKey && typeof row[nameKey] === 'string') {
             geoFenceName = row[nameKey];
@@ -306,10 +315,10 @@ class ReportCenterService {
           }
         }
         
-        // If still no ID, try to find one
-        if (!geoFenceId) {
+        // If still no ID or ID is -1, try to find one
+        if (!geoFenceId || geoFenceId === -1) {
           const keys = Object.keys(row);
-          const idKey = keys.find(k => k.toLowerCase().includes('geo') && k.toLowerCase().includes('id'));
+          const idKey = keys.find(k => k.toLowerCase().includes('geo') && k.toLowerCase().includes('id') && row[k] && row[k] !== -1);
           if (idKey) {
             geoFenceId = row[idKey];
           }
@@ -323,7 +332,7 @@ class ReportCenterService {
           ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
           spend: parseFloat(row['summary_delivery_events.total_cust'] || row['summary_delivery_events.spend'] || 0)
         };
-      }).filter(r => r.geoFenceId || r.geoFenceName || r.impressions > 0);
+      }).filter(r => (r.geoFenceId && r.geoFenceId !== -1) || (r.geoFenceName && r.geoFenceName !== 'Unknown') || r.impressions > 0);
       
       console.log(`[REPORT CENTER] Processed ${result.length} geo-fences`);
       if (result.length > 0) {

@@ -4298,6 +4298,10 @@ function CampaignDetailPage({ publicMode = false }) {
         api.get(`/api/simplifi/organizations/${orgId}/campaigns/${campId}/geo-fence-performance?startDate=${startDate}&endDate=${endDate}`)
           .then(data => {
             const gfPerf = data.geofence_performance || [];
+            console.log(`[GEOFENCE] Authenticated mode received ${gfPerf.length} geo-fences from API`);
+            if (gfPerf.length > 0) {
+              console.log(`[GEOFENCE] First geo-fence:`, JSON.stringify(gfPerf[0]));
+            }
             setGeoFencePerformance(gfPerf);
             // Also set geoFences if we don't have any yet (Report Center data can serve as geo-fence definitions)
             if (gfPerf.length > 0) {
@@ -4311,6 +4315,7 @@ function CampaignDetailPage({ publicMode = false }) {
                 ctr: gf.ctr,
                 spend: gf.spend
               }));
+              console.log(`[GEOFENCE] Setting geoFences with ${gfData.length} items`);
               setGeoFences(prev => prev.length > 0 ? prev : gfData);
             }
           })
@@ -4849,9 +4854,26 @@ function CampaignDetailPage({ publicMode = false }) {
             const hasGeoFenceData = geoFences.length > 0 || geoFencePerformance.length > 0;
             const isGeoFenceCampaign = campaignType.isGeoFence;
             
-            // Skip if not a geo-fence campaign AND no geo-fence data
-            if (!hasGeoFenceData && !isGeoFenceCampaign) return null;
-            // Also skip if we have no data
+            // Skip if not a geo-fence campaign AND no geo-fence data AND not loading
+            if (!hasGeoFenceData && !isGeoFenceCampaign && !enhancedDataLoading) return null;
+            // Also skip if we have no data and not loading
+            if (!hasGeoFenceData && !enhancedDataLoading) return null;
+            
+            // Show loading state if we're still fetching
+            if (enhancedDataLoading && !hasGeoFenceData) {
+              // Only show loading for geo-fence campaigns
+              if (!isGeoFenceCampaign) return null;
+              return (
+                <DraggableReportSection {...sectionProps} title="Geo-Fence Locations" icon={MapPin} iconColor="#0d9488">
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                    <div className="spinner" style={{ margin: '0 auto 1rem' }} />
+                    <p style={{ fontSize: '0.875rem' }}>Loading geo-fence data...</p>
+                  </div>
+                </DraggableReportSection>
+              );
+            }
+            
+            // Skip if still no data after loading
             if (!hasGeoFenceData) return null;
             
             // Merge geo-fence definitions with performance data
@@ -4862,10 +4884,10 @@ function CampaignDetailPage({ publicMode = false }) {
               );
               return {
                 ...fence,
-                impressions: perf?.impressions || 0,
-                clicks: perf?.clicks || 0,
-                ctr: perf?.ctr || 0,
-                spend: perf?.spend || 0
+                impressions: perf?.impressions || fence.impressions || 0,
+                clicks: perf?.clicks || fence.clicks || 0,
+                ctr: perf?.ctr || fence.ctr || 0,
+                spend: perf?.spend || fence.spend || 0
               };
             }).sort((a, b) => b.impressions - a.impressions);
             
