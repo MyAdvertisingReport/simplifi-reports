@@ -1399,6 +1399,45 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
+// IMAGE PROXY - For Safari cross-origin issues
+// ============================================
+
+app.get('/api/proxy/image', async (req, res) => {
+  try {
+    const { url } = req.query;
+    
+    if (!url) {
+      return res.status(400).json({ error: 'URL parameter required' });
+    }
+    
+    // Only allow proxying from trusted Simpli.fi domains
+    if (!url.includes('simpli.fi') && !url.includes('adspreview.simpli.fi') && !url.includes('media.simpli.fi')) {
+      return res.status(403).json({ error: 'Only Simpli.fi URLs allowed' });
+    }
+    
+    const https = require('https');
+    const http = require('http');
+    const protocol = url.startsWith('https') ? https : http;
+    
+    protocol.get(url, (proxyRes) => {
+      // Forward content-type header
+      const contentType = proxyRes.headers['content-type'] || 'image/gif';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      
+      proxyRes.pipe(res);
+    }).on('error', (err) => {
+      console.error('Image proxy error:', err.message);
+      res.status(500).json({ error: 'Failed to fetch image' });
+    });
+  } catch (error) {
+    console.error('Image proxy error:', error);
+    res.status(500).json({ error: 'Proxy failed' });
+  }
+});
+
+// ============================================
 // START SERVER
 // ============================================
 

@@ -274,6 +274,13 @@ function TopAdCard({ ad, rank }) {
   
   const hasValidPreview = ad.preview_url && !imageError;
   
+  // Proxy image URL through our backend for Safari compatibility
+  const getProxiedUrl = (url) => {
+    if (!url) return null;
+    // Use proxy to avoid Safari cross-origin blocking
+    return `${API_BASE}/api/proxy/image?url=${encodeURIComponent(url)}`;
+  };
+  
   // Parse dimensions from size string for placeholder
   const sizeParts = ad.size?.match(/(\d+)x(\d+)/);
   const displayWidth = sizeParts ? parseInt(sizeParts[1]) : 300;
@@ -315,17 +322,15 @@ function TopAdCard({ ad, rank }) {
               onError={() => setImageError(true)}
             />
           ) : (
-            <div 
+            <img 
+              src={getProxiedUrl(ad.preview_url)} 
+              alt={ad.size}
               style={{ 
-                width: '100%',
-                height: '80px',
-                backgroundImage: `url(${ad.preview_url})`,
-                backgroundSize: 'contain',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
+                maxWidth: '100%',
+                maxHeight: '120px',
+                objectFit: 'contain'
               }}
-              role="img"
-              aria-label={ad.size}
+              onError={() => setImageError(true)}
             />
           )
         ) : (
