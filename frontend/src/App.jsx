@@ -4864,7 +4864,7 @@ function CampaignDetailPage({ publicMode = false }) {
               // Only show loading for geo-fence campaigns
               if (!isGeoFenceCampaign) return null;
               return (
-                <DraggableReportSection {...sectionProps} title="Geo-Fence Locations" icon={MapPin} iconColor="#0d9488">
+                <DraggableReportSection {...sectionProps} title="Geo-Fence Targeting" icon={MapPin} iconColor="#0d9488">
                   <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
                     <div className="spinner" style={{ margin: '0 auto 1rem' }} />
                     <p style={{ fontSize: '0.875rem' }}>Loading geo-fence data...</p>
@@ -4906,17 +4906,40 @@ function CampaignDetailPage({ publicMode = false }) {
             const hasGeoStats = displayFences.some(f => f.impressions > 0 || f.clicks > 0);
             
             return (
-              <DraggableReportSection {...sectionProps} title={`Geo-Fence Locations (${displayFences.length})`} icon={MapPin} iconColor="#0d9488">
-                {/* Explanation */}
+              <DraggableReportSection {...sectionProps} title={`Geo-Fence Targeting (${displayFences.length} Locations)`} icon={MapPin} iconColor="#0d9488">
+                {/* Enhanced Explanation */}
                 <div style={{ 
-                  padding: '0.75rem 1rem', 
-                  background: '#f0fdfa', 
-                  borderRadius: '0.5rem', 
-                  marginBottom: '1rem',
+                  padding: '0.875rem 1rem', 
+                  background: 'linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%)', 
+                  borderRadius: '0.75rem', 
+                  marginBottom: '1.25rem',
                   fontSize: isMobile ? '0.75rem' : '0.8125rem',
-                  color: '#0f766e'
+                  color: '#0f766e',
+                  border: '1px solid #a7f3d0'
                 }}>
-                  <strong>📍 What is this?</strong> These are the physical locations being targeted or tracked for this campaign. People who see your ads and later visit these locations are counted as conversions.
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                    <div style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      background: '#10b981',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: '2px'
+                    }}>
+                      <MapPin size={14} color="white" />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, marginBottom: '0.375rem', color: '#065f46', fontSize: isMobile ? '0.8125rem' : '0.875rem' }}>
+                        Geo-Fence Targeting
+                      </div>
+                      <div style={{ lineHeight: 1.5 }}>
+                        These are physical locations being targeted for this campaign. When people visit these locations, their device is captured and they become eligible to see your ads. This allows you to reach customers based on <strong>real-world behavior</strong>.
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 
                 {enhancedDataLoading && geoFencePerformance.length === 0 && (
@@ -6720,14 +6743,208 @@ function ExpandableKeywordPerformance({ keywords, keywordPerformance, showSpend,
 function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
   const [expanded, setExpanded] = useState(false);
   
-  const displayFences = expanded ? fences : fences.slice(0, 4);
-  const hasMore = fences.length > 4;
+  // Calculate totals for summary
+  const totalImpressions = fences.reduce((sum, f) => sum + (f.impressions || 0), 0);
+  const totalClicks = fences.reduce((sum, f) => sum + (f.clicks || 0), 0);
+  const overallCTR = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
+  
+  // Sort by impressions for the chart
+  const sortedFences = [...fences].sort((a, b) => (b.impressions || 0) - (a.impressions || 0));
+  const maxImpressions = sortedFences[0]?.impressions || 1;
+  
+  const displayFences = expanded ? sortedFences : sortedFences.slice(0, 6);
+  const hasMore = fences.length > 6;
   
   // Use prop if provided, otherwise check locally
   const showStats = hasStats !== undefined ? hasStats : fences.some(f => f.impressions > 0 || f.clicks > 0);
   
+  // Colors for the bars
+  const barColors = ['#0d9488', '#14b8a6', '#2dd4bf', '#5eead4', '#99f6e4', '#ccfbf1'];
+  
   return (
     <div>
+      {/* Summary Stats Cards */}
+      {showStats && (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', 
+          gap: isMobile ? '0.5rem' : '1rem',
+          marginBottom: '1.25rem'
+        }}>
+          <div style={{ 
+            background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
+            padding: isMobile ? '0.75rem' : '1rem', 
+            borderRadius: '0.75rem',
+            border: '1px solid #99f6e4'
+          }}>
+            <div style={{ fontSize: '0.6875rem', color: '#0f766e', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Total Locations
+            </div>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#0d9488' }}>
+              {fences.length}
+            </div>
+          </div>
+          
+          <div style={{ 
+            background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)', 
+            padding: isMobile ? '0.75rem' : '1rem', 
+            borderRadius: '0.75rem',
+            border: '1px solid #99f6e4'
+          }}>
+            <div style={{ fontSize: '0.6875rem', color: '#0f766e', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Total Impressions
+            </div>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#0d9488' }}>
+              {formatNumber(totalImpressions)}
+            </div>
+          </div>
+          
+          <div style={{ 
+            background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', 
+            padding: isMobile ? '0.75rem' : '1rem', 
+            borderRadius: '0.75rem',
+            border: '1px solid #93c5fd'
+          }}>
+            <div style={{ fontSize: '0.6875rem', color: '#1d4ed8', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Total Clicks
+            </div>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#3b82f6' }}>
+              {formatNumber(totalClicks)}
+            </div>
+          </div>
+          
+          <div style={{ 
+            background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)', 
+            padding: isMobile ? '0.75rem' : '1rem', 
+            borderRadius: '0.75rem',
+            border: '1px solid #d8b4fe'
+          }}>
+            <div style={{ fontSize: '0.6875rem', color: '#7c3aed', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Avg CTR
+            </div>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 700, color: '#8b5cf6' }}>
+              {overallCTR.toFixed(2)}%
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Horizontal Bar Chart - Top Performers */}
+      {showStats && sortedFences.length > 0 && (
+        <div style={{ 
+          background: '#f9fafb', 
+          borderRadius: '0.75rem', 
+          padding: isMobile ? '1rem' : '1.25rem',
+          marginBottom: '1.25rem',
+          border: '1px solid #e5e7eb'
+        }}>
+          <div style={{ 
+            fontSize: '0.75rem', 
+            fontWeight: 600, 
+            color: '#6b7280', 
+            textTransform: 'uppercase',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            <BarChart3 size={14} />
+            Impressions by Location
+          </div>
+          
+          {sortedFences.slice(0, 5).map((fence, i) => {
+            const pct = maxImpressions > 0 ? ((fence.impressions || 0) / maxImpressions) * 100 : 0;
+            return (
+              <div key={fence.id || i} style={{ marginBottom: i < 4 ? '0.75rem' : 0 }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  marginBottom: '0.375rem'
+                }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    flex: 1,
+                    minWidth: 0
+                  }}>
+                    <div style={{
+                      width: '20px',
+                      height: '20px',
+                      borderRadius: '50%',
+                      background: barColors[i % barColors.length],
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.625rem',
+                      fontWeight: 700,
+                      color: 'white',
+                      flexShrink: 0
+                    }}>
+                      {i + 1}
+                    </div>
+                    <span style={{ 
+                      fontSize: isMobile ? '0.8125rem' : '0.875rem', 
+                      fontWeight: 500,
+                      color: '#111827',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {fence.name || 'Unnamed Location'}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: isMobile ? '0.75rem' : '1.5rem',
+                    alignItems: 'center',
+                    flexShrink: 0
+                  }}>
+                    <span style={{ 
+                      fontSize: isMobile ? '0.75rem' : '0.8125rem', 
+                      fontWeight: 600, 
+                      color: '#0d9488',
+                      fontFamily: 'monospace',
+                      minWidth: isMobile ? '50px' : '70px',
+                      textAlign: 'right'
+                    }}>
+                      {formatNumber(fence.impressions || 0)}
+                    </span>
+                    {!isMobile && (
+                      <span style={{ 
+                        fontSize: '0.75rem', 
+                        color: '#6b7280',
+                        minWidth: '50px',
+                        textAlign: 'right'
+                      }}>
+                        {formatNumber(fence.clicks || 0)} clicks
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ 
+                  height: '8px', 
+                  background: '#e5e7eb', 
+                  borderRadius: '4px', 
+                  overflow: 'hidden',
+                  marginLeft: isMobile ? 0 : '28px'
+                }}>
+                  <div style={{ 
+                    height: '100%', 
+                    width: `${pct}%`, 
+                    background: `linear-gradient(90deg, ${barColors[i % barColors.length]} 0%, ${barColors[(i + 1) % barColors.length]} 100%)`,
+                    borderRadius: '4px',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      
+      {/* Location Cards Grid */}
       <div style={{ 
         display: 'grid', 
         gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
@@ -6736,18 +6953,30 @@ function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
         {displayFences.map((fence, i) => (
           <div key={fence.id || i} style={{ 
             padding: isMobile ? '0.875rem' : '1rem', 
-            background: '#f9fafb', 
-            borderRadius: '0.5rem', 
-            border: '1px solid #e5e7eb'
+            background: 'white', 
+            borderRadius: '0.75rem', 
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-              <MapPin size={isMobile ? 16 : 18} color="#0d9488" style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '0.5rem',
+                background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                <MapPin size={18} color="#0d9488" />
+              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ 
                   fontWeight: 600, 
                   fontSize: isMobile ? '0.875rem' : '0.9375rem', 
                   color: '#111827', 
-                  marginBottom: '0.25rem',
+                  marginBottom: '0.125rem',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap'
@@ -6755,32 +6984,36 @@ function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
                   {fence.name || 'Unnamed Location'}
                 </div>
                 {fence.address && (
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>{fence.address}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                    {fence.address}
+                  </div>
                 )}
-                {/* Show stats row if we have any stats data */}
+                
+                {/* Stats row */}
                 {showStats && (
                   <div style={{ 
                     display: 'flex', 
-                    gap: isMobile ? '0.75rem' : '1rem', 
-                    marginTop: '0.5rem',
-                    flexWrap: 'wrap'
+                    gap: isMobile ? '1rem' : '1.5rem', 
+                    marginTop: '0.625rem',
+                    paddingTop: '0.625rem',
+                    borderTop: '1px solid #f3f4f6'
                   }}>
                     <div>
-                      <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase' }}>Impressions</div>
-                      <div style={{ fontSize: isMobile ? '0.8125rem' : '0.875rem', fontWeight: 600, color: '#0d9488', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '0.625rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>Impressions</div>
+                      <div style={{ fontSize: isMobile ? '0.9375rem' : '1rem', fontWeight: 700, color: '#0d9488' }}>
                         {formatNumber(fence.impressions || 0)}
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase' }}>Clicks</div>
-                      <div style={{ fontSize: isMobile ? '0.8125rem' : '0.875rem', fontWeight: 600, color: '#3b82f6', fontFamily: 'monospace' }}>
+                      <div style={{ fontSize: '0.625rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>Clicks</div>
+                      <div style={{ fontSize: isMobile ? '0.9375rem' : '1rem', fontWeight: 700, color: '#3b82f6' }}>
                         {formatNumber(fence.clicks || 0)}
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase' }}>CTR</div>
-                      <div style={{ fontSize: isMobile ? '0.8125rem' : '0.875rem', fontWeight: 600, color: '#6b7280', fontFamily: 'monospace' }}>
-                        {(fence.ctr || 0).toFixed(2)}%
+                      <div style={{ fontSize: '0.625rem', color: '#9ca3af', textTransform: 'uppercase', fontWeight: 600 }}>CTR</div>
+                      <div style={{ fontSize: isMobile ? '0.9375rem' : '1rem', fontWeight: 700, color: '#6b7280' }}>
+                        {((fence.ctr || 0) * (fence.ctr > 1 ? 1 : 100)).toFixed(2)}%
                       </div>
                     </div>
                   </div>
@@ -6790,6 +7023,8 @@ function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
           </div>
         ))}
       </div>
+      
+      {/* View More Button */}
       {hasMore && (
         <button
           onClick={() => setExpanded(!expanded)}
@@ -6799,21 +7034,22 @@ function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
             justifyContent: 'center',
             gap: '0.5rem',
             width: '100%',
-            marginTop: '0.75rem',
-            padding: '0.5rem',
-            background: '#f0fdfa',
+            marginTop: '1rem',
+            padding: '0.75rem',
+            background: 'linear-gradient(135deg, #f0fdfa 0%, #ccfbf1 100%)',
             border: '1px solid #99f6e4',
-            borderRadius: '0.5rem',
+            borderRadius: '0.75rem',
             color: '#0f766e',
-            fontSize: '0.8125rem',
-            fontWeight: 500,
-            cursor: 'pointer'
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s'
           }}
         >
           {expanded ? (
-            <>Show Less <ChevronUp size={16} /></>
+            <>Show Less <ChevronUp size={18} /></>
           ) : (
-            <>View All {fences.length} Geo-Fences <ChevronDown size={16} /></>
+            <>View All {fences.length} Locations <ChevronDown size={18} /></>
           )}
         </button>
       )}
