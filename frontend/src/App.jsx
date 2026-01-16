@@ -275,6 +275,9 @@ function TopAdCard({ ad, rank }) {
   
   const hasValidPreview = ad.preview_url && !imageError;
   
+  // Debug logging
+  console.log(`TopAdCard ${rank}: size=${ad.size}, hasPreview=${hasValidPreview}, is_video=${ad.is_video}, url=${ad.preview_url}, loaded=${imageLoaded}, error=${imageError}`);
+  
   // Parse dimensions from size string for placeholder
   const sizeParts = ad.size?.match(/(\d+)x(\d+)/);
   const displayWidth = sizeParts ? parseInt(sizeParts[1]) : 300;
@@ -2504,13 +2507,20 @@ function ClientDetailPage({ publicMode = false }) {
     name: a.name, 
     size: parseAdSize(a.name, a.width, a.height),
     hasPreview: !!a.preview_url,
-    preview_url: a.preview_url?.substring(0, 50)
+    preview_url: a.preview_url // Full URL, not truncated
   })));
   console.log('AdSizeStats:', Object.entries(adSizeStats).map(([size, data]) => ({
     size,
     impressions: data.impressions,
-    hasPreview: !!data.preview_url
+    hasPreview: !!data.preview_url,
+    preview_url: data.preview_url // Full URL
   })));
+  
+  // Expose for debugging in console
+  if (typeof window !== 'undefined') {
+    window.debugAdStats = adStats;
+    window.debugAdSizeStats = adSizeStats;
+  }
   
   const topAdSizes = Object.entries(adSizeStats)
     .map(([size, data]) => ({ 
@@ -2536,34 +2546,34 @@ function ClientDetailPage({ publicMode = false }) {
       }}>
         {/* Top section with logo and client info */}
         <div style={{ padding: isMobile ? '1rem' : '1.5rem', color: 'white' }} className="section-padding">
-          <div className="header-content" style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'flex-start', gap: '1rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
+          <div className="header-content" style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0, flex: isMobile ? 'unset' : '0 0 auto' }}>
               {/* Client Logo */}
               {client?.logo_path ? (
                 <img 
                   src={client.logo_path} 
                   alt={client.name} 
-                  style={{ height: '40px', width: 'auto', borderRadius: '0.5rem', background: 'white', padding: '0.375rem', flexShrink: 0 }}
+                  style={{ height: isMobile ? '40px' : '48px', width: 'auto', borderRadius: '0.5rem', background: 'white', padding: '0.375rem', flexShrink: 0 }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
               ) : (
                 <div style={{ 
-                  width: '40px', 
-                  height: '40px',
+                  width: isMobile ? '40px' : '48px', 
+                  height: isMobile ? '40px' : '48px',
                   flexShrink: 0, 
                   borderRadius: '0.5rem', 
                   background: 'rgba(255,255,255,0.2)', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
-                  fontSize: '1.125rem',
+                  fontSize: isMobile ? '1.125rem' : '1.25rem',
                   fontWeight: 700
                 }}>
                   {client?.name?.charAt(0) || '?'}
                 </div>
               )}
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <h2 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700, wordBreak: 'break-word' }}>{client?.name}</h2>
+              <div style={{ minWidth: 0 }}>
+                <h2 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '1.5rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{client?.name}</h2>
               </div>
             </div>
             
@@ -2573,7 +2583,8 @@ function ClientDetailPage({ publicMode = false }) {
               padding: '0.5rem 0.75rem', 
               borderRadius: '0.5rem',
               textAlign: 'center',
-              width: '100%'
+              width: isMobile ? '100%' : 'auto',
+              flexShrink: 0
             }}>
               <div style={{ fontSize: '0.625rem', textTransform: 'uppercase', opacity: 0.8, marginBottom: '0.25rem' }}>Report Period</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }}>
