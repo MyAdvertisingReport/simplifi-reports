@@ -50,18 +50,26 @@ const useResponsive = () => {
       });
     };
 
+    // Measure immediately on mount
+    handleResize();
+    
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Use 768 as mobile breakpoint (more standard for phones)
+  const isMobile = windowSize.width < 768;
+  const isTablet = windowSize.width >= 768 && windowSize.width < 1024;
+  const isDesktop = windowSize.width >= 1024;
+
   return {
-    isMobile: windowSize.width < 640,
-    isTablet: windowSize.width >= 640 && windowSize.width < 1024,
-    isDesktop: windowSize.width >= 1024,
+    isMobile,
+    isTablet,
+    isDesktop,
     width: windowSize.width,
     // Helper for grid columns
     gridCols: (desktop, tablet = 2, mobile = 1) => {
-      if (windowSize.width < 640) return mobile;
+      if (windowSize.width < 768) return mobile;
       if (windowSize.width < 1024) return tablet;
       return desktop;
     }
@@ -2436,10 +2444,12 @@ function ClientDetailPage({ publicMode = false }) {
                     background: 'rgba(255,255,255,0.2)', 
                     padding: '0.375rem 0.5rem', 
                     borderRadius: '0.25rem', 
-                    fontSize: '0.75rem', 
+                    fontSize: isMobile ? '0.8125rem' : '0.75rem', 
                     color: 'white',
                     cursor: 'pointer',
-                    maxWidth: '130px'
+                    flex: isMobile ? '1 1 40%' : '0 0 auto',
+                    minWidth: isMobile ? '0' : 'auto',
+                    maxWidth: isMobile ? 'none' : '130px'
                   }} 
                 />
                 <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>to</span>
@@ -2452,10 +2462,12 @@ function ClientDetailPage({ publicMode = false }) {
                     background: 'rgba(255,255,255,0.2)', 
                     padding: '0.375rem 0.5rem', 
                     borderRadius: '0.25rem', 
-                    fontSize: '0.75rem', 
+                    fontSize: isMobile ? '0.8125rem' : '0.75rem', 
                     color: 'white',
                     cursor: 'pointer',
-                    maxWidth: '130px'
+                    flex: isMobile ? '1 1 40%' : '0 0 auto',
+                    minWidth: isMobile ? '0' : 'auto',
+                    maxWidth: isMobile ? 'none' : '130px'
                   }} 
                 />
                 <button 
@@ -2469,7 +2481,8 @@ function ClientDetailPage({ publicMode = false }) {
                     borderRadius: '0.25rem', 
                     fontSize: '0.75rem', 
                     cursor: 'pointer',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    flexShrink: 0
                   }}
                 >
                   {statsLoading ? '...' : 'Update'}
@@ -2784,39 +2797,39 @@ function ClientDetailPage({ publicMode = false }) {
                     {/* Totals Row */}
                     <div style={{ 
                       marginTop: '1rem', 
-                      padding: '1rem 1.25rem', 
+                      padding: isMobile ? '0.75rem' : '1rem 1.25rem', 
                       background: 'linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%)', 
                       borderRadius: '0.75rem',
                       border: '1px solid #a7f3d0'
                     }}>
                       <div style={{ 
                         display: 'flex', 
-                        alignItems: 'center', 
+                        flexDirection: isMobile ? 'column' : 'row',
+                        alignItems: isMobile ? 'stretch' : 'center', 
                         justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: '1rem'
+                        gap: isMobile ? '0.75rem' : '1rem'
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                           <BarChart3 size={18} color="#059669" />
                           <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.875rem' }}>Date Range Totals</span>
                         </div>
-                        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : `repeat(${showSpendData ? 4 : 3}, auto)`, gap: isMobile ? '0.5rem' : '2rem' }}>
                           <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Impressions</div>
-                            <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#0d9488' }}>{formatNumber(chartTotals.impressions)}</div>
+                            <div style={{ fontSize: isMobile ? '1rem' : '1.125rem', fontWeight: 700, color: '#0d9488' }}>{formatNumber(chartTotals.impressions)}</div>
                           </div>
                           <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Clicks</div>
-                            <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#3b82f6' }}>{formatNumber(chartTotals.clicks)}</div>
+                            <div style={{ fontSize: isMobile ? '1rem' : '1.125rem', fontWeight: 700, color: '#3b82f6' }}>{formatNumber(chartTotals.clicks)}</div>
                           </div>
                           <div style={{ textAlign: 'center' }}>
                             <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CTR</div>
-                            <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#8b5cf6' }}>{chartCTR.toFixed(2)}%</div>
+                            <div style={{ fontSize: isMobile ? '1rem' : '1.125rem', fontWeight: 700, color: '#8b5cf6' }}>{chartCTR.toFixed(2)}%</div>
                           </div>
                           {showSpendData && (
                             <div style={{ textAlign: 'center' }}>
                               <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Spend</div>
-                              <div style={{ fontSize: '1.125rem', fontWeight: 700, color: '#059669' }}>{formatCurrency(chartTotals.spend)}</div>
+                              <div style={{ fontSize: isMobile ? '1rem' : '1.125rem', fontWeight: 700, color: '#059669' }}>{formatCurrency(chartTotals.spend)}</div>
                             </div>
                           )}
                         </div>
@@ -7872,12 +7885,12 @@ function App() {
             -webkit-overflow-scrolling: touch;
           }
           
-          /* Mobile: Stack everything */
-          @media (max-width: 640px) {
+          /* Mobile: Stack everything (under 768px) */
+          @media (max-width: 767px) {
             .responsive-grid-4,
             .responsive-grid-3,
             .responsive-grid-2 {
-              grid-template-columns: 1fr;
+              grid-template-columns: 1fr !important;
             }
             
             /* Hide less important columns on mobile */
@@ -7899,11 +7912,6 @@ function App() {
             /* Full width buttons */
             .header-actions button {
               width: 100%;
-            }
-            
-            /* Smaller padding on mobile */
-            .section-padding {
-              padding: 0.75rem !important;
             }
             
             /* Smaller fonts on mobile */
