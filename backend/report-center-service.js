@@ -218,7 +218,8 @@ class ReportCenterService {
     try {
       console.log(`[REPORT CENTER] Getting geo-fence performance for org ${orgId}, campaign ${campaignId}, ${startDate} to ${endDate}`);
       
-      const reportId = await this.getOrCreateReportModel(
+      // Try the main Geo Fencing by Campaign template first
+      let reportId = await this.getOrCreateReportModel(
         orgId, 
         TEMPLATES.GEO_FENCE_BY_CAMPAIGN,
         'Geo-Fence Performance'
@@ -236,7 +237,20 @@ class ReportCenterService {
         'summary_delivery_events.campaign_id': campaignId.toString()
       };
 
-      const data = await this.runSnapshotAndWait(orgId, reportId, filters);
+      let data = await this.runSnapshotAndWait(orgId, reportId, filters);
+      
+      // If no data, try the Target and Conversion Fence template (63550)
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        console.log('[REPORT CENTER] No data from primary geo-fence template, trying alternate...');
+        const altReportId = await this.getOrCreateReportModel(
+          orgId, 
+          63550,  // Geo Fencing by Campaign by Target and Conversion Fence
+          'Geo-Fence Target Performance'
+        );
+        if (altReportId) {
+          data = await this.runSnapshotAndWait(orgId, altReportId, filters);
+        }
+      }
       
       if (!data || !Array.isArray(data)) {
         console.log('[REPORT CENTER] No data returned from geo-fence snapshot');
@@ -249,15 +263,28 @@ class ReportCenterService {
         console.log(`[REPORT CENTER] Geo-fence first row sample:`, JSON.stringify(data[0]).substring(0, 500));
       }
       
+      // Filter by campaign ID on our end (in case API filter wasn't applied)
+      const targetCampaignId = parseInt(campaignId, 10);
+      const filteredData = data.filter(row => {
+        const rowCampaignId = row['summary_delivery_events.campaign_id'];
+        if (!rowCampaignId) return true;
+        return parseInt(rowCampaignId, 10) === targetCampaignId;
+      });
+      
+      console.log(`[REPORT CENTER] Geo-fence filtered from ${data.length} to ${filteredData.length} rows for campaign ${campaignId}`);
+      
       // Transform the data - try multiple field name patterns
-      const result = data.map(row => ({
+      const result = filteredData.map(row => ({
         geoFenceId: row['summary_delivery_events.target_geo_fence_id'] || 
                     row['summary_delivery_events.geo_fence_id'] ||
-                    row['dim_geo_fence.geo_fence_id'],
+                    row['dim_geo_fence.geo_fence_id'] ||
+                    row['dim_target_geo_fence.geo_fence_id'],
         geoFenceName: row['summary_delivery_events.target_geo_fence_name'] ||
                       row['summary_delivery_events.geo_fence_name'] ||
                       row['dim_geo_fence.geo_fence_name'] ||
-                      row['dim_geo_fence.name'],
+                      row['dim_geo_fence.name'] ||
+                      row['dim_target_geo_fence.name'] ||
+                      row['dim_target_geo_fence.geo_fence_name'],
         impressions: parseInt(row['summary_delivery_events.impressions'] || 0),
         clicks: parseInt(row['summary_delivery_events.clicks'] || 0),
         ctr: parseFloat(row['summary_delivery_events.ctr'] || 0),
@@ -409,7 +436,17 @@ class ReportCenterService {
         console.log(`[REPORT CENTER] Device first row sample:`, JSON.stringify(data[0]).substring(0, 500));
       }
       
-      const result = data.map(row => {
+      // Filter by campaign ID on our end (in case API filter wasn't applied)
+      const targetCampaignId = parseInt(campaignId, 10);
+      const filteredData = data.filter(row => {
+        const rowCampaignId = row['summary_delivery_events.campaign_id'];
+        if (!rowCampaignId) return true;
+        return parseInt(rowCampaignId, 10) === targetCampaignId;
+      });
+      
+      console.log(`[REPORT CENTER] Device filtered from ${data.length} to ${filteredData.length} rows for campaign ${campaignId}`);
+      
+      const result = filteredData.map(row => {
         // Try many possible field names for device type
         let deviceType = row['summary_delivery_events.device_type_name'] || 
                          row['dim_device_type.device_type_name'] || 
@@ -525,7 +562,17 @@ class ReportCenterService {
         console.log(`[REPORT CENTER] First row sample:`, JSON.stringify(data[0]).substring(0, 500));
       }
       
-      const result = data.map(row => ({
+      // Filter by campaign ID on our end (in case API filter wasn't applied)
+      const targetCampaignId = parseInt(campaignId, 10);
+      const filteredData = data.filter(row => {
+        const rowCampaignId = row['summary_delivery_events.campaign_id'];
+        if (!rowCampaignId) return true;
+        return parseInt(rowCampaignId, 10) === targetCampaignId;
+      });
+      
+      console.log(`[REPORT CENTER] Domain filtered from ${data.length} to ${filteredData.length} rows for campaign ${campaignId}`);
+      
+      const result = filteredData.map(row => ({
         domain: row['summary_delivery_events.domain_name'] ||  // This is the actual field name!
                 row['summary_delivery_events.domain_reporting_name'] ||
                 row['summary_delivery_events.domain'] || 
@@ -596,8 +643,19 @@ class ReportCenterService {
       
       if (!data || !Array.isArray(data)) return [];
       
+      // Filter by campaign ID on our end (in case API filter wasn't applied)
+      const targetCampaignId = parseInt(campaignId, 10);
+      const filteredData = data.filter(row => {
+        const rowCampaignId = row['summary_delivery_events.campaign_id'];
+        // If no campaign_id in row, include it. Otherwise, must match target.
+        if (!rowCampaignId) return true;
+        return parseInt(rowCampaignId, 10) === targetCampaignId;
+      });
+      
+      console.log(`[REPORT CENTER] Filtered from ${data.length} to ${filteredData.length} rows for campaign ${campaignId}`);
+      
       // Map the data using the correct field names from Simpli.fi Report Center
-      const result = data.map(row => ({
+      const result = filteredData.map(row => ({
         keyword: row['summary_delivery_events.keyword_reporting_name'] ||  // This is the correct field!
                  row['dim_keyword.keyword'] || 
                  row['summary_delivery_events.keyword'] || 
