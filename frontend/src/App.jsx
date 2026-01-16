@@ -2498,6 +2498,20 @@ function ClientDetailPage({ publicMode = false }) {
     }
     return acc;
   }, {});
+  
+  // Debug: Log ad stats to see which have preview URLs
+  console.log('AdStats summary:', adStats.map(a => ({ 
+    name: a.name, 
+    size: parseAdSize(a.name, a.width, a.height),
+    hasPreview: !!a.preview_url,
+    preview_url: a.preview_url?.substring(0, 50)
+  })));
+  console.log('AdSizeStats:', Object.entries(adSizeStats).map(([size, data]) => ({
+    size,
+    impressions: data.impressions,
+    hasPreview: !!data.preview_url
+  })));
+  
   const topAdSizes = Object.entries(adSizeStats)
     .map(([size, data]) => ({ 
       size, 
