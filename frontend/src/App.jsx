@@ -4900,10 +4900,25 @@ function CampaignDetailPage({ publicMode = false }) {
                 clicks: p.clicks,
                 ctr: p.ctr,
                 spend: p.spend
-              })).sort((a, b) => b.impressions - a.impressions);
+              })).sort((a, b) => (b.impressions || 0) - (a.impressions || 0));
+            
+            // Check if we have any stats
+            const hasGeoStats = displayFences.some(f => f.impressions > 0 || f.clicks > 0);
             
             return (
               <DraggableReportSection {...sectionProps} title={`Geo-Fence Locations (${displayFences.length})`} icon={MapPin} iconColor="#0d9488">
+                {/* Explanation */}
+                <div style={{ 
+                  padding: '0.75rem 1rem', 
+                  background: '#f0fdfa', 
+                  borderRadius: '0.5rem', 
+                  marginBottom: '1rem',
+                  fontSize: isMobile ? '0.75rem' : '0.8125rem',
+                  color: '#0f766e'
+                }}>
+                  <strong>📍 What is this?</strong> These are the physical locations being targeted or tracked for this campaign. People who see your ads and later visit these locations are counted as conversions.
+                </div>
+                
                 {enhancedDataLoading && geoFencePerformance.length === 0 && (
                   <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: '#fef3c7', borderRadius: '0.375rem', fontSize: '0.75rem', color: '#92400e', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <div className="spinner" style={{ width: 14, height: 14 }} />
@@ -4913,6 +4928,8 @@ function CampaignDetailPage({ publicMode = false }) {
                 <ExpandableGeoFenceList 
                   fences={displayFences} 
                   formatNumber={formatNumberFull}
+                  isMobile={isMobile}
+                  hasStats={hasGeoStats}
                 />
               </DraggableReportSection>
             );
@@ -6698,51 +6715,72 @@ function ExpandableKeywordPerformance({ keywords, keywordPerformance, showSpend,
 }
 
 // ============================================
-// EXPANDABLE GEO-FENCE LIST - Shows top 3 with View All
+// EXPANDABLE GEO-FENCE LIST - Shows top 4 with View All
 // ============================================
-function ExpandableGeoFenceList({ fences, formatNumber }) {
+function ExpandableGeoFenceList({ fences, formatNumber, isMobile, hasStats }) {
   const [expanded, setExpanded] = useState(false);
   
   const displayFences = expanded ? fences : fences.slice(0, 4);
   const hasMore = fences.length > 4;
   
+  // Use prop if provided, otherwise check locally
+  const showStats = hasStats !== undefined ? hasStats : fences.some(f => f.impressions > 0 || f.clicks > 0);
+  
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
+        gap: isMobile ? '0.75rem' : '1rem' 
+      }}>
         {displayFences.map((fence, i) => (
           <div key={fence.id || i} style={{ 
-            padding: '1rem', 
+            padding: isMobile ? '0.875rem' : '1rem', 
             background: '#f9fafb', 
             borderRadius: '0.5rem', 
             border: '1px solid #e5e7eb'
           }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-              <MapPin size={18} color="#0d9488" style={{ marginTop: '2px', flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: '#111827', marginBottom: '0.25rem' }}>
+              <MapPin size={isMobile ? 16 : 18} color="#0d9488" style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ 
+                  fontWeight: 600, 
+                  fontSize: isMobile ? '0.875rem' : '0.9375rem', 
+                  color: '#111827', 
+                  marginBottom: '0.25rem',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
                   {fence.name || 'Unnamed Location'}
                 </div>
                 {fence.address && (
                   <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>{fence.address}</div>
                 )}
-                {fence.impressions > 0 && (
-                  <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                {/* Show stats row if we have any stats data */}
+                {showStats && (
+                  <div style={{ 
+                    display: 'flex', 
+                    gap: isMobile ? '0.75rem' : '1rem', 
+                    marginTop: '0.5rem',
+                    flexWrap: 'wrap'
+                  }}>
                     <div>
                       <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase' }}>Impressions</div>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0d9488', fontFamily: 'monospace' }}>
-                        {formatNumber(fence.impressions)}
+                      <div style={{ fontSize: isMobile ? '0.8125rem' : '0.875rem', fontWeight: 600, color: '#0d9488', fontFamily: 'monospace' }}>
+                        {formatNumber(fence.impressions || 0)}
                       </div>
                     </div>
                     <div>
                       <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase' }}>Clicks</div>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#3b82f6', fontFamily: 'monospace' }}>
-                        {formatNumber(fence.clicks)}
+                      <div style={{ fontSize: isMobile ? '0.8125rem' : '0.875rem', fontWeight: 600, color: '#3b82f6', fontFamily: 'monospace' }}>
+                        {formatNumber(fence.clicks || 0)}
                       </div>
                     </div>
                     <div>
                       <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase' }}>CTR</div>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#6b7280', fontFamily: 'monospace' }}>
-                        {fence.ctr?.toFixed(2) || '0.00'}%
+                      <div style={{ fontSize: isMobile ? '0.8125rem' : '0.875rem', fontWeight: 600, color: '#6b7280', fontFamily: 'monospace' }}>
+                        {(fence.ctr || 0).toFixed(2)}%
                       </div>
                     </div>
                   </div>
