@@ -34,6 +34,41 @@ import {
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // ============================================
+// RESPONSIVE HOOK
+// ============================================
+const useResponsive = () => {
+  const [windowSize, setWindowSize] = useState({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1200,
+    height: typeof window !== 'undefined' ? window.innerHeight : 800,
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return {
+    isMobile: windowSize.width < 640,
+    isTablet: windowSize.width >= 640 && windowSize.width < 1024,
+    isDesktop: windowSize.width >= 1024,
+    width: windowSize.width,
+    // Helper for grid columns
+    gridCols: (desktop, tablet = 2, mobile = 1) => {
+      if (windowSize.width < 640) return mobile;
+      if (windowSize.width < 1024) return tablet;
+      return desktop;
+    }
+  };
+};
+
+// ============================================
 // AUTH CONTEXT
 // ============================================
 const AuthContext = createContext(null);
@@ -2034,6 +2069,7 @@ function ClientDetailPage({ publicMode = false }) {
   const [copied, setCopied] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const { user } = useAuth();
+  const { isMobile, isTablet, gridCols } = useResponsive();
   
   // Persist client view mode to localStorage when it changes (not in public mode)
   const toggleClientViewMode = () => {
@@ -2333,7 +2369,7 @@ function ClientDetailPage({ publicMode = false }) {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
   return (
-    <div>
+    <div style={{ maxWidth: '100%', overflowX: 'hidden' }}>
       {/* Report Header */}
       {/* Enhanced Client Header with Branding */}
       <div style={{ 
@@ -2344,36 +2380,37 @@ function ClientDetailPage({ publicMode = false }) {
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
       }}>
         {/* Top section with logo and client info */}
-        <div style={{ padding: '1.5rem', color: 'white' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+        <div style={{ padding: '1.5rem', color: 'white' }} className="section-padding">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: '1 1 auto' }}>
               {/* Client Logo */}
               {client?.logo_path ? (
                 <img 
                   src={client.logo_path} 
                   alt={client.name} 
-                  style={{ height: '64px', width: 'auto', borderRadius: '0.5rem', background: 'white', padding: '0.5rem' }}
+                  style={{ height: '56px', width: 'auto', borderRadius: '0.5rem', background: 'white', padding: '0.5rem', flexShrink: 0 }}
                   onError={(e) => { e.target.style.display = 'none'; }}
                 />
               ) : (
                 <div style={{ 
-                  width: '64px', 
-                  height: '64px', 
+                  width: '56px', 
+                  height: '56px',
+                  flexShrink: 0, 
                   borderRadius: '0.5rem', 
                   background: 'rgba(255,255,255,0.2)', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
-                  fontSize: '1.75rem',
+                  fontSize: '1.5rem',
                   fontWeight: 700
                 }}>
                   {client?.name?.charAt(0) || '?'}
                 </div>
               )}
-              <div>
-                <h2 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700 }}>{client?.name}</h2>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <h2 style={{ margin: 0, fontSize: 'clamp(1.25rem, 5vw, 1.75rem)', fontWeight: 700, wordBreak: 'break-word' }}>{client?.name}</h2>
                 {client?.campaign_goal && (
-                  <p style={{ margin: '0.25rem 0 0', opacity: 0.9, fontSize: '0.9375rem' }}>
+                  <p style={{ margin: '0.25rem 0 0', opacity: 0.9, fontSize: 'clamp(0.8125rem, 2vw, 0.9375rem)' }}>
                     {client.campaign_goal}
                   </p>
                 )}
@@ -2385,10 +2422,11 @@ function ClientDetailPage({ publicMode = false }) {
               background: 'rgba(255,255,255,0.15)', 
               padding: '0.75rem 1rem', 
               borderRadius: '0.5rem',
-              textAlign: 'center'
+              textAlign: 'center',
+              flexShrink: 0
             }}>
               <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', opacity: 0.8, marginBottom: '0.5rem' }}>Report Period</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                 <input 
                   type="date" 
                   value={dateRange.startDate} 
@@ -2398,9 +2436,10 @@ function ClientDetailPage({ publicMode = false }) {
                     background: 'rgba(255,255,255,0.2)', 
                     padding: '0.375rem 0.5rem', 
                     borderRadius: '0.25rem', 
-                    fontSize: '0.8125rem', 
+                    fontSize: '0.75rem', 
                     color: 'white',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    maxWidth: '130px'
                   }} 
                 />
                 <span style={{ opacity: 0.7, fontSize: '0.75rem' }}>to</span>
@@ -2413,9 +2452,10 @@ function ClientDetailPage({ publicMode = false }) {
                     background: 'rgba(255,255,255,0.2)', 
                     padding: '0.375rem 0.5rem', 
                     borderRadius: '0.25rem', 
-                    fontSize: '0.8125rem', 
+                    fontSize: '0.75rem', 
                     color: 'white',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    maxWidth: '130px'
                   }} 
                 />
                 <button 
@@ -2442,10 +2482,11 @@ function ClientDetailPage({ publicMode = false }) {
           {(client?.monthly_budget || client?.start_date || client?.contact_name) && (
             <div style={{ 
               display: 'flex', 
-              gap: '2rem', 
+              gap: '1.5rem', 
               marginTop: '1.25rem', 
               paddingTop: '1rem', 
-              borderTop: '1px solid rgba(255,255,255,0.2)' 
+              borderTop: '1px solid rgba(255,255,255,0.2)',
+              flexWrap: 'wrap'
             }}>
               {client?.monthly_budget && (
                 <div>
@@ -2474,68 +2515,78 @@ function ClientDetailPage({ publicMode = false }) {
         {/* Actions Bar */}
         <div style={{ 
           background: 'white', 
-          padding: '0.75rem 1.5rem', 
+          padding: '0.75rem 1rem', 
           display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center'
+          flexDirection: 'column',
+          gap: '0.75rem'
         }}>
-          {publicMode ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.875rem' }}>
-              <TrendingUp size={16} /> Digital Advertising Report
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.5rem'
+          }}>
+            {publicMode ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', fontSize: '0.875rem' }}>
+                <TrendingUp size={16} /> Digital Advertising Report
+              </div>
+            ) : (
+              <Link to="/clients" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
+                <ArrowLeft size={16} /> Back to Clients
+              </Link>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {/* Edit Layout Button - hidden in public mode */}
+              {!publicMode && user && !clientViewMode && (
+                <button 
+                  onClick={() => setEditMode(!editMode)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.375rem', 
+                    padding: '0.5rem 0.75rem', 
+                    background: editMode ? '#dbeafe' : '#f3f4f6', 
+                    border: editMode ? '1px solid #3b82f6' : '1px solid #e5e7eb',
+                    borderRadius: '0.375rem', 
+                    fontSize: '0.75rem', 
+                    cursor: 'pointer',
+                    color: editMode ? '#1d4ed8' : '#374151',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <GripVertical size={14} />
+                  <span className="hide-mobile">{editMode ? 'Done' : 'Edit Layout'}</span>
+                </button>
+              )}
+              {/* Edit Client Button - Admin only, hidden in public mode */}
+              {!publicMode && user?.role === 'admin' && !clientViewMode && (
+                <button 
+                  onClick={() => setShowEditModal(true)}
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.375rem', 
+                    padding: '0.5rem 0.75rem', 
+                    background: '#f3f4f6', 
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '0.375rem', 
+                    fontSize: '0.75rem', 
+                    cursor: 'pointer',
+                    color: '#374151',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Edit3 size={14} />
+                  <span className="hide-mobile">Edit Client</span>
+                </button>
+              )}
+              {!publicMode && user?.role === 'admin' && (
+                <button onClick={showShareLink} style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.75rem', background: '#0d9488', color: 'white', border: 'none', borderRadius: '0.375rem', fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <ExternalLink size={14} /> Share
+                </button>
+              )}
             </div>
-          ) : (
-            <Link to="/clients" style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#6b7280', fontSize: '0.875rem', textDecoration: 'none' }}>
-              <ArrowLeft size={16} /> Back to Clients
-            </Link>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            {/* Edit Layout Button - hidden in public mode */}
-            {!publicMode && user && !clientViewMode && (
-              <button 
-                onClick={() => setEditMode(!editMode)}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem', 
-                  padding: '0.5rem 0.875rem', 
-                  background: editMode ? '#dbeafe' : '#f3f4f6', 
-                  border: editMode ? '1px solid #3b82f6' : '1px solid #e5e7eb',
-                  borderRadius: '0.375rem', 
-                  fontSize: '0.8125rem', 
-                  cursor: 'pointer',
-                  color: editMode ? '#1d4ed8' : '#374151'
-                }}
-              >
-                <GripVertical size={14} />
-                {editMode ? 'Done' : 'Edit Layout'}
-              </button>
-            )}
-            {/* Edit Client Button - Admin only, hidden in public mode */}
-            {!publicMode && user?.role === 'admin' && !clientViewMode && (
-              <button 
-                onClick={() => setShowEditModal(true)}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.5rem', 
-                  padding: '0.5rem 0.875rem', 
-                  background: '#f3f4f6', 
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '0.375rem', 
-                  fontSize: '0.8125rem', 
-                  cursor: 'pointer',
-                  color: '#374151'
-                }}
-              >
-                <Edit3 size={14} />
-                Edit Client
-              </button>
-            )}
-            {!publicMode && user?.role === 'admin' && (
-              <button onClick={showShareLink} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.875rem', background: '#0d9488', color: 'white', border: 'none', borderRadius: '0.375rem', fontSize: '0.8125rem', cursor: 'pointer' }}>
-                <ExternalLink size={14} /> Share
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -2620,7 +2671,7 @@ function ClientDetailPage({ publicMode = false }) {
                 return (
                   <DraggableReportSection {...sectionProps} title={`Active Campaigns (${activeCampaigns.length})`} icon={Play} iconColor="#10b981">
                     {/* Summary Stats with Sparklines */}
-                    <div style={{ display: 'grid', gridTemplateColumns: showSpendData ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 1 : isTablet ? 2 : (showSpendData ? 4 : 3)}, 1fr)`, gap: '1rem', marginBottom: '1.5rem' }}>
                       <StatCardWithSparkline label="Impressions" value={formatNumber(activeTotals.impressions)} data={dailyStats} dataKey="impressions" color="#0d9488" />
                       <StatCardWithSparkline label="Clicks" value={formatNumber(activeTotals.clicks)} data={dailyStats} dataKey="clicks" color="#3b82f6" />
                       <StatCardWithSparkline label="CTR" value={formatPercent(activeTotals.ctr)} data={dailyStats} dataKey="ctr" color="#8b5cf6" showTrend={false} />
@@ -2631,41 +2682,42 @@ function ClientDetailPage({ publicMode = false }) {
                     {activeCampaigns.length === 0 ? (
                       <p style={{ color: '#6b7280', textAlign: 'center', padding: '2rem' }}>No active campaigns</p>
                     ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Campaign</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Strategy</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
-                            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>
-                            {showSpendData && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
-                            <th style={{ padding: '0.75rem', width: '40px' }}></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activeCampaigns.map(campaign => {
-                            const stats = campaignStats[campaign.id] || {};
-                            return (
-                              <tr key={campaign.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                <td style={{ padding: '0.75rem', fontWeight: 500 }}>{campaign.name}</td>
+                      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? '600px' : 'auto' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                              <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Campaign</th>
+                              <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Strategy</th>
+                              {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>}
+                              {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>}
+                              <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
+                              <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
+                              {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>CTR</th>}
+                              {showSpendData && !isMobile && <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>}
+                              <th style={{ padding: '0.75rem', width: '40px' }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {activeCampaigns.map(campaign => {
+                              const stats = campaignStats[campaign.id] || {};
+                              return (
+                                <tr key={campaign.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                                  <td style={{ padding: '0.75rem', fontWeight: 500, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{campaign.name}</td>
                                 <td style={{ padding: '0.75rem' }}>
                                   <span style={{ padding: '0.25rem 0.5rem', background: '#f3f4f6', borderRadius: '0.25rem', fontSize: '0.75rem' }}>
                                     {parseStrategy(campaign.name)}
                                   </span>
                                 </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                {!isMobile && <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
                                   {campaign.start_date ? new Date(campaign.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
+                                </td>}
+                                {!isMobile && <td style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.8125rem', color: '#6b7280' }}>
                                   {campaign.end_date ? new Date(campaign.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
-                                </td>
+                                </td>}
                                 <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.impressions)}</td>
                                 <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatNumberFull(stats.clicks)}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(stats.ctr)}</td>
-                                {showSpendData && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(stats.total_spend)}</td>}
+                                {!isMobile && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatPercent(stats.ctr)}</td>}
+                                {showSpendData && !isMobile && <td style={{ padding: '0.75rem', textAlign: 'right', fontFamily: 'monospace' }}>{formatCurrency(stats.total_spend)}</td>}
                                 <td style={{ padding: '0.75rem' }}>
                                   <Link to={publicMode ? `/client/${slug}/report/campaign/${campaign.id}` : `/client/${slug}/campaign/${campaign.id}`} style={{ color: '#3b82f6', display: 'flex', alignItems: 'center' }}>
                                     <ChevronRight size={18} />
@@ -2676,6 +2728,7 @@ function ClientDetailPage({ publicMode = false }) {
                           })}
                         </tbody>
                       </table>
+                      </div>
                     )}
                   </DraggableReportSection>
                 );
@@ -2747,7 +2800,7 @@ function ClientDetailPage({ publicMode = false }) {
                 if (topAdSizes.length === 0) return null;
                 return (
                   <DraggableReportSection {...sectionProps} title="Top 3 Ads by Size (Active Campaigns)" icon={Image} iconColor="#6366f1">
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 1 : isTablet ? 2 : 3}, 1fr)`, gap: '1rem' }}>
                       {topAdSizes.map((ad, i) => (
                         <div key={ad.size} style={{ 
                           padding: '1.25rem', 
@@ -2798,16 +2851,16 @@ function ClientDetailPage({ publicMode = false }) {
                               #{i + 1}
                             </span>
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', fontSize: '0.8125rem' }}>
-                            <div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', fontSize: '0.8125rem' }}>
+                            <div style={{ flex: '1 1 auto', minWidth: '60px' }}>
                               <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>Impressions</div>
                               <div style={{ fontWeight: 600 }}>{formatNumber(ad.impressions)}</div>
                             </div>
-                            <div>
+                            <div style={{ flex: '1 1 auto', minWidth: '50px' }}>
                               <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>Clicks</div>
                               <div style={{ fontWeight: 600 }}>{formatNumber(ad.clicks)}</div>
                             </div>
-                            <div>
+                            <div style={{ flex: '1 1 auto', minWidth: '50px' }}>
                               <div style={{ opacity: 0.7, fontSize: '0.6875rem', textTransform: 'uppercase' }}>CTR</div>
                               <div style={{ fontWeight: 600 }}>{formatPercent(ad.ctr)}</div>
                             </div>
@@ -2822,14 +2875,15 @@ function ClientDetailPage({ publicMode = false }) {
                 if (inactiveCampaigns.length === 0) return null;
                 return (
                   <DraggableReportSection {...sectionProps} title={`Paused & Stopped Campaigns (${inactiveCampaigns.length})`} icon={Pause} iconColor="#f59e0b">
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                          <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Campaign</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>
-                          <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Campaign</th>
+                            <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
+                            {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Start</th>}
+                            {!isMobile && <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>End</th>}
+                            <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
                           <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
                           <th style={{ padding: '0.75rem', width: '40px' }}></th>
                         </tr>
@@ -3043,6 +3097,7 @@ function CampaignDetailPage({ publicMode = false }) {
   });
   
   const { user } = useAuth();
+  const { isMobile, isTablet, gridCols } = useResponsive();
   
   // Determine if we should show spend data (not in public mode, not in client view mode)
   const showSpendData = !publicMode && user && !clientViewMode;
@@ -3684,7 +3739,7 @@ function CampaignDetailPage({ publicMode = false }) {
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
   return (
-    <div>
+    <div style={{ maxWidth: '100%', overflowX: 'hidden' }}>
       {/* Campaign Header - Branded */}
       <div style={{ 
         background: `linear-gradient(135deg, ${client?.primary_color || '#1e3a8a'} 0%, ${client?.secondary_color || '#3b82f6'} 100%)`,
@@ -3694,9 +3749,9 @@ function CampaignDetailPage({ publicMode = false }) {
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
       }}>
         {/* Top section with campaign info */}
-        <div style={{ padding: '1.5rem', color: 'white' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+        <div style={{ padding: isMobile ? '1rem' : '1.5rem', color: 'white' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', minWidth: 0, flex: '1 1 auto' }}>
               {/* Client Logo */}
               {client?.logo_path ? (
                 <img 
@@ -3972,7 +4027,7 @@ function CampaignDetailPage({ publicMode = false }) {
           case 'performance':
             return (
               <DraggableReportSection {...sectionProps} title="Campaign Performance">
-                <div style={{ display: 'grid', gridTemplateColumns: showSpendData ? 'repeat(6, 1fr)' : 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 1 : isTablet ? 2 : (showSpendData ? 6 : 3)}, 1fr)`, gap: '1rem', marginBottom: '1.5rem' }}>
                   <StatCardWithChart label="Impressions" value={formatNumber(stats?.impressions)} data={dailyStats} dataKey="impressions" color="#0d9488" />
                   <StatCardWithChart label="Clicks" value={formatNumber(stats?.clicks)} data={dailyStats} dataKey="clicks" color="#3b82f6" />
                   <StatCardWithChart label="CTR" value={formatPercent(stats?.ctr)} data={dailyStats} dataKey="ctr" color="#8b5cf6" />
@@ -6987,6 +7042,7 @@ function PublicReportPage() {
     startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
+  const { isMobile, isTablet, gridCols } = useResponsive();
 
   useEffect(() => {
     loadClient();
@@ -7102,20 +7158,20 @@ function PublicReportPage() {
       </div>
 
       {/* Content */}
-      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: isMobile ? '1rem' : '2rem' }}>
         {/* Summary Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${isMobile ? 1 : 3}, 1fr)`, gap: '1rem', marginBottom: '2rem' }}>
           <div style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)', borderRadius: '0.75rem', padding: '1.5rem', color: 'white', textAlign: 'center' }}>
             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', opacity: 0.8 }}>Total Impressions</div>
-            <div style={{ fontSize: '2rem', fontWeight: 700 }}>{formatNumber(totalStats.impressions)}</div>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: 700 }}>{formatNumber(totalStats.impressions)}</div>
           </div>
           <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', border: '1px solid #e5e7eb', textAlign: 'center' }}>
             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#6b7280' }}>Total Clicks</div>
-            <div style={{ fontSize: '2rem', fontWeight: 700, color: '#111827' }}>{formatNumber(totalStats.clicks)}</div>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: 700, color: '#111827' }}>{formatNumber(totalStats.clicks)}</div>
           </div>
           <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', border: '1px solid #e5e7eb', textAlign: 'center' }}>
             <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#6b7280' }}>Click-Through Rate</div>
-            <div style={{ fontSize: '2rem', fontWeight: 700, color: '#111827' }}>{formatPercent(totalStats.ctr)}</div>
+            <div style={{ fontSize: isMobile ? '1.5rem' : '2rem', fontWeight: 700, color: '#111827' }}>{formatPercent(totalStats.ctr)}</div>
           </div>
         </div>
 
@@ -7744,6 +7800,113 @@ function App() {
             border-top-color: #3b82f6;
             border-radius: 50%;
             animation: spin 1s linear infinite;
+          }
+          
+          /* Responsive utilities */
+          html, body {
+            overflow-x: hidden;
+            max-width: 100vw;
+          }
+          
+          /* Responsive grid classes */
+          .responsive-grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+          }
+          .responsive-grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+          }
+          .responsive-grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+          }
+          
+          /* Table responsiveness */
+          .responsive-table-container {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+          }
+          
+          /* Mobile: Stack everything */
+          @media (max-width: 640px) {
+            .responsive-grid-4,
+            .responsive-grid-3,
+            .responsive-grid-2 {
+              grid-template-columns: 1fr;
+            }
+            
+            /* Hide less important columns on mobile */
+            .hide-mobile {
+              display: none !important;
+            }
+            
+            /* Smaller padding on mobile */
+            .section-padding {
+              padding: 0.75rem !important;
+            }
+            
+            /* Stack header elements */
+            .header-actions {
+              flex-direction: column;
+              gap: 0.5rem;
+            }
+            
+            /* Full width buttons */
+            .header-actions button {
+              width: 100%;
+            }
+            
+            /* Smaller padding on mobile */
+            .section-padding {
+              padding: 0.75rem !important;
+            }
+            
+            /* Smaller fonts on mobile */
+            h1, h2 {
+              font-size: 1.25rem !important;
+            }
+            
+            /* Table minimum width for scroll */
+            .data-table {
+              min-width: 500px;
+            }
+          }
+          
+          /* Tablet: 2 columns */
+          @media (min-width: 641px) and (max-width: 1024px) {
+            .responsive-grid-4 {
+              grid-template-columns: repeat(2, 1fr);
+            }
+            .responsive-grid-3 {
+              grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .hide-tablet {
+              display: none !important;
+            }
+            
+            .section-padding {
+              padding: 1rem !important;
+            }
+          }
+          
+          /* Desktop: Full grids */
+          @media (min-width: 1025px) {
+            .responsive-grid-4 {
+              grid-template-columns: repeat(4, 1fr);
+            }
+            .responsive-grid-3 {
+              grid-template-columns: repeat(3, 1fr);
+            }
+            
+            .section-padding {
+              padding: 1.5rem !important;
+            }
           }
         `}</style>
         <Routes>
