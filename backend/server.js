@@ -1411,7 +1411,7 @@ app.get('/api/proxy/image', async (req, res) => {
     }
     
     // Only allow proxying from trusted Simpli.fi domains
-    if (!url.includes('simpli.fi') && !url.includes('adspreview.simpli.fi') && !url.includes('media.simpli.fi')) {
+    if (!url.includes('simpli.fi')) {
       return res.status(403).json({ error: 'Only Simpli.fi URLs allowed' });
     }
     
@@ -1419,12 +1419,23 @@ app.get('/api/proxy/image', async (req, res) => {
     const http = require('http');
     const protocol = url.startsWith('https') ? https : http;
     
+    // Determine content type from URL
+    let contentType = 'image/gif';
+    if (url.includes('.png')) contentType = 'image/png';
+    else if (url.includes('.jpg') || url.includes('.jpeg')) contentType = 'image/jpeg';
+    else if (url.includes('.webp')) contentType = 'image/webp';
+    else if (url.includes('.mp4')) contentType = 'video/mp4';
+    
+    // Set CORS headers BEFORE making the request
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    
     protocol.get(url, (proxyRes) => {
-      // Forward content-type header
-      const contentType = proxyRes.headers['content-type'] || 'image/gif';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      // Use content-type from response or our guess
+      const responseContentType = proxyRes.headers['content-type'] || contentType;
+      res.setHeader('Content-Type', responseContentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
       
       proxyRes.pipe(res);
     }).on('error', (err) => {
