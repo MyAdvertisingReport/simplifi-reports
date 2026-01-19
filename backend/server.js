@@ -1760,7 +1760,6 @@ app.get('/api/proxy/image', async (req, res) => {
 // ============================================
 // Note: Admin routes are set up dynamically after database is ready
 // We use a flag to track if routes are ready
-let adminRoutesReady = false;
 
 app.use('/api/admin', (req, res, next) => {
   if (!adminRoutesReady || !adminPool) {
