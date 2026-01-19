@@ -772,65 +772,16 @@ export default function OrderForm() {
         </div>
       </div>
 
-      {/* Product Selection Modal */}
+      {/* Product Selection Modal - Mobile Optimized Two-Step */}
       {showProductModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowProductModal(false)}>
-          <div style={styles.modal} onClick={e => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>Add Product</h2>
-              <button onClick={() => setShowProductModal(false)} style={styles.closeButton}>
-                <Icons.X />
-              </button>
-            </div>
-            
-            <div style={styles.modalFilters}>
-              <select
-                value={selectedEntity}
-                onChange={(e) => setSelectedEntity(e.target.value)}
-                style={styles.filterSelect}
-              >
-                <option value="">All Entities</option>
-                {entities.map(e => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
-                ))}
-              </select>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                style={styles.filterSelect}
-              >
-                <option value="">All Categories</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={styles.productList}>
-              {filteredProducts.map(product => (
-                <div
-                  key={product.id}
-                  style={styles.productItem}
-                  onClick={() => addProductToOrder(product)}
-                >
-                  <div style={styles.productInfo}>
-                    <div style={styles.productName}>{product.name}</div>
-                    <div style={styles.productMeta}>
-                      {product.entity_name} • {product.category_name}
-                    </div>
-                    {product.description && (
-                      <div style={styles.productDesc}>{product.description}</div>
-                    )}
-                  </div>
-                  <div style={styles.productPrice}>
-                    <div style={styles.priceAmount}>{formatCurrency(product.default_rate)}</div>
-                    <div style={styles.priceType}>{product.rate_type}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ProductSelectorModal
+          products={products}
+          entities={entities}
+          categories={categories}
+          onSelect={addProductToOrder}
+          onClose={() => setShowProductModal(false)}
+          formatCurrency={formatCurrency}
+        />
       )}
 
       {/* New Client Modal */}
@@ -854,6 +805,422 @@ export default function OrderForm() {
     </div>
   );
 }
+
+// ============================================================
+// PRODUCT SELECTOR MODAL - Mobile Optimized Two-Step
+// ============================================================
+function ProductSelectorModal({ products, entities, categories, onSelect, onClose, formatCurrency }) {
+  const [step, setStep] = useState(1); // 1: Brand, 2: Medium, 3: Products
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [selectedMedium, setSelectedMedium] = useState(null);
+
+  // Brand configurations with icons and colors
+  const brandConfig = {
+    wsic: {
+      name: 'WSIC Radio',
+      icon: '📻',
+      color: '#3b82f6',
+      bgColor: '#eff6ff',
+      description: 'Radio, Podcast, Events & Web'
+    },
+    lkn: {
+      name: 'Lake Norman Woman',
+      icon: '📰',
+      color: '#ec4899',
+      bgColor: '#fdf2f8',
+      description: 'Print & Digital Advertising'
+    }
+  };
+
+  // Medium configurations with icons
+  const mediumConfig = {
+    broadcast: { icon: '📻', name: 'Broadcast', description: 'Radio commercials & sponsorships' },
+    podcast: { icon: '🎙️', name: 'Podcast', description: 'Podcast ads & studio services' },
+    'web-social': { icon: '🌐', name: 'Web & Social', description: 'Newsletters, websites & social' },
+    events: { icon: '📅', name: 'Events', description: 'Sponsorships & live remotes' },
+    programmatic: { icon: '💻', name: 'Programmatic Digital', description: 'Display, OTT/CTV & Meta ads' },
+    print: { icon: '📰', name: 'Print', description: 'Magazine ads & editorials' }
+  };
+
+  // Map entity codes to brand keys
+  const entityToBrand = {};
+  entities.forEach(e => {
+    if (e.code === 'wsic') entityToBrand[e.id] = 'wsic';
+    if (e.code === 'lkn') entityToBrand[e.id] = 'lkn';
+  });
+
+  // Get mediums available for selected brand
+  const getMediumsForBrand = (brandCode) => {
+    if (brandCode === 'wsic') {
+      return ['broadcast', 'podcast', 'web-social', 'events'];
+    } else if (brandCode === 'lkn') {
+      return ['programmatic', 'print'];
+    }
+    return [];
+  };
+
+  // Map category names to medium keys
+  const categoryToMedium = (categoryName) => {
+    const name = (categoryName || '').toLowerCase();
+    if (name.includes('broadcast')) return 'broadcast';
+    if (name.includes('podcast')) return 'podcast';
+    if (name.includes('web') || name.includes('social')) return 'web-social';
+    if (name.includes('event')) return 'events';
+    if (name.includes('programmatic') || name.includes('digital')) return 'programmatic';
+    if (name.includes('print')) return 'print';
+    return null;
+  };
+
+  // Filter products for selected brand and medium
+  const getFilteredProducts = () => {
+    if (!selectedBrand || !selectedMedium) return [];
+    
+    return products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productMedium = categoryToMedium(p.category_name);
+      return productBrand === selectedBrand && productMedium === selectedMedium;
+    });
+  };
+
+  const handleBrandSelect = (brandCode) => {
+    setSelectedBrand(brandCode);
+    setStep(2);
+  };
+
+  const handleMediumSelect = (mediumCode) => {
+    setSelectedMedium(mediumCode);
+    setStep(3);
+  };
+
+  const handleBack = () => {
+    if (step === 3) {
+      setSelectedMedium(null);
+      setStep(2);
+    } else if (step === 2) {
+      setSelectedBrand(null);
+      setStep(1);
+    }
+  };
+
+  const handleProductSelect = (product) => {
+    onSelect(product);
+    // Reset for next selection
+    setStep(1);
+    setSelectedBrand(null);
+    setSelectedMedium(null);
+  };
+
+  const filteredProducts = getFilteredProducts();
+  const availableMediums = selectedBrand ? getMediumsForBrand(selectedBrand) : [];
+
+  return (
+    <div style={productSelectorStyles.overlay} onClick={onClose}>
+      <div style={productSelectorStyles.modal} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={productSelectorStyles.header}>
+          {step > 1 && (
+            <button onClick={handleBack} style={productSelectorStyles.backButton}>
+              ← Back
+            </button>
+          )}
+          <h2 style={productSelectorStyles.title}>
+            {step === 1 && 'Select Brand'}
+            {step === 2 && `${brandConfig[selectedBrand]?.icon} ${brandConfig[selectedBrand]?.name}`}
+            {step === 3 && `${mediumConfig[selectedMedium]?.icon} ${mediumConfig[selectedMedium]?.name}`}
+          </h2>
+          <button onClick={onClose} style={productSelectorStyles.closeButton}>
+            <Icons.X />
+          </button>
+        </div>
+
+        {/* Step 1: Select Brand */}
+        {step === 1 && (
+          <div style={productSelectorStyles.optionsList}>
+            {Object.entries(brandConfig).map(([code, config]) => (
+              <button
+                key={code}
+                onClick={() => handleBrandSelect(code)}
+                style={{
+                  ...productSelectorStyles.optionCard,
+                  borderLeftColor: config.color,
+                  backgroundColor: config.bgColor
+                }}
+              >
+                <span style={productSelectorStyles.optionIcon}>{config.icon}</span>
+                <div style={productSelectorStyles.optionContent}>
+                  <div style={productSelectorStyles.optionName}>{config.name}</div>
+                  <div style={productSelectorStyles.optionDesc}>{config.description}</div>
+                </div>
+                <span style={productSelectorStyles.optionArrow}>→</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Step 2: Select Medium */}
+        {step === 2 && (
+          <div style={productSelectorStyles.optionsList}>
+            {availableMediums.map(mediumCode => {
+              const config = mediumConfig[mediumCode];
+              const productCount = products.filter(p => {
+                const productBrand = entityToBrand[p.entity_id];
+                const productMedium = categoryToMedium(p.category_name);
+                return productBrand === selectedBrand && productMedium === mediumCode;
+              }).length;
+
+              return (
+                <button
+                  key={mediumCode}
+                  onClick={() => handleMediumSelect(mediumCode)}
+                  style={productSelectorStyles.optionCard}
+                >
+                  <span style={productSelectorStyles.optionIcon}>{config.icon}</span>
+                  <div style={productSelectorStyles.optionContent}>
+                    <div style={productSelectorStyles.optionName}>{config.name}</div>
+                    <div style={productSelectorStyles.optionDesc}>{config.description}</div>
+                  </div>
+                  <div style={productSelectorStyles.optionMeta}>
+                    <span style={productSelectorStyles.productCount}>{productCount}</span>
+                    <span style={productSelectorStyles.optionArrow}>→</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Step 3: Select Product */}
+        {step === 3 && (
+          <div style={productSelectorStyles.productsList}>
+            {filteredProducts.length === 0 ? (
+              <div style={productSelectorStyles.emptyState}>
+                No products available in this category
+              </div>
+            ) : (
+              filteredProducts.map(product => (
+                <button
+                  key={product.id}
+                  onClick={() => handleProductSelect(product)}
+                  style={productSelectorStyles.productCard}
+                >
+                  <div style={productSelectorStyles.productInfo}>
+                    <div style={productSelectorStyles.productName}>{product.name}</div>
+                    {product.description && (
+                      <div style={productSelectorStyles.productDesc}>{product.description}</div>
+                    )}
+                  </div>
+                  <div style={productSelectorStyles.productPricing}>
+                    <div style={productSelectorStyles.productPrice}>
+                      {formatCurrency(product.default_rate)}
+                    </div>
+                    <div style={productSelectorStyles.productRate}>{product.rate_type}</div>
+                    {product.setup_fee > 0 && (
+                      <div style={productSelectorStyles.setupFee}>
+                        +{formatCurrency(product.setup_fee)} setup
+                      </div>
+                    )}
+                  </div>
+                  <span style={productSelectorStyles.addIcon}>+</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Product Selector Styles - Mobile Optimized
+const productSelectorStyles = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    padding: '0',
+    zIndex: 1000,
+  },
+  modal: {
+    backgroundColor: 'white',
+    borderRadius: '20px 20px 0 0',
+    width: '100%',
+    maxWidth: '500px',
+    maxHeight: '85vh',
+    overflow: 'hidden',
+    boxShadow: '0 -10px 40px rgba(0, 0, 0, 0.2)',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '20px',
+    borderBottom: '1px solid #e2e8f0',
+    gap: '12px',
+  },
+  backButton: {
+    padding: '8px 12px',
+    backgroundColor: '#f1f5f9',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#64748b',
+    cursor: 'pointer',
+  },
+  title: {
+    flex: 1,
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#1e293b',
+    margin: 0,
+  },
+  closeButton: {
+    padding: '8px',
+    backgroundColor: '#f1f5f9',
+    border: 'none',
+    borderRadius: '8px',
+    color: '#64748b',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  optionsList: {
+    padding: '16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    overflowY: 'auto',
+  },
+  optionCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    padding: '20px',
+    backgroundColor: '#f8fafc',
+    border: 'none',
+    borderLeft: '4px solid #e2e8f0',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'transform 0.15s, box-shadow 0.15s',
+    width: '100%',
+  },
+  optionIcon: {
+    fontSize: '32px',
+    lineHeight: 1,
+  },
+  optionContent: {
+    flex: 1,
+  },
+  optionName: {
+    fontSize: '17px',
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: '4px',
+  },
+  optionDesc: {
+    fontSize: '13px',
+    color: '#64748b',
+  },
+  optionMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  productCount: {
+    padding: '4px 10px',
+    backgroundColor: '#e2e8f0',
+    borderRadius: '12px',
+    fontSize: '13px',
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  optionArrow: {
+    fontSize: '20px',
+    color: '#94a3b8',
+  },
+  productsList: {
+    padding: '12px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    overflowY: 'auto',
+    maxHeight: 'calc(85vh - 80px)',
+  },
+  productCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '16px',
+    backgroundColor: 'white',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'border-color 0.15s, background-color 0.15s',
+    width: '100%',
+  },
+  productInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  productName: {
+    fontSize: '15px',
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: '4px',
+  },
+  productDesc: {
+    fontSize: '13px',
+    color: '#64748b',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  productPricing: {
+    textAlign: 'right',
+    flexShrink: 0,
+  },
+  productPrice: {
+    fontSize: '16px',
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  productRate: {
+    fontSize: '11px',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  setupFee: {
+    fontSize: '11px',
+    color: '#f59e0b',
+    marginTop: '2px',
+  },
+  addIcon: {
+    width: '36px',
+    height: '36px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    borderRadius: '50%',
+    fontSize: '20px',
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  emptyState: {
+    padding: '40px 20px',
+    textAlign: 'center',
+    color: '#94a3b8',
+    fontSize: '15px',
+  },
+};
 
 // Client Modal Component (Create or Edit)
 function ClientModal({ client, onSave, onClose, isEdit = false }) {
