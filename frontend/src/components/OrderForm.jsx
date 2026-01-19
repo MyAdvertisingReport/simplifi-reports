@@ -79,7 +79,7 @@ export default function OrderForm() {
   // Order details
   const [orderItems, setOrderItems] = useState([]);
   const [contractStartDate, setContractStartDate] = useState('');
-  const [termMonths, setTermMonths] = useState('6');
+  const [termMonths, setTermMonths] = useState('');
   const [customTerm, setCustomTerm] = useState('');
   const [isCustomTerm, setIsCustomTerm] = useState(false);
   const [isOneTime, setIsOneTime] = useState(false);
@@ -335,7 +335,7 @@ export default function OrderForm() {
           setSelectedClient(null);
           setOrderItems([]);
           setContractStartDate('');
-          setTermMonths('6');
+          setTermMonths('');
           setCustomTerm('');
           setIsCustomTerm(false);
           setIsOneTime(false);
@@ -497,8 +497,12 @@ export default function OrderForm() {
                         setTermMonths(val);
                       }
                     }}
-                    style={styles.select}
+                    style={{
+                      ...styles.select,
+                      color: termMonths === '' && !isOneTime ? '#9ca3af' : '#1e293b'
+                    }}
                   >
+                    <option value="" disabled>Select contract length...</option>
                     <option value="one-time">One-Time / Single Run</option>
                     <option value="1">1 Month</option>
                     <option value="3">3 Months</option>
@@ -521,7 +525,7 @@ export default function OrderForm() {
                     <button 
                       onClick={() => {
                         setIsCustomTerm(false);
-                        setTermMonths('6');
+                        setTermMonths('');
                       }}
                       style={styles.cancelCustomButton}
                     >
