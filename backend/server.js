@@ -72,6 +72,9 @@ let simplifiClient = null;
 // Initialize Report Center service
 let reportCenterService = null;
 
+// Admin routes ready flag
+let adminRoutesReady = false;
+
 // ============================================
 // PRODUCT MANAGEMENT ROUTES
 // ============================================
@@ -85,12 +88,7 @@ const setupAdminRoutes = () => {
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
     });
   }
-  
-  app.use('/api/admin', (req, res, next) => {
-    req.dbPool = adminPool;
-    next();
-  }, adminRoutes);
-  
+  adminRoutesReady = true;
   console.log('Admin routes initialized');
 };
 
@@ -1756,6 +1754,21 @@ app.get('/api/proxy/image', async (req, res) => {
     res.status(500).json({ error: 'Proxy failed' });
   }
 });
+
+// ============================================
+// PRODUCT MANAGEMENT ROUTES (placeholder - actual setup in startServer)
+// ============================================
+// Note: Admin routes are set up dynamically after database is ready
+// We use a flag to track if routes are ready
+let adminRoutesReady = false;
+
+app.use('/api/admin', (req, res, next) => {
+  if (!adminRoutesReady || !adminPool) {
+    return res.status(503).json({ error: 'Admin routes not yet initialized. Please wait...' });
+  }
+  req.dbPool = adminPool;
+  next();
+}, adminRoutes);
 
 // ============================================
 // ERROR HANDLING
