@@ -78,9 +78,10 @@ export default function OrderForm() {
   // Order details
   const [orderItems, setOrderItems] = useState([]);
   const [contractStartDate, setContractStartDate] = useState('');
-  const [termMonths, setTermMonths] = useState(6);
+  const [termMonths, setTermMonths] = useState('6');
   const [customTerm, setCustomTerm] = useState('');
   const [isCustomTerm, setIsCustomTerm] = useState(false);
+  const [isOneTime, setIsOneTime] = useState(false);
   const [billUpfront, setBillUpfront] = useState(false);
   const [scheduleNotes, setScheduleNotes] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
@@ -140,27 +141,46 @@ export default function OrderForm() {
   // Calculate contract end date
   const contractEndDate = useMemo(() => {
     if (!contractStartDate) return '';
+    
+    // For one-time orders, end date = start date
+    if (isOneTime) {
+      return contractStartDate;
+    }
+    
     const months = isCustomTerm ? (parseInt(customTerm) || 0) : parseInt(termMonths);
     if (!months) return '';
-    const start = new Date(contractStartDate);
+    const start = new Date(contractStartDate + 'T00:00:00');
     start.setMonth(start.getMonth() + months);
     start.setDate(start.getDate() - 1);
     return start.toISOString().split('T')[0];
-  }, [contractStartDate, termMonths, customTerm, isCustomTerm]);
+  }, [contractStartDate, termMonths, customTerm, isCustomTerm, isOneTime]);
 
-  // Get effective term months
+  // Get effective term months (1 for one-time orders)
   const effectiveTermMonths = useMemo(() => {
+    if (isOneTime) return 1;
     return isCustomTerm ? (parseInt(customTerm) || 0) : parseInt(termMonths);
-  }, [termMonths, customTerm, isCustomTerm]);
+  }, [termMonths, customTerm, isCustomTerm, isOneTime]);
 
   // Calculate totals
   const totals = useMemo(() => {
-    const monthlyTotal = orderItems.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
+    const lineItemsTotal = orderItems.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
     const setupFees = orderItems.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0);
-    const contractTotal = (monthlyTotal * effectiveTermMonths) + setupFees;
+    
+    // For one-time orders, don't multiply by months
+    const contractTotal = isOneTime 
+      ? lineItemsTotal + setupFees
+      : (lineItemsTotal * effectiveTermMonths) + setupFees;
+    
     const hasUnapprovedAdjustments = orderItems.some(item => item.price_adjusted && !item.price_approved);
-    return { monthlyTotal, setupFees, contractTotal, hasUnapprovedAdjustments };
-  }, [orderItems, effectiveTermMonths]);
+    
+    return { 
+      monthlyTotal: lineItemsTotal, 
+      setupFees, 
+      contractTotal, 
+      hasUnapprovedAdjustments,
+      isOneTime 
+    };
+  }, [orderItems, effectiveTermMonths, isOneTime]);
 
   // Add product to order
   const addProductToOrder = (product) => {
@@ -303,9 +323,10 @@ export default function OrderForm() {
           setSelectedClient(null);
           setOrderItems([]);
           setContractStartDate('');
-          setTermMonths(6);
+          setTermMonths('6');
           setCustomTerm('');
           setIsCustomTerm(false);
+          setIsOneTime(false);
           setBillUpfront(false);
           setScheduleNotes('');
           setOrderNotes('');
@@ -442,17 +463,25 @@ export default function OrderForm() {
                 <label style={styles.label}>Term *</label>
                 {!isCustomTerm ? (
                   <select
-                    value={termMonths}
+                    value={isOneTime ? 'one-time' : termMonths}
                     onChange={(e) => {
-                      if (e.target.value === 'other') {
+                      const val = e.target.value;
+                      if (val === 'other') {
                         setIsCustomTerm(true);
+                        setIsOneTime(false);
                         setCustomTerm('');
+                      } else if (val === 'one-time') {
+                        setIsOneTime(true);
+                        setIsCustomTerm(false);
+                        setBillUpfront(true); // One-time is always billed upfront
                       } else {
-                        setTermMonths(e.target.value);
+                        setIsOneTime(false);
+                        setTermMonths(val);
                       }
                     }}
                     style={styles.select}
                   >
+                    <option value="one-time">One-Time / Single Run</option>
                     <option value="1">1 Month</option>
                     <option value="3">3 Months</option>
                     <option value="6">6 Months</option>
@@ -474,7 +503,7 @@ export default function OrderForm() {
                     <button 
                       onClick={() => {
                         setIsCustomTerm(false);
-                        setTermMonths(6);
+                        setTermMonths('6');
                       }}
                       style={styles.cancelCustomButton}
                     >
@@ -497,15 +526,21 @@ export default function OrderForm() {
               </div>
               <div style={styles.formGroup}>
                 <label style={styles.label}>&nbsp;</label>
-                <label style={styles.checkboxLabel}>
-                  <input
-                    type="checkbox"
-                    checked={billUpfront}
-                    onChange={(e) => setBillUpfront(e.target.checked)}
-                    style={styles.checkbox}
-                  />
-                  <span>Bill full contract upfront</span>
-                </label>
+                {isOneTime ? (
+                  <div style={styles.oneTimeIndicator}>
+                    <span>💵 Billed as one-time charge</span>
+                  </div>
+                ) : (
+                  <label style={styles.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={billUpfront}
+                      onChange={(e) => setBillUpfront(e.target.checked)}
+                      style={styles.checkbox}
+                    />
+                    <span>Bill full contract upfront</span>
+                  </label>
+                )}
               </div>
             </div>
 
@@ -637,14 +672,29 @@ export default function OrderForm() {
             <h2 style={styles.summaryTitle}>Order Summary</h2>
             
             <div style={styles.summarySection}>
-              <div style={styles.summaryRow}>
-                <span>Monthly Total</span>
-                <span style={styles.summaryValue}>{formatCurrency(totals.monthlyTotal)}</span>
-              </div>
-              <div style={styles.summaryRow}>
-                <span>Contract Term</span>
-                <span>{effectiveTermMonths} months</span>
-              </div>
+              {isOneTime ? (
+                <>
+                  <div style={styles.summaryRow}>
+                    <span>Order Type</span>
+                    <span style={{ ...styles.summaryValue, color: '#8b5cf6' }}>One-Time</span>
+                  </div>
+                  <div style={styles.summaryRow}>
+                    <span>Line Items Total</span>
+                    <span style={styles.summaryValue}>{formatCurrency(totals.monthlyTotal)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={styles.summaryRow}>
+                    <span>Monthly Total</span>
+                    <span style={styles.summaryValue}>{formatCurrency(totals.monthlyTotal)}</span>
+                  </div>
+                  <div style={styles.summaryRow}>
+                    <span>Contract Term</span>
+                    <span>{effectiveTermMonths} months</span>
+                  </div>
+                </>
+              )}
               {totals.setupFees > 0 && (
                 <div style={styles.summaryRow}>
                   <span>Setup Fees</span>
@@ -654,7 +704,7 @@ export default function OrderForm() {
             </div>
 
             <div style={styles.summaryTotal}>
-              <span>Contract Total</span>
+              <span>{isOneTime ? 'Total' : 'Contract Total'}</span>
               <span style={styles.totalValue}>{formatCurrency(totals.contractTotal)}</span>
             </div>
 
@@ -1519,6 +1569,19 @@ const styles = {
     height: '18px',
     cursor: 'pointer',
     accentColor: '#3b82f6',
+  },
+  oneTimeIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '12px 14px',
+    backgroundColor: '#f3e8ff',
+    border: '1px solid #d8b4fe',
+    borderRadius: '8px',
+    color: '#7c3aed',
+    fontSize: '14px',
+    fontWeight: '500',
+    height: '46px',
   },
   itemDetailsSimple: {
     display: 'grid',
