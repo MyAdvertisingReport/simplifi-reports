@@ -81,7 +81,7 @@ export default function OrderForm() {
   const [termMonths, setTermMonths] = useState(6);
   const [customTerm, setCustomTerm] = useState('');
   const [isCustomTerm, setIsCustomTerm] = useState(false);
-  const [billingFrequency, setBillingFrequency] = useState('monthly');
+  const [billUpfront, setBillUpfront] = useState(false);
   const [scheduleNotes, setScheduleNotes] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   
@@ -268,7 +268,7 @@ export default function OrderForm() {
         contract_start_date: contractStartDate,
         contract_end_date: contractEndDate,
         term_months: effectiveTermMonths,
-        billing_frequency: billingFrequency,
+        billing_frequency: billUpfront ? 'upfront' : 'monthly',
         notes: orderNotes,
         internal_notes: scheduleNotes ? `Schedule: ${scheduleNotes}` : '',
         items: orderItems.map(item => ({
@@ -306,6 +306,7 @@ export default function OrderForm() {
           setTermMonths(6);
           setCustomTerm('');
           setIsCustomTerm(false);
+          setBillUpfront(false);
           setScheduleNotes('');
           setOrderNotes('');
         }
@@ -495,16 +496,16 @@ export default function OrderForm() {
                 />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Billing Frequency</label>
-                <select
-                  value={billingFrequency}
-                  onChange={(e) => setBillingFrequency(e.target.value)}
-                  style={styles.select}
-                >
-                  <option value="monthly">Monthly</option>
-                  <option value="quarterly">Quarterly</option>
-                  <option value="upfront">Upfront (Full Term)</option>
-                </select>
+                <label style={styles.label}>&nbsp;</label>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={billUpfront}
+                    onChange={(e) => setBillUpfront(e.target.checked)}
+                    style={styles.checkbox}
+                  />
+                  <span>Bill full contract upfront</span>
+                </label>
               </div>
             </div>
 
@@ -694,9 +695,9 @@ export default function OrderForm() {
               <span style={styles.statValue}>{orderItems.length}</span>
             </div>
             <div style={styles.stat}>
-              <span style={styles.statLabel}>Entities</span>
+              <span style={styles.statLabel}>Mediums</span>
               <span style={styles.statValue}>
-                {[...new Set(orderItems.map(i => i.entity_id))].length}
+                {[...new Set(orderItems.map(i => i.product_category))].length}
               </span>
             </div>
           </div>
@@ -1499,6 +1500,25 @@ const styles = {
     color: '#94a3b8',
     marginTop: '6px',
     fontStyle: 'italic',
+  },
+  checkboxLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    fontSize: '14px',
+    color: '#374151',
+    cursor: 'pointer',
+    padding: '12px 14px',
+    backgroundColor: '#f8fafc',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    height: '46px',
+  },
+  checkbox: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer',
+    accentColor: '#3b82f6',
   },
   itemDetailsSimple: {
     display: 'grid',
