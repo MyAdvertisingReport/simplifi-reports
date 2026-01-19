@@ -250,6 +250,95 @@ router.post('/clients/import', async (req, res) => {
   }
 });
 
+// PUT /api/orders/clients/:id - Update client with primary contact
+router.put('/clients/:id', async (req, res) => {
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+    
+    const { id } = req.params;
+    const {
+      business_name,
+      industry,
+      website,
+      status,
+      notes,
+      contact_first_name,
+      contact_last_name,
+      contact_email,
+      contact_phone,
+      contact_title
+    } = req.body;
+
+    // Update client
+    const clientResult = await dbClient.query(
+      `UPDATE advertising_clients 
+       SET business_name = COALESCE($1, business_name),
+           industry = $2,
+           website = $3,
+           status = COALESCE($4, status),
+           notes = $5,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [business_name, industry, website, status, notes, id]
+    );
+
+    if (clientResult.rows.length === 0) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Client not found' });
+    }
+
+    const updatedClient = clientResult.rows[0];
+
+    // Check if primary contact exists
+    const existingContact = await dbClient.query(
+      'SELECT id FROM contacts WHERE client_id = $1 AND is_primary = true',
+      [id]
+    );
+
+    if (existingContact.rows.length > 0) {
+      // Update existing primary contact
+      await dbClient.query(
+        `UPDATE contacts 
+         SET first_name = $1,
+             last_name = $2,
+             email = $3,
+             phone = $4,
+             title = $5,
+             updated_at = NOW()
+         WHERE client_id = $6 AND is_primary = true`,
+        [contact_first_name, contact_last_name, contact_email, contact_phone, contact_title, id]
+      );
+    } else if (contact_first_name && contact_last_name) {
+      // Create new primary contact if details provided
+      await dbClient.query(
+        `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, is_primary, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, NOW(), NOW())`,
+        [id, contact_first_name, contact_last_name, contact_email, contact_phone, contact_title]
+      );
+    }
+
+    await dbClient.query('COMMIT');
+
+    // Return combined result
+    res.json({
+      ...updatedClient,
+      contact_first_name,
+      contact_last_name,
+      contact_email,
+      contact_phone,
+      contact_title
+    });
+  } catch (error) {
+    await dbClient.query('ROLLBACK');
+    console.error('Error updating client:', error);
+    res.status(500).json({ error: 'Failed to update client' });
+  } finally {
+    dbClient.release();
+  }
+});
+
 // ============================================================
 // ORDER ROUTES
 // ============================================================
