@@ -79,8 +79,10 @@ export default function OrderForm() {
   const [orderItems, setOrderItems] = useState([]);
   const [contractStartDate, setContractStartDate] = useState('');
   const [termMonths, setTermMonths] = useState(6);
+  const [customTerm, setCustomTerm] = useState('');
+  const [isCustomTerm, setIsCustomTerm] = useState(false);
   const [billingFrequency, setBillingFrequency] = useState('monthly');
-  const [paymentPreference, setPaymentPreference] = useState('invoice');
+  const [scheduleNotes, setScheduleNotes] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   
   // Product selection
@@ -137,20 +139,28 @@ export default function OrderForm() {
 
   // Calculate contract end date
   const contractEndDate = useMemo(() => {
-    if (!contractStartDate || !termMonths) return '';
+    if (!contractStartDate) return '';
+    const months = isCustomTerm ? (parseInt(customTerm) || 0) : parseInt(termMonths);
+    if (!months) return '';
     const start = new Date(contractStartDate);
-    start.setMonth(start.getMonth() + parseInt(termMonths));
+    start.setMonth(start.getMonth() + months);
     start.setDate(start.getDate() - 1);
     return start.toISOString().split('T')[0];
-  }, [contractStartDate, termMonths]);
+  }, [contractStartDate, termMonths, customTerm, isCustomTerm]);
+
+  // Get effective term months
+  const effectiveTermMonths = useMemo(() => {
+    return isCustomTerm ? (parseInt(customTerm) || 0) : parseInt(termMonths);
+  }, [termMonths, customTerm, isCustomTerm]);
 
   // Calculate totals
   const totals = useMemo(() => {
     const monthlyTotal = orderItems.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
     const setupFees = orderItems.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0);
-    const contractTotal = (monthlyTotal * termMonths) + setupFees;
-    return { monthlyTotal, setupFees, contractTotal };
-  }, [orderItems, termMonths]);
+    const contractTotal = (monthlyTotal * effectiveTermMonths) + setupFees;
+    const hasUnapprovedAdjustments = orderItems.some(item => item.price_adjusted && !item.price_approved);
+    return { monthlyTotal, setupFees, contractTotal, hasUnapprovedAdjustments };
+  }, [orderItems, effectiveTermMonths]);
 
   // Add product to order
   const addProductToOrder = (product) => {
@@ -161,13 +171,15 @@ export default function OrderForm() {
       product_name: product.name,
       product_category: product.category || product.category_code,
       unit_price: parseFloat(product.default_rate) || 0,
+      original_price: parseFloat(product.default_rate) || 0, // Track original for comparison
       quantity: 1,
-      discount_percent: 0,
       line_total: parseFloat(product.default_rate) || 0,
       setup_fee: parseFloat(product.setup_fee) || 0,
       rate_type: product.rate_type,
       entity_name: product.entity_name,
       category_name: product.category_name,
+      price_adjusted: false,
+      price_approved: false,
       notes: '',
     };
     setOrderItems([...orderItems, newItem]);
@@ -182,11 +194,18 @@ export default function OrderForm() {
       const updated = { ...item, [field]: value };
       
       // Recalculate line total
-      if (field === 'unit_price' || field === 'quantity' || field === 'discount_percent') {
+      if (field === 'unit_price' || field === 'quantity') {
         const price = parseFloat(updated.unit_price) || 0;
         const qty = parseInt(updated.quantity) || 1;
-        const discount = parseFloat(updated.discount_percent) || 0;
-        updated.line_total = price * qty * (1 - discount / 100);
+        updated.line_total = price * qty;
+        
+        // Check if price was adjusted from original
+        if (field === 'unit_price') {
+          updated.price_adjusted = price !== updated.original_price;
+          if (!updated.price_adjusted) {
+            updated.price_approved = false; // Reset approval if back to original
+          }
+        }
       }
       
       return updated;
@@ -234,6 +253,13 @@ export default function OrderForm() {
       alert('Please add at least one product');
       return;
     }
+    
+    // Check for unapproved price adjustments
+    const unapprovedItems = orderItems.filter(item => item.price_adjusted && !item.price_approved);
+    if (unapprovedItems.length > 0) {
+      alert('Please confirm management approval for all price adjustments before saving.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -241,10 +267,10 @@ export default function OrderForm() {
         client_id: selectedClient.id,
         contract_start_date: contractStartDate,
         contract_end_date: contractEndDate,
-        term_months: parseInt(termMonths),
+        term_months: effectiveTermMonths,
         billing_frequency: billingFrequency,
-        payment_preference: paymentPreference,
         notes: orderNotes,
+        internal_notes: scheduleNotes ? `Schedule: ${scheduleNotes}` : '',
         items: orderItems.map(item => ({
           entity_id: item.entity_id,
           product_id: item.product_id,
@@ -252,9 +278,9 @@ export default function OrderForm() {
           product_category: item.product_category,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          discount_percent: item.discount_percent,
+          discount_percent: 0,
           line_total: item.line_total,
-          notes: item.notes,
+          notes: item.price_adjusted ? `Price adjusted from $${item.original_price} (approved)` : item.notes,
         })),
       };
 
@@ -278,6 +304,9 @@ export default function OrderForm() {
           setOrderItems([]);
           setContractStartDate('');
           setTermMonths(6);
+          setCustomTerm('');
+          setIsCustomTerm(false);
+          setScheduleNotes('');
           setOrderNotes('');
         }
       } else {
@@ -409,19 +438,49 @@ export default function OrderForm() {
                 />
               </div>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Term (Months) *</label>
-                <select
-                  value={termMonths}
-                  onChange={(e) => setTermMonths(e.target.value)}
-                  style={styles.select}
-                >
-                  <option value="1">1 Month</option>
-                  <option value="3">3 Months</option>
-                  <option value="6">6 Months</option>
-                  <option value="12">12 Months</option>
-                  <option value="13">13 Months</option>
-                  <option value="24">24 Months</option>
-                </select>
+                <label style={styles.label}>Term *</label>
+                {!isCustomTerm ? (
+                  <select
+                    value={termMonths}
+                    onChange={(e) => {
+                      if (e.target.value === 'other') {
+                        setIsCustomTerm(true);
+                        setCustomTerm('');
+                      } else {
+                        setTermMonths(e.target.value);
+                      }
+                    }}
+                    style={styles.select}
+                  >
+                    <option value="1">1 Month</option>
+                    <option value="3">3 Months</option>
+                    <option value="6">6 Months</option>
+                    <option value="12">12 Months</option>
+                    <option value="13">13 Months</option>
+                    <option value="24">24 Months</option>
+                    <option value="other">Other...</option>
+                  </select>
+                ) : (
+                  <div style={styles.customTermWrapper}>
+                    <input
+                      type="number"
+                      value={customTerm}
+                      onChange={(e) => setCustomTerm(e.target.value)}
+                      placeholder="# months"
+                      style={{ ...styles.input, flex: 1 }}
+                      min="1"
+                    />
+                    <button 
+                      onClick={() => {
+                        setIsCustomTerm(false);
+                        setTermMonths(6);
+                      }}
+                      style={styles.cancelCustomButton}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -450,16 +509,15 @@ export default function OrderForm() {
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>Payment Preference</label>
-              <select
-                value={paymentPreference}
-                onChange={(e) => setPaymentPreference(e.target.value)}
-                style={styles.select}
-              >
-                <option value="invoice">Invoice</option>
-                <option value="credit_card">Credit Card</option>
-                <option value="ach">ACH/Bank Transfer</option>
-              </select>
+              <label style={styles.label}>Schedule Notes (optional)</label>
+              <input
+                type="text"
+                value={scheduleNotes}
+                onChange={(e) => setScheduleNotes(e.target.value)}
+                placeholder="e.g., Every other month, specific issues, etc."
+                style={styles.input}
+              />
+              <div style={styles.fieldHint}>Use this for custom schedules like "6 issues, every other month"</div>
             </div>
           </div>
 
@@ -489,6 +547,9 @@ export default function OrderForm() {
                         <div style={styles.itemMeta}>
                           <span style={styles.itemEntity}>{item.entity_name}</span>
                           <span style={styles.itemCategory}>{item.category_name}</span>
+                          {item.original_price && (
+                            <span style={styles.itemBookValue}>Book: {formatCurrency(item.original_price)}</span>
+                          )}
                         </div>
                       </div>
                       <button onClick={() => removeOrderItem(item.id)} style={styles.removeButton}>
@@ -496,14 +557,17 @@ export default function OrderForm() {
                       </button>
                     </div>
                     
-                    <div style={styles.itemDetails}>
+                    <div style={styles.itemDetailsSimple}>
                       <div style={styles.itemField}>
                         <label>Price</label>
                         <input
                           type="number"
                           value={item.unit_price}
                           onChange={(e) => updateOrderItem(item.id, 'unit_price', e.target.value)}
-                          style={styles.itemInput}
+                          style={{
+                            ...styles.itemInput,
+                            ...(item.price_adjusted ? styles.itemInputAdjusted : {})
+                          }}
                         />
                       </div>
                       <div style={styles.itemField}>
@@ -516,22 +580,31 @@ export default function OrderForm() {
                           min="1"
                         />
                       </div>
-                      <div style={styles.itemField}>
-                        <label>Discount %</label>
-                        <input
-                          type="number"
-                          value={item.discount_percent}
-                          onChange={(e) => updateOrderItem(item.id, 'discount_percent', e.target.value)}
-                          style={styles.itemInput}
-                          min="0"
-                          max="100"
-                        />
-                      </div>
                       <div style={styles.itemTotal}>
                         <label>Line Total</label>
                         <span>{formatCurrency(item.line_total)}</span>
                       </div>
                     </div>
+                    
+                    {/* Price adjustment approval - only shows when price differs from book value */}
+                    {item.price_adjusted && (
+                      <div style={styles.priceApprovalBox}>
+                        <label style={styles.approvalLabel}>
+                          <input
+                            type="checkbox"
+                            checked={item.price_approved}
+                            onChange={(e) => updateOrderItem(item.id, 'price_approved', e.target.checked)}
+                            style={styles.approvalCheckbox}
+                          />
+                          <span>I have discussed this price adjustment with Management and received approval</span>
+                        </label>
+                        {!item.price_approved && (
+                          <div style={styles.approvalWarning}>
+                            ⚠️ Approval required before saving
+                          </div>
+                        )}
+                      </div>
+                    )}
                     
                     {item.setup_fee > 0 && (
                       <div style={styles.setupFee}>
@@ -569,7 +642,7 @@ export default function OrderForm() {
               </div>
               <div style={styles.summaryRow}>
                 <span>Contract Term</span>
-                <span>{termMonths} months</span>
+                <span>{effectiveTermMonths} months</span>
               </div>
               {totals.setupFees > 0 && (
                 <div style={styles.summaryRow}>
@@ -584,18 +657,30 @@ export default function OrderForm() {
               <span style={styles.totalValue}>{formatCurrency(totals.contractTotal)}</span>
             </div>
 
+            {totals.hasUnapprovedAdjustments && (
+              <div style={styles.summaryWarning}>
+                ⚠️ Price adjustments require approval before saving
+              </div>
+            )}
+
             <div style={styles.summaryActions}>
               <button
                 onClick={() => handleSaveOrder('draft')}
-                disabled={saving}
-                style={styles.saveButton}
+                disabled={saving || totals.hasUnapprovedAdjustments}
+                style={{
+                  ...styles.saveButton,
+                  ...(totals.hasUnapprovedAdjustments ? styles.buttonDisabled : {})
+                }}
               >
                 {saving ? 'Saving...' : 'Save as Draft'}
               </button>
               <button
                 onClick={() => handleSaveOrder('pending_approval')}
-                disabled={saving}
-                style={styles.submitButton}
+                disabled={saving || totals.hasUnapprovedAdjustments}
+                style={{
+                  ...styles.submitButton,
+                  ...(totals.hasUnapprovedAdjustments ? styles.buttonDisabled : {})
+                }}
               >
                 Submit for Approval
               </button>
@@ -1392,6 +1477,84 @@ const styles = {
     fontSize: '14px',
     fontWeight: '500',
     cursor: 'pointer',
+  },
+  // New styles for price adjustment and custom term
+  customTermWrapper: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+  },
+  cancelCustomButton: {
+    padding: '10px 14px',
+    backgroundColor: '#f1f5f9',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    fontSize: '13px',
+    color: '#64748b',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  fieldHint: {
+    fontSize: '12px',
+    color: '#94a3b8',
+    marginTop: '6px',
+    fontStyle: 'italic',
+  },
+  itemDetailsSimple: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 80px 1fr',
+    gap: '12px',
+    alignItems: 'end',
+  },
+  itemInputAdjusted: {
+    borderColor: '#f59e0b',
+    backgroundColor: '#fffbeb',
+  },
+  itemBookValue: {
+    fontSize: '11px',
+    padding: '2px 6px',
+    backgroundColor: '#f1f5f9',
+    color: '#64748b',
+    borderRadius: '4px',
+  },
+  priceApprovalBox: {
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#fffbeb',
+    border: '1px solid #fcd34d',
+    borderRadius: '8px',
+  },
+  approvalLabel: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '10px',
+    fontSize: '13px',
+    color: '#92400e',
+    cursor: 'pointer',
+  },
+  approvalCheckbox: {
+    marginTop: '2px',
+    width: '16px',
+    height: '16px',
+    cursor: 'pointer',
+  },
+  approvalWarning: {
+    marginTop: '8px',
+    fontSize: '12px',
+    color: '#dc2626',
+    fontWeight: '500',
+  },
+  summaryWarning: {
+    marginTop: '12px',
+    padding: '10px 12px',
+    backgroundColor: 'rgba(245, 158, 11, 0.2)',
+    borderRadius: '6px',
+    fontSize: '13px',
+    color: '#fbbf24',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
   },
 };
 
