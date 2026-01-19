@@ -11,6 +11,7 @@ import {
   Database, RefreshCw
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
+import OrderForm from './components/OrderForm';
 import { 
   ResponsiveContainer, 
   AreaChart as RechartsAreaChart, 
@@ -9847,6 +9848,7 @@ function App() {
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
+          <Route path="/orders/new" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           {/* Redirect old ID-based URLs to dashboard */}
           <Route path="/clients/:id" element={<Navigate to="/dashboard" replace />} />

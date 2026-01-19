@@ -17,6 +17,7 @@ const SimplifiClient = require('./simplifi-client');
 const { ReportCenterService } = require('./report-center-service');
 const { initializeDatabase, seedInitialData, DatabaseHelper } = require('./database');
 const adminRoutes = require('./routes/admin');
+const orderRoutes = require('./routes/order');
 
 // Initialize Express
 const app = express();
@@ -75,6 +76,9 @@ let reportCenterService = null;
 // Admin routes ready flag
 let adminRoutesReady = false;
 
+// Order routes ready flag
+let orderRoutesReady = false;
+
 // ============================================
 // PRODUCT MANAGEMENT ROUTES
 // ============================================
@@ -95,6 +99,11 @@ const setupAdminRoutes = () => {
   }
   adminRoutesReady = true;
   console.log('Admin routes initialized');
+  
+  // Initialize order routes with the same pool
+  orderRoutes.initPool(process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL);
+  orderRoutesReady = true;
+  console.log('Order routes initialized');
 };
 
 // ============================================
@@ -1773,6 +1782,17 @@ app.use('/api/admin', (req, res, next) => {
   req.dbPool = adminPool;
   next();
 }, adminRoutes);
+
+// ============================================
+// ORDER ROUTES
+// ============================================
+
+app.use('/api/orders', (req, res, next) => {
+  if (!orderRoutesReady) {
+    return res.status(503).json({ error: 'Order routes not yet initialized. Please wait...' });
+  }
+  next();
+}, orderRoutes);
 
 // ============================================
 // ERROR HANDLING
