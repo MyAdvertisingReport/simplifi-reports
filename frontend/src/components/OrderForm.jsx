@@ -821,7 +821,7 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
       icon: '📻',
       color: '#3b82f6',
       bgColor: '#eff6ff',
-      description: 'Radio, Podcast, Events & Web'
+      description: 'Radio, Podcast & Events'
     },
     lkn: {
       name: 'Lake Norman Woman',
@@ -829,6 +829,13 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
       color: '#ec4899',
       bgColor: '#fdf2f8',
       description: 'Print & Digital Advertising'
+    },
+    lwp: {
+      name: 'LiveWorkPlay LKN',
+      icon: '🌟',
+      color: '#10b981',
+      bgColor: '#ecfdf5',
+      description: 'Combined audience reach'
     }
   };
 
@@ -852,9 +859,11 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   // Get mediums available for selected brand
   const getMediumsForBrand = (brandCode) => {
     if (brandCode === 'wsic') {
-      return ['broadcast', 'podcast', 'web-social', 'events'];
+      return ['broadcast', 'podcast', 'events'];
     } else if (brandCode === 'lkn') {
       return ['programmatic', 'print'];
+    } else if (brandCode === 'lwp') {
+      return ['web-social'];
     }
     return [];
   };
@@ -875,6 +884,14 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   const getFilteredProducts = () => {
     if (!selectedBrand || !selectedMedium) return [];
     
+    // For LiveWorkPlay, show Web & Social products (they're under WSIC entity)
+    if (selectedBrand === 'lwp') {
+      return products.filter(p => {
+        const productMedium = categoryToMedium(p.category_name);
+        return productMedium === 'web-social';
+      });
+    }
+    
     return products.filter(p => {
       const productBrand = entityToBrand[p.entity_id];
       const productMedium = categoryToMedium(p.category_name);
@@ -882,9 +899,28 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
     });
   };
 
+  // Get product count for a brand/medium combination
+  const getProductCount = (brandCode, mediumCode) => {
+    if (brandCode === 'lwp') {
+      return products.filter(p => categoryToMedium(p.category_name) === 'web-social').length;
+    }
+    return products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productMedium = categoryToMedium(p.category_name);
+      return productBrand === brandCode && productMedium === mediumCode;
+    }).length;
+  };
+
   const handleBrandSelect = (brandCode) => {
     setSelectedBrand(brandCode);
-    setStep(2);
+    const mediums = getMediumsForBrand(brandCode);
+    // If only one medium, skip to products
+    if (mediums.length === 1) {
+      setSelectedMedium(mediums[0]);
+      setStep(3);
+    } else {
+      setStep(2);
+    }
   };
 
   const handleMediumSelect = (mediumCode) => {
@@ -894,8 +930,16 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
 
   const handleBack = () => {
     if (step === 3) {
-      setSelectedMedium(null);
-      setStep(2);
+      const mediums = getMediumsForBrand(selectedBrand);
+      if (mediums.length === 1) {
+        // Skip back to brand selection if only one medium
+        setSelectedMedium(null);
+        setSelectedBrand(null);
+        setStep(1);
+      } else {
+        setSelectedMedium(null);
+        setStep(2);
+      }
     } else if (step === 2) {
       setSelectedBrand(null);
       setStep(1);
@@ -962,11 +1006,7 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
           <div style={productSelectorStyles.optionsList}>
             {availableMediums.map(mediumCode => {
               const config = mediumConfig[mediumCode];
-              const productCount = products.filter(p => {
-                const productBrand = entityToBrand[p.entity_id];
-                const productMedium = categoryToMedium(p.category_name);
-                return productBrand === selectedBrand && productMedium === mediumCode;
-              }).length;
+              const productCount = getProductCount(selectedBrand, mediumCode);
 
               return (
                 <button
@@ -1031,26 +1071,26 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   );
 }
 
-// Product Selector Styles - Mobile Optimized
+// Product Selector Styles - Responsive (Mobile + Desktop)
 const productSelectorStyles = {
   overlay: {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
     display: 'flex',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     justifyContent: 'center',
-    padding: '0',
+    padding: '20px',
     zIndex: 1000,
   },
   modal: {
     backgroundColor: 'white',
-    borderRadius: '20px 20px 0 0',
+    borderRadius: '16px',
     width: '100%',
-    maxWidth: '500px',
-    maxHeight: '85vh',
+    maxWidth: '480px',
+    maxHeight: '80vh',
     overflow: 'hidden',
-    boxShadow: '0 -10px 40px rgba(0, 0, 0, 0.2)',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
     display: 'flex',
     flexDirection: 'column',
   },
@@ -1150,7 +1190,7 @@ const productSelectorStyles = {
     flexDirection: 'column',
     gap: '8px',
     overflowY: 'auto',
-    maxHeight: 'calc(85vh - 80px)',
+    flex: 1,
   },
   productCard: {
     display: 'flex',
