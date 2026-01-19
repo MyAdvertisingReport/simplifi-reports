@@ -1280,18 +1280,22 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
   // Initialize contacts from client data
   const [contacts, setContacts] = useState(() => {
     if (client?.contacts && Array.isArray(client.contacts)) {
-      return client.contacts;
+      // Map legacy 'primary' type to 'owner'
+      return client.contacts.map(c => ({
+        ...c,
+        contact_type: c.contact_type === 'primary' ? 'owner' : (c.contact_type || 'other')
+      }));
     }
     // Legacy single contact support
     if (client?.contact_first_name || client?.contact_last_name) {
       return [{
-        id: 'primary',
+        id: 'legacy_primary',
         first_name: client.contact_first_name || '',
         last_name: client.contact_last_name || '',
         email: client.contact_email || '',
         phone: client.contact_phone || '',
         title: client.contact_title || '',
-        contact_type: 'primary',
+        contact_type: 'owner',
         is_primary: true
       }];
     }
@@ -1443,7 +1447,12 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
   };
 
   const getContactTypeInfo = (type) => {
-    return contactTypes.find(t => t.value === type) || contactTypes[4];
+    // Handle legacy 'primary' type - map to 'owner'
+    if (type === 'primary') {
+      return contactTypes.find(t => t.value === 'owner');
+    }
+    // Find matching type or default to 'other' (last in array)
+    return contactTypes.find(t => t.value === type) || contactTypes[contactTypes.length - 1];
   };
 
   // Contact Form Sub-modal
