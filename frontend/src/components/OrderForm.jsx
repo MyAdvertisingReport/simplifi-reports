@@ -1262,33 +1262,133 @@ const productSelectorStyles = {
   },
 };
 
-// Client Modal Component (Create or Edit)
+// Client Modal Component (Create or Edit) - Multi-Contact Support
 function ClientModal({ client, onSave, onClose, isEdit = false }) {
   const API_BASE = import.meta.env.VITE_API_URL || '';
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('details'); // 'details' or 'contacts'
+  const [editingContact, setEditingContact] = useState(null);
+  const [showContactForm, setShowContactForm] = useState(false);
+  
   const [formData, setFormData] = useState({
     business_name: client?.business_name || '',
     industry: client?.industry || '',
     website: client?.website || '',
     status: client?.status || 'prospect',
-    contact_first_name: client?.contact_first_name || '',
-    contact_last_name: client?.contact_last_name || '',
-    contact_email: client?.contact_email || '',
-    contact_phone: client?.contact_phone || '',
-    contact_title: client?.contact_title || '',
   });
+
+  // Initialize contacts from client data
+  const [contacts, setContacts] = useState(() => {
+    if (client?.contacts && Array.isArray(client.contacts)) {
+      return client.contacts;
+    }
+    // Legacy single contact support
+    if (client?.contact_first_name || client?.contact_last_name) {
+      return [{
+        id: 'primary',
+        first_name: client.contact_first_name || '',
+        last_name: client.contact_last_name || '',
+        email: client.contact_email || '',
+        phone: client.contact_phone || '',
+        title: client.contact_title || '',
+        contact_type: 'primary',
+        is_primary: true
+      }];
+    }
+    return [];
+  });
+
+  // Contact types
+  const contactTypes = [
+    { value: 'primary', label: 'Primary Contact', icon: '⭐' },
+    { value: 'billing', label: 'Billing Contact', icon: '💰' },
+    { value: 'marketing', label: 'Marketing/Branding', icon: '📢' },
+    { value: 'owner', label: 'Owner/Decision Maker', icon: '👔' },
+    { value: 'other', label: 'Other', icon: '👤' }
+  ];
+
+  // Empty contact template
+  const emptyContact = {
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    title: '',
+    contact_type: 'other',
+    is_primary: false
+  };
 
   // Auto-format website URL
   const formatWebsite = (url) => {
     if (!url) return '';
     url = url.trim();
-    // If it doesn't start with http:// or https://, add https://
     if (url && !url.match(/^https?:\/\//i)) {
-      // Remove www. if present at start, we'll standardize
       url = url.replace(/^www\./i, '');
       url = 'https://' + url;
     }
     return url;
+  };
+
+  const handleAddContact = () => {
+    setEditingContact({ ...emptyContact, id: `new_${Date.now()}` });
+    setShowContactForm(true);
+  };
+
+  const handleEditContact = (contact) => {
+    setEditingContact({ ...contact });
+    setShowContactForm(true);
+  };
+
+  const handleSaveContact = () => {
+    if (!editingContact.first_name && !editingContact.last_name) {
+      alert('Please enter at least a first or last name');
+      return;
+    }
+
+    // If this contact is set as primary, remove primary from others
+    let updatedContacts = [...contacts];
+    if (editingContact.contact_type === 'primary') {
+      updatedContacts = updatedContacts.map(c => ({
+        ...c,
+        contact_type: c.contact_type === 'primary' ? 'other' : c.contact_type,
+        is_primary: false
+      }));
+      editingContact.is_primary = true;
+    }
+
+    // Find if editing existing or adding new
+    const existingIndex = updatedContacts.findIndex(c => c.id === editingContact.id);
+    if (existingIndex >= 0) {
+      updatedContacts[existingIndex] = editingContact;
+    } else {
+      updatedContacts.push(editingContact);
+    }
+
+    // Ensure at least one primary contact
+    const hasPrimary = updatedContacts.some(c => c.contact_type === 'primary' || c.is_primary);
+    if (!hasPrimary && updatedContacts.length > 0) {
+      updatedContacts[0].contact_type = 'primary';
+      updatedContacts[0].is_primary = true;
+    }
+
+    setContacts(updatedContacts);
+    setShowContactForm(false);
+    setEditingContact(null);
+  };
+
+  const handleRemoveContact = (contactId) => {
+    if (contacts.length <= 1) {
+      alert('Client must have at least one contact');
+      return;
+    }
+    const updatedContacts = contacts.filter(c => c.id !== contactId);
+    // Ensure we still have a primary
+    const hasPrimary = updatedContacts.some(c => c.contact_type === 'primary' || c.is_primary);
+    if (!hasPrimary && updatedContacts.length > 0) {
+      updatedContacts[0].contact_type = 'primary';
+      updatedContacts[0].is_primary = true;
+    }
+    setContacts(updatedContacts);
   };
 
   const handleSubmit = async (e) => {
@@ -1301,13 +1401,23 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
     // Format website before saving
     const dataToSave = {
       ...formData,
-      website: formatWebsite(formData.website)
+      website: formatWebsite(formData.website),
+      contacts: contacts
     };
+
+    // For backward compatibility, also include primary contact fields
+    const primaryContact = contacts.find(c => c.contact_type === 'primary' || c.is_primary) || contacts[0];
+    if (primaryContact) {
+      dataToSave.contact_first_name = primaryContact.first_name;
+      dataToSave.contact_last_name = primaryContact.last_name;
+      dataToSave.contact_email = primaryContact.email;
+      dataToSave.contact_phone = primaryContact.phone;
+      dataToSave.contact_title = primaryContact.title;
+    }
     
     setSaving(true);
     try {
       if (isEdit && client?.id) {
-        // Update existing client
         const response = await fetch(`${API_BASE}/api/orders/clients/${client.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -1315,12 +1425,11 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
         });
         if (response.ok) {
           const updatedClient = await response.json();
-          onSave(updatedClient, true); // true = isUpdate
+          onSave({ ...updatedClient, contacts }, true);
         } else {
           throw new Error('Failed to update client');
         }
       } else {
-        // Create new client
         onSave(dataToSave, false);
       }
     } catch (error) {
@@ -1331,62 +1440,47 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
     }
   };
 
-  return (
-    <div style={styles.modalOverlay} onClick={onClose}>
-      <div style={styles.modal} onClick={e => e.stopPropagation()}>
-        <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>{isEdit ? 'Edit Client' : 'New Client'}</h2>
-          <button onClick={onClose} style={styles.closeButton}>
-            <Icons.X />
-          </button>
-        </div>
-        
-        <form onSubmit={handleSubmit}>
+  const getContactTypeInfo = (type) => {
+    return contactTypes.find(t => t.value === type) || contactTypes[4];
+  };
+
+  // Contact Form Sub-modal
+  if (showContactForm && editingContact) {
+    return (
+      <div style={styles.modalOverlay} onClick={() => setShowContactForm(false)}>
+        <div style={{ ...styles.modal, maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+          <div style={styles.modalHeader}>
+            <h2 style={styles.modalTitle}>
+              {editingContact.id?.startsWith('new_') ? 'Add Contact' : 'Edit Contact'}
+            </h2>
+            <button onClick={() => setShowContactForm(false)} style={styles.closeButton}>
+              <Icons.X />
+            </button>
+          </div>
+          
           <div style={styles.modalBody}>
             <div style={styles.formGroup}>
-              <label style={styles.label}>Business Name *</label>
-              <input
-                type="text"
-                value={formData.business_name}
-                onChange={(e) => setFormData({...formData, business_name: e.target.value})}
-                style={styles.input}
-                required
-              />
+              <label style={styles.label}>Contact Type</label>
+              <select
+                value={editingContact.contact_type}
+                onChange={(e) => setEditingContact({...editingContact, contact_type: e.target.value})}
+                style={styles.select}
+              >
+                {contactTypes.map(type => (
+                  <option key={type.value} value={type.value}>
+                    {type.icon} {type.label}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div style={styles.formRow}>
               <div style={styles.formGroup}>
-                <label style={styles.label}>Industry</label>
+                <label style={styles.label}>First Name *</label>
                 <input
                   type="text"
-                  value={formData.industry}
-                  onChange={(e) => setFormData({...formData, industry: e.target.value})}
-                  style={styles.input}
-                  placeholder="e.g., Healthcare, Restaurant"
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Website</label>
-                <input
-                  type="text"
-                  value={formData.website}
-                  onChange={(e) => setFormData({...formData, website: e.target.value})}
-                  style={styles.input}
-                  placeholder="example.com"
-                />
-                <div style={styles.fieldHint}>https:// will be added automatically</div>
-              </div>
-            </div>
-
-            <h3 style={styles.sectionTitle}>Primary Contact</h3>
-
-            <div style={styles.formRow}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>First Name</label>
-                <input
-                  type="text"
-                  value={formData.contact_first_name}
-                  onChange={(e) => setFormData({...formData, contact_first_name: e.target.value})}
+                  value={editingContact.first_name}
+                  onChange={(e) => setEditingContact({...editingContact, first_name: e.target.value})}
                   style={styles.input}
                 />
               </div>
@@ -1394,8 +1488,8 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                 <label style={styles.label}>Last Name</label>
                 <input
                   type="text"
-                  value={formData.contact_last_name}
-                  onChange={(e) => setFormData({...formData, contact_last_name: e.target.value})}
+                  value={editingContact.last_name}
+                  onChange={(e) => setEditingContact({...editingContact, last_name: e.target.value})}
                   style={styles.input}
                 />
               </div>
@@ -1406,8 +1500,8 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                 <label style={styles.label}>Email</label>
                 <input
                   type="email"
-                  value={formData.contact_email}
-                  onChange={(e) => setFormData({...formData, contact_email: e.target.value})}
+                  value={editingContact.email}
+                  onChange={(e) => setEditingContact({...editingContact, email: e.target.value})}
                   style={styles.input}
                 />
               </div>
@@ -1415,23 +1509,222 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                 <label style={styles.label}>Phone</label>
                 <input
                   type="tel"
-                  value={formData.contact_phone}
-                  onChange={(e) => setFormData({...formData, contact_phone: e.target.value})}
+                  value={editingContact.phone}
+                  onChange={(e) => setEditingContact({...editingContact, phone: e.target.value})}
                   style={styles.input}
                 />
               </div>
             </div>
 
             <div style={styles.formGroup}>
-              <label style={styles.label}>Title</label>
+              <label style={styles.label}>Job Title</label>
               <input
                 type="text"
-                value={formData.contact_title}
-                onChange={(e) => setFormData({...formData, contact_title: e.target.value})}
+                value={editingContact.title}
+                onChange={(e) => setEditingContact({...editingContact, title: e.target.value})}
                 style={styles.input}
-                placeholder="e.g., Owner, Marketing Director"
+                placeholder="e.g., Owner, Marketing Director, Accountant"
               />
             </div>
+          </div>
+
+          <div style={styles.modalFooter}>
+            <button type="button" onClick={() => setShowContactForm(false)} style={styles.secondaryButton}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleSaveContact} style={styles.primaryButton}>
+              {editingContact.id?.startsWith('new_') ? 'Add Contact' : 'Save Contact'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, maxWidth: '600px' }} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>{isEdit ? 'Edit Client' : 'New Client'}</h2>
+          <button onClick={onClose} style={styles.closeButton}>
+            <Icons.X />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div style={clientModalStyles.tabs}>
+          <button
+            onClick={() => setActiveTab('details')}
+            style={{
+              ...clientModalStyles.tab,
+              ...(activeTab === 'details' ? clientModalStyles.tabActive : {})
+            }}
+          >
+            Business Details
+          </button>
+          <button
+            onClick={() => setActiveTab('contacts')}
+            style={{
+              ...clientModalStyles.tab,
+              ...(activeTab === 'contacts' ? clientModalStyles.tabActive : {})
+            }}
+          >
+            Contacts ({contacts.length})
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit}>
+          <div style={styles.modalBody}>
+            {/* Business Details Tab */}
+            {activeTab === 'details' && (
+              <>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Business Name *</label>
+                  <input
+                    type="text"
+                    value={formData.business_name}
+                    onChange={(e) => setFormData({...formData, business_name: e.target.value})}
+                    style={styles.input}
+                    required
+                  />
+                </div>
+
+                <div style={styles.formRow}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Industry</label>
+                    <input
+                      type="text"
+                      value={formData.industry}
+                      onChange={(e) => setFormData({...formData, industry: e.target.value})}
+                      style={styles.input}
+                      placeholder="e.g., Healthcare, Restaurant"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Website</label>
+                    <input
+                      type="text"
+                      value={formData.website}
+                      onChange={(e) => setFormData({...formData, website: e.target.value})}
+                      style={styles.input}
+                      placeholder="example.com"
+                    />
+                    <div style={styles.fieldHint}>https:// will be added automatically</div>
+                  </div>
+                </div>
+
+                {/* Quick contact summary */}
+                {contacts.length > 0 && (
+                  <div style={clientModalStyles.contactSummary}>
+                    <div style={clientModalStyles.contactSummaryHeader}>
+                      <span style={clientModalStyles.contactSummaryTitle}>
+                        {contacts.length} Contact{contacts.length !== 1 ? 's' : ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('contacts')}
+                        style={clientModalStyles.manageLink}
+                      >
+                        Manage →
+                      </button>
+                    </div>
+                    {contacts.slice(0, 2).map(contact => {
+                      const typeInfo = getContactTypeInfo(contact.contact_type);
+                      return (
+                        <div key={contact.id} style={clientModalStyles.contactMini}>
+                          <span>{typeInfo.icon}</span>
+                          <span>{contact.first_name} {contact.last_name}</span>
+                          {contact.email && <span style={{ color: '#64748b' }}>• {contact.email}</span>}
+                        </div>
+                      );
+                    })}
+                    {contacts.length > 2 && (
+                      <div style={{ fontSize: '13px', color: '#64748b' }}>
+                        +{contacts.length - 2} more
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Contacts Tab */}
+            {activeTab === 'contacts' && (
+              <>
+                <div style={clientModalStyles.contactsHeader}>
+                  <span style={{ fontWeight: '600', color: '#1e293b' }}>
+                    Client Contacts
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleAddContact}
+                    style={clientModalStyles.addContactButton}
+                  >
+                    + Add Contact
+                  </button>
+                </div>
+
+                {contacts.length === 0 ? (
+                  <div style={clientModalStyles.emptyContacts}>
+                    <p>No contacts added yet</p>
+                    <button
+                      type="button"
+                      onClick={handleAddContact}
+                      style={clientModalStyles.addFirstButton}
+                    >
+                      + Add First Contact
+                    </button>
+                  </div>
+                ) : (
+                  <div style={clientModalStyles.contactsList}>
+                    {contacts.map(contact => {
+                      const typeInfo = getContactTypeInfo(contact.contact_type);
+                      return (
+                        <div key={contact.id} style={clientModalStyles.contactCard}>
+                          <div style={clientModalStyles.contactIcon}>
+                            {typeInfo.icon}
+                          </div>
+                          <div style={clientModalStyles.contactInfo}>
+                            <div style={clientModalStyles.contactName}>
+                              {contact.first_name} {contact.last_name}
+                              {contact.contact_type === 'primary' && (
+                                <span style={clientModalStyles.primaryBadge}>Primary</span>
+                              )}
+                            </div>
+                            <div style={clientModalStyles.contactType}>{typeInfo.label}</div>
+                            {contact.title && (
+                              <div style={clientModalStyles.contactDetail}>{contact.title}</div>
+                            )}
+                            {contact.email && (
+                              <div style={clientModalStyles.contactDetail}>📧 {contact.email}</div>
+                            )}
+                            {contact.phone && (
+                              <div style={clientModalStyles.contactDetail}>📱 {contact.phone}</div>
+                            )}
+                          </div>
+                          <div style={clientModalStyles.contactActions}>
+                            <button
+                              type="button"
+                              onClick={() => handleEditContact(contact)}
+                              style={clientModalStyles.contactActionBtn}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveContact(contact.id)}
+                              style={{ ...clientModalStyles.contactActionBtn, color: '#ef4444' }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div style={styles.modalFooter}>
@@ -1445,6 +1738,164 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
     </div>
   );
 }
+
+// Client Modal specific styles
+const clientModalStyles = {
+  tabs: {
+    display: 'flex',
+    borderBottom: '1px solid #e2e8f0',
+    padding: '0 24px',
+  },
+  tab: {
+    padding: '12px 16px',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderBottom: '2px solid transparent',
+    fontSize: '14px',
+    fontWeight: '500',
+    color: '#64748b',
+    cursor: 'pointer',
+    marginBottom: '-1px',
+  },
+  tabActive: {
+    color: '#3b82f6',
+    borderBottomColor: '#3b82f6',
+  },
+  contactSummary: {
+    marginTop: '20px',
+    padding: '16px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+  },
+  contactSummaryHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '12px',
+  },
+  contactSummaryTitle: {
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  manageLink: {
+    backgroundColor: 'transparent',
+    border: 'none',
+    color: '#3b82f6',
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  contactMini: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '13px',
+    color: '#374151',
+    marginBottom: '4px',
+  },
+  contactsHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '16px',
+  },
+  addContactButton: {
+    padding: '8px 14px',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  emptyContacts: {
+    textAlign: 'center',
+    padding: '40px 20px',
+    color: '#64748b',
+  },
+  addFirstButton: {
+    marginTop: '12px',
+    padding: '10px 20px',
+    backgroundColor: '#f8fafc',
+    border: '1px dashed #cbd5e1',
+    borderRadius: '8px',
+    color: '#64748b',
+    fontSize: '14px',
+    cursor: 'pointer',
+  },
+  contactsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  contactCard: {
+    display: 'flex',
+    gap: '12px',
+    padding: '16px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '10px',
+    border: '1px solid #e2e8f0',
+  },
+  contactIcon: {
+    fontSize: '24px',
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+  },
+  contactInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  contactName: {
+    fontSize: '15px',
+    fontWeight: '600',
+    color: '#1e293b',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  primaryBadge: {
+    fontSize: '10px',
+    fontWeight: '600',
+    padding: '2px 6px',
+    backgroundColor: '#dbeafe',
+    color: '#1e40af',
+    borderRadius: '4px',
+    textTransform: 'uppercase',
+  },
+  contactType: {
+    fontSize: '12px',
+    color: '#64748b',
+    marginTop: '2px',
+  },
+  contactDetail: {
+    fontSize: '13px',
+    color: '#374151',
+    marginTop: '4px',
+  },
+  contactActions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
+  },
+  contactActionBtn: {
+    padding: '6px 10px',
+    backgroundColor: 'white',
+    border: '1px solid #e2e8f0',
+    borderRadius: '4px',
+    fontSize: '12px',
+    color: '#64748b',
+    cursor: 'pointer',
+  },
+};
 
 // Styles
 const styles = {

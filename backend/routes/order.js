@@ -120,11 +120,11 @@ router.get('/clients/:id', async (req, res) => {
   }
 });
 
-// POST /api/orders/clients - Create new client with primary contact
+// POST /api/orders/clients - Create new client with contacts
 router.post('/clients', async (req, res) => {
-  const client = await pool.connect();
+  const dbClient = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await dbClient.query('BEGIN');
     
     const {
       business_name,
@@ -132,6 +132,8 @@ router.post('/clients', async (req, res) => {
       website,
       status = 'prospect',
       notes,
+      contacts,
+      // Legacy single contact fields
       contact_first_name,
       contact_last_name,
       contact_email,
@@ -146,7 +148,7 @@ router.post('/clients', async (req, res) => {
       .replace(/^-|-$/g, '');
 
     // Create client
-    const clientResult = await client.query(
+    const clientResult = await dbClient.query(
       `INSERT INTO advertising_clients (id, business_name, slug, industry, website, status, notes, created_at, updated_at)
        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW())
        RETURNING *`,
@@ -154,31 +156,53 @@ router.post('/clients', async (req, res) => {
     );
 
     const newClient = clientResult.rows[0];
+    const createdContacts = [];
 
-    // Create primary contact if provided
-    let contact = null;
-    if (contact_first_name && contact_last_name) {
-      const contactResult = await client.query(
-        `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, is_primary, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, NOW(), NOW())
+    // Handle multiple contacts if provided
+    if (contacts && Array.isArray(contacts) && contacts.length > 0) {
+      for (const contact of contacts) {
+        if (contact.first_name || contact.last_name) {
+          const isPrimary = contact.contact_type === 'primary' || contact.is_primary;
+          const contactResult = await dbClient.query(
+            `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, contact_type, is_primary, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+             RETURNING *`,
+            [newClient.id, contact.first_name, contact.last_name, contact.email, contact.phone, 
+             contact.title, contact.contact_type || 'other', isPrimary]
+          );
+          createdContacts.push(contactResult.rows[0]);
+        }
+      }
+    } else if (contact_first_name || contact_last_name) {
+      // Legacy: Create single primary contact
+      const contactResult = await dbClient.query(
+        `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, contact_type, is_primary, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'primary', true, NOW(), NOW())
          RETURNING *`,
         [newClient.id, contact_first_name, contact_last_name, contact_email, contact_phone, contact_title]
       );
-      contact = contactResult.rows[0];
+      createdContacts.push(contactResult.rows[0]);
     }
 
-    await client.query('COMMIT');
+    await dbClient.query('COMMIT');
 
+    // Return with legacy fields for compatibility
+    const primaryContact = createdContacts.find(c => c.is_primary) || createdContacts[0];
     res.status(201).json({
       ...newClient,
-      contacts: contact ? [contact] : []
+      contacts: createdContacts,
+      contact_first_name: primaryContact?.first_name,
+      contact_last_name: primaryContact?.last_name,
+      contact_email: primaryContact?.email,
+      contact_phone: primaryContact?.phone,
+      contact_title: primaryContact?.title
     });
   } catch (error) {
-    await client.query('ROLLBACK');
+    await dbClient.query('ROLLBACK');
     console.error('Error creating client:', error);
     res.status(500).json({ error: 'Failed to create client' });
   } finally {
-    client.release();
+    dbClient.release();
   }
 });
 
@@ -250,7 +274,7 @@ router.post('/clients/import', async (req, res) => {
   }
 });
 
-// PUT /api/orders/clients/:id - Update client with primary contact
+// PUT /api/orders/clients/:id - Update client with multiple contacts
 router.put('/clients/:id', async (req, res) => {
   const dbClient = await pool.connect();
   try {
@@ -263,6 +287,8 @@ router.put('/clients/:id', async (req, res) => {
       website,
       status,
       notes,
+      contacts,
+      // Legacy single contact fields (for backward compatibility)
       contact_first_name,
       contact_last_name,
       contact_email,
@@ -291,44 +317,106 @@ router.put('/clients/:id', async (req, res) => {
 
     const updatedClient = clientResult.rows[0];
 
-    // Check if primary contact exists
-    const existingContact = await dbClient.query(
-      'SELECT id FROM contacts WHERE client_id = $1 AND is_primary = true',
-      [id]
-    );
+    // Handle multiple contacts if provided
+    if (contacts && Array.isArray(contacts)) {
+      // Get existing contact IDs
+      const existingContacts = await dbClient.query(
+        'SELECT id FROM contacts WHERE client_id = $1',
+        [id]
+      );
+      const existingIds = existingContacts.rows.map(c => c.id);
+      
+      // Process each contact
+      for (const contact of contacts) {
+        const isPrimary = contact.contact_type === 'primary' || contact.is_primary;
+        
+        // Check if this is an existing contact (has valid UUID id)
+        const isExisting = contact.id && !contact.id.startsWith('new_') && existingIds.includes(contact.id);
+        
+        if (isExisting) {
+          // Update existing contact
+          await dbClient.query(
+            `UPDATE contacts 
+             SET first_name = $1,
+                 last_name = $2,
+                 email = $3,
+                 phone = $4,
+                 title = $5,
+                 contact_type = $6,
+                 is_primary = $7,
+                 updated_at = NOW()
+             WHERE id = $8`,
+            [contact.first_name, contact.last_name, contact.email, contact.phone, 
+             contact.title, contact.contact_type, isPrimary, contact.id]
+          );
+        } else if (contact.first_name || contact.last_name) {
+          // Create new contact
+          await dbClient.query(
+            `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, contact_type, is_primary, created_at, updated_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+            [id, contact.first_name, contact.last_name, contact.email, contact.phone,
+             contact.title, contact.contact_type || 'other', isPrimary]
+          );
+        }
+      }
+      
+      // Remove contacts that are no longer in the list
+      const newContactIds = contacts
+        .filter(c => c.id && !c.id.startsWith('new_'))
+        .map(c => c.id);
+      
+      for (const existingId of existingIds) {
+        if (!newContactIds.includes(existingId)) {
+          await dbClient.query('DELETE FROM contacts WHERE id = $1', [existingId]);
+        }
+      }
+    } else if (contact_first_name || contact_last_name) {
+      // Legacy: Handle single contact update
+      const existingContact = await dbClient.query(
+        'SELECT id FROM contacts WHERE client_id = $1 AND is_primary = true',
+        [id]
+      );
 
-    if (existingContact.rows.length > 0) {
-      // Update existing primary contact
-      await dbClient.query(
-        `UPDATE contacts 
-         SET first_name = $1,
-             last_name = $2,
-             email = $3,
-             phone = $4,
-             title = $5,
-             updated_at = NOW()
-         WHERE client_id = $6 AND is_primary = true`,
-        [contact_first_name, contact_last_name, contact_email, contact_phone, contact_title, id]
-      );
-    } else if (contact_first_name && contact_last_name) {
-      // Create new primary contact if details provided
-      await dbClient.query(
-        `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, is_primary, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, NOW(), NOW())`,
-        [id, contact_first_name, contact_last_name, contact_email, contact_phone, contact_title]
-      );
+      if (existingContact.rows.length > 0) {
+        await dbClient.query(
+          `UPDATE contacts 
+           SET first_name = $1,
+               last_name = $2,
+               email = $3,
+               phone = $4,
+               title = $5,
+               updated_at = NOW()
+           WHERE client_id = $6 AND is_primary = true`,
+          [contact_first_name, contact_last_name, contact_email, contact_phone, contact_title, id]
+        );
+      } else {
+        await dbClient.query(
+          `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, is_primary, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, true, NOW(), NOW())`,
+          [id, contact_first_name, contact_last_name, contact_email, contact_phone, contact_title]
+        );
+      }
     }
 
     await dbClient.query('COMMIT');
 
+    // Fetch all contacts for response
+    const allContacts = await pool.query(
+      'SELECT * FROM contacts WHERE client_id = $1 ORDER BY is_primary DESC, created_at',
+      [id]
+    );
+
     // Return combined result
+    const primaryContact = allContacts.rows.find(c => c.is_primary) || allContacts.rows[0];
     res.json({
       ...updatedClient,
-      contact_first_name,
-      contact_last_name,
-      contact_email,
-      contact_phone,
-      contact_title
+      contacts: allContacts.rows,
+      // Legacy fields for backward compatibility
+      contact_first_name: primaryContact?.first_name,
+      contact_last_name: primaryContact?.last_name,
+      contact_email: primaryContact?.email,
+      contact_phone: primaryContact?.phone,
+      contact_title: primaryContact?.title
     });
   } catch (error) {
     await dbClient.query('ROLLBACK');
