@@ -16,6 +16,7 @@ const fs = require('fs');
 const SimplifiClient = require('./simplifi-client');
 const { ReportCenterService } = require('./report-center-service');
 const { initializeDatabase, seedInitialData, DatabaseHelper } = require('./database');
+const adminRoutes = require('./routes/admin');
 
 // Initialize Express
 const app = express();
@@ -70,6 +71,28 @@ let simplifiClient = null;
 
 // Initialize Report Center service
 let reportCenterService = null;
+
+// ============================================
+// PRODUCT MANAGEMENT ROUTES
+// ============================================
+const { Pool } = require('pg');
+let adminPool = null;
+
+const setupAdminRoutes = () => {
+  if (!adminPool) {
+    adminPool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    });
+  }
+  
+  app.use('/api/admin', (req, res, next) => {
+    req.dbPool = adminPool;
+    next();
+  }, adminRoutes);
+  
+  console.log('Admin routes initialized');
+};
 
 // ============================================
 // HEALTH CHECK ENDPOINTS (for deployment)
@@ -1777,6 +1800,9 @@ async function startServer() {
     // Initialize Report Center service
     reportCenterService = new ReportCenterService(simplifiClient);
     console.log('Report Center service initialized');
+
+    // Setup admin routes for product management
+    setupAdminRoutes();
 
     // Start server
     app.listen(PORT, () => {

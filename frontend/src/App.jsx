@@ -10,6 +10,7 @@ import {
   TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List,
   Database, RefreshCw
 } from 'lucide-react';
+import ProductManagement from './components/ProductManagement';
 import { 
   ResponsiveContainer, 
   AreaChart as RechartsAreaChart, 
@@ -9845,6 +9846,7 @@ function App() {
           <Route path="/client/:slug/campaign/:campaignId" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           {/* Redirect old ID-based URLs to dashboard */}
           <Route path="/clients/:id" element={<Navigate to="/dashboard" replace />} />
