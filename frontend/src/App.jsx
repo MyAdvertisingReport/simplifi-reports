@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
 import OrderForm from './components/OrderForm';
+import OrderList from './components/OrderList';
 import { 
   ResponsiveContainer, 
   AreaChart as RechartsAreaChart, 
@@ -9848,7 +9849,9 @@ function App() {
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
+          <Route path="/orders" element={<ProtectedRoute><OrderList /></ProtectedRoute>} />
           <Route path="/orders/new" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
+          <Route path="/orders/:id/edit" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           {/* Redirect old ID-based URLs to dashboard */}
           <Route path="/clients/:id" element={<Navigate to="/dashboard" replace />} />
