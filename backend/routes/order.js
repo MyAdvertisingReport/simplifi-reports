@@ -162,7 +162,7 @@ router.post('/clients', async (req, res) => {
     if (contacts && Array.isArray(contacts) && contacts.length > 0) {
       for (const contact of contacts) {
         if (contact.first_name || contact.last_name) {
-          const isPrimary = contact.contact_type === 'primary' || contact.is_primary;
+          const isPrimary = contact.contact_type === 'owner' || contact.is_primary;
           const contactResult = await dbClient.query(
             `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, contact_type, is_primary, created_at, updated_at)
              VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
@@ -174,10 +174,10 @@ router.post('/clients', async (req, res) => {
         }
       }
     } else if (contact_first_name || contact_last_name) {
-      // Legacy: Create single primary contact
+      // Legacy: Create single owner/primary contact
       const contactResult = await dbClient.query(
         `INSERT INTO contacts (id, client_id, first_name, last_name, email, phone, title, contact_type, is_primary, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'primary', true, NOW(), NOW())
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 'owner', true, NOW(), NOW())
          RETURNING *`,
         [newClient.id, contact_first_name, contact_last_name, contact_email, contact_phone, contact_title]
       );
@@ -328,7 +328,7 @@ router.put('/clients/:id', async (req, res) => {
       
       // Process each contact
       for (const contact of contacts) {
-        const isPrimary = contact.contact_type === 'primary' || contact.is_primary;
+        const isPrimary = contact.contact_type === 'owner' || contact.is_primary;
         
         // Check if this is an existing contact (has valid UUID id)
         const isExisting = contact.id && !contact.id.startsWith('new_') && existingIds.includes(contact.id);

@@ -1298,12 +1298,11 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
     return [];
   });
 
-  // Contact types
+  // Contact types (Owner is the primary/main contact)
   const contactTypes = [
-    { value: 'primary', label: 'Primary Contact', icon: '⭐' },
+    { value: 'owner', label: 'Owner/Decision Maker', icon: '👔' },
     { value: 'billing', label: 'Billing Contact', icon: '💰' },
     { value: 'marketing', label: 'Marketing/Branding', icon: '📢' },
-    { value: 'owner', label: 'Owner/Decision Maker', icon: '👔' },
     { value: 'other', label: 'Other', icon: '👤' }
   ];
 
@@ -1314,7 +1313,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
     email: '',
     phone: '',
     title: '',
-    contact_type: 'other',
+    contact_type: '',
     is_primary: false
   };
 
@@ -1344,13 +1343,16 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
       alert('Please enter at least a first or last name');
       return;
     }
+    if (!editingContact.contact_type) {
+      alert('Please select a contact type');
+      return;
+    }
 
-    // If this contact is set as primary, remove primary from others
+    // If this contact is set as owner, make them the primary contact
     let updatedContacts = [...contacts];
-    if (editingContact.contact_type === 'primary') {
+    if (editingContact.contact_type === 'owner') {
       updatedContacts = updatedContacts.map(c => ({
         ...c,
-        contact_type: c.contact_type === 'primary' ? 'other' : c.contact_type,
         is_primary: false
       }));
       editingContact.is_primary = true;
@@ -1364,8 +1366,8 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
       updatedContacts.push(editingContact);
     }
 
-    // Ensure at least one primary contact
-    const hasPrimary = updatedContacts.some(c => c.contact_type === 'primary' || c.is_primary);
+    // Ensure at least one primary contact (prefer owner type)
+    const hasPrimary = updatedContacts.some(c => c.contact_type === 'owner' || c.is_primary);
     if (!hasPrimary && updatedContacts.length > 0) {
       updatedContacts[0].contact_type = 'primary';
       updatedContacts[0].is_primary = true;
@@ -1382,8 +1384,8 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
       return;
     }
     const updatedContacts = contacts.filter(c => c.id !== contactId);
-    // Ensure we still have a primary
-    const hasPrimary = updatedContacts.some(c => c.contact_type === 'primary' || c.is_primary);
+    // Ensure we still have a primary (prefer owner type)
+    const hasPrimary = updatedContacts.some(c => c.contact_type === 'owner' || c.is_primary);
     if (!hasPrimary && updatedContacts.length > 0) {
       updatedContacts[0].contact_type = 'primary';
       updatedContacts[0].is_primary = true;
@@ -1406,7 +1408,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
     };
 
     // For backward compatibility, also include primary contact fields
-    const primaryContact = contacts.find(c => c.contact_type === 'primary' || c.is_primary) || contacts[0];
+    const primaryContact = contacts.find(c => c.contact_type === 'owner' || c.is_primary) || contacts[0];
     if (primaryContact) {
       dataToSave.contact_first_name = primaryContact.first_name;
       dataToSave.contact_last_name = primaryContact.last_name;
@@ -1460,14 +1462,18 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
           
           <div style={styles.modalBody}>
             <div style={styles.formGroup}>
-              <label style={styles.label}>Contact Type</label>
+              <label style={styles.label}>Contact Type *</label>
               <select
                 value={editingContact.contact_type}
                 onChange={(e) => setEditingContact({...editingContact, contact_type: e.target.value})}
-                style={styles.select}
+                style={{
+                  ...styles.select,
+                  color: editingContact.contact_type ? '#1e293b' : '#9ca3af'
+                }}
               >
+                <option value="" disabled>Select contact role...</option>
                 {contactTypes.map(type => (
-                  <option key={type.value} value={type.value}>
+                  <option key={type.value} value={type.value} style={{ color: '#1e293b' }}>
                     {type.icon} {type.label}
                   </option>
                 ))}
@@ -1482,6 +1488,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                   value={editingContact.first_name}
                   onChange={(e) => setEditingContact({...editingContact, first_name: e.target.value})}
                   style={styles.input}
+                  placeholder="Enter first name"
                 />
               </div>
               <div style={styles.formGroup}>
@@ -1491,6 +1498,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                   value={editingContact.last_name}
                   onChange={(e) => setEditingContact({...editingContact, last_name: e.target.value})}
                   style={styles.input}
+                  placeholder="Enter last name"
                 />
               </div>
             </div>
@@ -1503,6 +1511,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                   value={editingContact.email}
                   onChange={(e) => setEditingContact({...editingContact, email: e.target.value})}
                   style={styles.input}
+                  placeholder="name@company.com"
                 />
               </div>
               <div style={styles.formGroup}>
@@ -1512,6 +1521,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                   value={editingContact.phone}
                   onChange={(e) => setEditingContact({...editingContact, phone: e.target.value})}
                   style={styles.input}
+                  placeholder="(555) 123-4567"
                 />
               </div>
             </div>
@@ -1585,6 +1595,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                     value={formData.business_name}
                     onChange={(e) => setFormData({...formData, business_name: e.target.value})}
                     style={styles.input}
+                    placeholder="Enter business or organization name"
                     required
                   />
                 </div>
@@ -1687,8 +1698,8 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                           <div style={clientModalStyles.contactInfo}>
                             <div style={clientModalStyles.contactName}>
                               {contact.first_name} {contact.last_name}
-                              {contact.contact_type === 'primary' && (
-                                <span style={clientModalStyles.primaryBadge}>Primary</span>
+                              {contact.contact_type === 'owner' && (
+                                <span style={clientModalStyles.primaryBadge}>Main Contact</span>
                               )}
                             </div>
                             <div style={clientModalStyles.contactType}>{typeInfo.label}</div>
