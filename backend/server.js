@@ -83,9 +83,14 @@ let adminPool = null;
 
 const setupAdminRoutes = () => {
   if (!adminPool) {
+    // Use SUPABASE_DATABASE_URL for admin routes (Phase 1 tables)
+    // Falls back to DATABASE_URL if not set
+    const adminDbUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+    console.log('Admin routes connecting to:', adminDbUrl ? 'configured database' : 'NO DATABASE URL');
+    
     adminPool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+      connectionString: adminDbUrl,
+      ssl: { rejectUnauthorized: false }
     });
   }
   adminRoutesReady = true;
