@@ -74,6 +74,7 @@ export default function OrderForm() {
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
   const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [editingClient, setEditingClient] = useState(null);
   
   // Order details
   const [orderItems, setOrderItems] = useState([]);
@@ -259,6 +260,17 @@ export default function OrderForm() {
     }
   };
 
+  // Update existing client
+  const handleUpdateClient = (updatedClient, isUpdate) => {
+    if (isUpdate) {
+      // Update in clients list
+      setClients(clients.map(c => c.id === updatedClient.id ? updatedClient : c));
+      // Update selected client
+      setSelectedClient(updatedClient);
+    }
+    setEditingClient(null);
+  };
+
   // Save order
   const handleSaveOrder = async (status = 'draft') => {
     if (!selectedClient) {
@@ -383,13 +395,19 @@ export default function OrderForm() {
             
             {selectedClient ? (
               <div style={styles.selectedClient}>
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={styles.clientName}>{selectedClient.business_name}</div>
                   {selectedClient.contact_email && (
                     <div style={styles.clientEmail}>{selectedClient.contact_first_name} {selectedClient.contact_last_name} • {selectedClient.contact_email}</div>
                   )}
+                  {selectedClient.website && (
+                    <div style={styles.clientWebsite}>{selectedClient.website}</div>
+                  )}
                 </div>
-                <button onClick={() => setSelectedClient(null)} style={styles.changeButton}>Change</button>
+                <div style={styles.clientActions}>
+                  <button onClick={() => setEditingClient(selectedClient)} style={styles.editClientButton}>Edit</button>
+                  <button onClick={() => setSelectedClient(null)} style={styles.changeButton}>Change</button>
+                </div>
               </div>
             ) : (
               <div style={styles.clientSearch}>
@@ -817,43 +835,100 @@ export default function OrderForm() {
 
       {/* New Client Modal */}
       {showNewClientModal && (
-        <NewClientModal
+        <ClientModal
           onSave={handleCreateClient}
           onClose={() => setShowNewClientModal(false)}
+          isEdit={false}
+        />
+      )}
+
+      {/* Edit Client Modal */}
+      {editingClient && (
+        <ClientModal
+          client={editingClient}
+          onSave={handleUpdateClient}
+          onClose={() => setEditingClient(null)}
+          isEdit={true}
         />
       )}
     </div>
   );
 }
 
-// New Client Modal Component
-function NewClientModal({ onSave, onClose }) {
+// Client Modal Component (Create or Edit)
+function ClientModal({ client, onSave, onClose, isEdit = false }) {
+  const API_BASE = import.meta.env.VITE_API_URL || '';
+  const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
-    business_name: '',
-    industry: '',
-    website: '',
-    status: 'prospect',
-    contact_first_name: '',
-    contact_last_name: '',
-    contact_email: '',
-    contact_phone: '',
-    contact_title: '',
+    business_name: client?.business_name || '',
+    industry: client?.industry || '',
+    website: client?.website || '',
+    status: client?.status || 'prospect',
+    contact_first_name: client?.contact_first_name || '',
+    contact_last_name: client?.contact_last_name || '',
+    contact_email: client?.contact_email || '',
+    contact_phone: client?.contact_phone || '',
+    contact_title: client?.contact_title || '',
   });
 
-  const handleSubmit = (e) => {
+  // Auto-format website URL
+  const formatWebsite = (url) => {
+    if (!url) return '';
+    url = url.trim();
+    // If it doesn't start with http:// or https://, add https://
+    if (url && !url.match(/^https?:\/\//i)) {
+      // Remove www. if present at start, we'll standardize
+      url = url.replace(/^www\./i, '');
+      url = 'https://' + url;
+    }
+    return url;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.business_name) {
       alert('Business name is required');
       return;
     }
-    onSave(formData);
+    
+    // Format website before saving
+    const dataToSave = {
+      ...formData,
+      website: formatWebsite(formData.website)
+    };
+    
+    setSaving(true);
+    try {
+      if (isEdit && client?.id) {
+        // Update existing client
+        const response = await fetch(`${API_BASE}/api/orders/clients/${client.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dataToSave),
+        });
+        if (response.ok) {
+          const updatedClient = await response.json();
+          onSave(updatedClient, true); // true = isUpdate
+        } else {
+          throw new Error('Failed to update client');
+        }
+      } else {
+        // Create new client
+        onSave(dataToSave, false);
+      }
+    } catch (error) {
+      console.error('Error saving client:', error);
+      alert('Failed to save client');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div style={styles.modalOverlay} onClick={onClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         <div style={styles.modalHeader}>
-          <h2 style={styles.modalTitle}>New Client</h2>
+          <h2 style={styles.modalTitle}>{isEdit ? 'Edit Client' : 'New Client'}</h2>
           <button onClick={onClose} style={styles.closeButton}>
             <Icons.X />
           </button>
@@ -886,12 +961,13 @@ function NewClientModal({ onSave, onClose }) {
               <div style={styles.formGroup}>
                 <label style={styles.label}>Website</label>
                 <input
-                  type="url"
+                  type="text"
                   value={formData.website}
                   onChange={(e) => setFormData({...formData, website: e.target.value})}
                   style={styles.input}
-                  placeholder="https://"
+                  placeholder="example.com"
                 />
+                <div style={styles.fieldHint}>https:// will be added automatically</div>
               </div>
             </div>
 
@@ -953,7 +1029,9 @@ function NewClientModal({ onSave, onClose }) {
 
           <div style={styles.modalFooter}>
             <button type="button" onClick={onClose} style={styles.secondaryButton}>Cancel</button>
-            <button type="submit" style={styles.primaryButton}>Create Client</button>
+            <button type="submit" disabled={saving} style={styles.primaryButton}>
+              {saving ? 'Saving...' : (isEdit ? 'Save Changes' : 'Create Client')}
+            </button>
           </div>
         </form>
       </div>
@@ -1066,6 +1144,25 @@ const styles = {
     fontSize: '13px',
     color: '#64748b',
     marginTop: '4px',
+  },
+  clientWebsite: {
+    fontSize: '12px',
+    color: '#94a3b8',
+    marginTop: '2px',
+  },
+  clientActions: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+  },
+  editClientButton: {
+    padding: '8px 12px',
+    backgroundColor: 'transparent',
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    fontSize: '13px',
+    color: '#3b82f6',
+    cursor: 'pointer',
   },
   changeButton: {
     padding: '8px 16px',
