@@ -530,6 +530,13 @@ function Sidebar({ isOpen }) {
   const location = useLocation();
   const navigate = useNavigate();
   
+  // Track which sections are expanded
+  const [expandedSections, setExpandedSections] = useState({ orders: true });
+  
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+  
   // Check if Client View mode is active
   const clientViewActive = localStorage.getItem('clientViewMode') === 'true';
   
@@ -543,10 +550,21 @@ function Sidebar({ isOpen }) {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/clients', icon: Building2, label: 'Clients' },
   ];
+  
+  // Order Management section items
+  const orderItems = [
+    { path: '/orders', icon: List, label: 'All Orders' },
+    { path: '/orders/new', icon: FileText, label: 'New Order' },
+    { path: '/admin/products', icon: Database, label: 'Products' },
+  ];
+  
   if (user?.role === 'admin') {
     navItems.push({ path: '/users', icon: Users, label: 'Users' });
     navItems.push({ path: '/settings', icon: Settings, label: 'Settings' });
   }
+  
+  // Check if current path is in order management section
+  const isOrderSection = location.pathname.startsWith('/orders') || location.pathname === '/admin/products';
 
   return (
     <aside style={{
@@ -618,7 +636,8 @@ function Sidebar({ isOpen }) {
         </button>
       )}
       
-      <nav style={{ flex: 1 }}>
+      <nav style={{ flex: 1, overflowY: 'auto' }}>
+        {/* Main nav items */}
         {navItems.map(({ path, icon: Icon, label }) => (
           <Link key={path} to={path} style={{
             display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem',
@@ -629,6 +648,46 @@ function Sidebar({ isOpen }) {
             <Icon size={20} /><span style={{ fontWeight: 500 }}>{label}</span>
           </Link>
         ))}
+        
+        {/* Order Management Section */}
+        <div style={{ marginTop: '0.5rem' }}>
+          <button
+            onClick={() => toggleSection('orders')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.75rem',
+              width: '100%',
+              border: 'none',
+              borderRadius: '0.5rem',
+              background: isOrderSection ? 'rgba(59,130,246,0.1)' : 'transparent',
+              cursor: 'pointer',
+              color: isOrderSection ? '#60a5fa' : '#9ca3af',
+            }}
+          >
+            <DollarSign size={20} />
+            <span style={{ fontWeight: 600, flex: 1, textAlign: 'left' }}>Order Management</span>
+            {expandedSections.orders ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          
+          {/* Sub-items */}
+          {expandedSections.orders && (
+            <div style={{ marginLeft: '0.5rem', borderLeft: '2px solid #374151', marginTop: '0.25rem' }}>
+              {orderItems.map(({ path, icon: Icon, label }) => (
+                <Link key={path} to={path} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.75rem',
+                  marginLeft: '0.75rem', marginBottom: '0.125rem', borderRadius: '0.375rem', textDecoration: 'none',
+                  color: location.pathname === path ? 'white' : '#9ca3af',
+                  background: location.pathname === path ? 'rgba(59,130,246,0.2)' : 'transparent',
+                  fontSize: '0.875rem'
+                }}>
+                  <Icon size={16} /><span style={{ fontWeight: 500 }}>{label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </nav>
       <div style={{ borderTop: '1px solid #374151', paddingTop: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
