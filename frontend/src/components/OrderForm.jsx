@@ -864,9 +864,9 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   // Get mediums available for selected brand
   const getMediumsForBrand = (brandCode) => {
     if (brandCode === 'wsic') {
-      return ['broadcast', 'podcast', 'events'];
+      return ['broadcast', 'podcast', 'events', 'web-social'];
     } else if (brandCode === 'lkn') {
-      return ['programmatic', 'print'];
+      return ['programmatic', 'print', 'web-social'];
     } else if (brandCode === 'lwp') {
       return ['web-social'];
     }
@@ -889,24 +889,16 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   const getFilteredProducts = () => {
     if (!selectedBrand || !selectedMedium) return [];
     
-    // For LiveWorkPlay, show LWP products first, then all other Web & Social products
+    // For LiveWorkPlay, show ONLY LWP products (no multi-brand options)
     if (selectedBrand === 'lwp') {
-      const allWebSocial = products.filter(p => {
+      return products.filter(p => {
+        const productBrand = entityToBrand[p.entity_id];
         const productMedium = categoryToMedium(p.category_name);
-        return productMedium === 'web-social';
+        return productBrand === 'lwp' && productMedium === 'web-social';
       });
-      
-      // Separate LWP products from others
-      const lwpProducts = allWebSocial.filter(p => entityToBrand[p.entity_id] === 'lwp');
-      const otherProducts = allWebSocial.filter(p => entityToBrand[p.entity_id] !== 'lwp');
-      
-      // Mark products with section info for rendering
-      const markedLwp = lwpProducts.map(p => ({ ...p, _section: 'lwp' }));
-      const markedOther = otherProducts.map(p => ({ ...p, _section: 'other' }));
-      
-      return [...markedLwp, ...markedOther];
     }
     
+    // For other brands, show only their brand-specific products
     return products.filter(p => {
       const productBrand = entityToBrand[p.entity_id];
       const productMedium = categoryToMedium(p.category_name);
@@ -916,8 +908,12 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
 
   // Get product count for a brand/medium combination
   const getProductCount = (brandCode, mediumCode) => {
+    // For LWP, only count LWP products
     if (brandCode === 'lwp') {
-      return products.filter(p => categoryToMedium(p.category_name) === 'web-social').length;
+      return products.filter(p => {
+        const productBrand = entityToBrand[p.entity_id];
+        return productBrand === 'lwp' && categoryToMedium(p.category_name) === 'web-social';
+      }).length;
     }
     return products.filter(p => {
       const productBrand = entityToBrand[p.entity_id];
@@ -1052,55 +1048,32 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
                 No products available in this category
               </div>
             ) : (
-              filteredProducts.map((product, index) => {
-                // Check if we need to show a divider before this product
-                const showDivider = selectedBrand === 'lwp' && 
-                  product._section === 'other' && 
-                  (index === 0 || filteredProducts[index - 1]?._section === 'lwp');
-                
-                return (
-                  <React.Fragment key={product.id}>
-                    {showDivider && (
-                      <div style={productSelectorStyles.sectionDivider}>
-                        <span style={productSelectorStyles.dividerLine}></span>
-                        <span style={productSelectorStyles.dividerText}>Multi-Brand Options</span>
-                        <span style={productSelectorStyles.dividerLine}></span>
+              filteredProducts.map(product => (
+                <button
+                  key={product.id}
+                  onClick={() => handleProductSelect(product)}
+                  style={productSelectorStyles.productCard}
+                >
+                  <div style={productSelectorStyles.productInfo}>
+                    <div style={productSelectorStyles.productName}>{product.name}</div>
+                    {product.description && (
+                      <div style={productSelectorStyles.productDesc}>{product.description}</div>
+                    )}
+                  </div>
+                  <div style={productSelectorStyles.productPricing}>
+                    <div style={productSelectorStyles.productPrice}>
+                      {formatCurrency(product.default_rate)}
+                    </div>
+                    <div style={productSelectorStyles.productRate}>{product.rate_type}</div>
+                    {product.setup_fee > 0 && (
+                      <div style={productSelectorStyles.setupFee}>
+                        +{formatCurrency(product.setup_fee)} setup
                       </div>
                     )}
-                    <button
-                      onClick={() => handleProductSelect(product)}
-                      style={{
-                        ...productSelectorStyles.productCard,
-                        ...(product._section === 'lwp' ? productSelectorStyles.featuredProduct : {})
-                      }}
-                    >
-                      <div style={productSelectorStyles.productInfo}>
-                        <div style={productSelectorStyles.productName}>
-                          {product.name}
-                          {product._section === 'lwp' && (
-                            <span style={productSelectorStyles.featuredBadge}>⭐ Featured</span>
-                          )}
-                        </div>
-                        {product.description && (
-                          <div style={productSelectorStyles.productDesc}>{product.description}</div>
-                        )}
-                      </div>
-                      <div style={productSelectorStyles.productPricing}>
-                        <div style={productSelectorStyles.productPrice}>
-                          {formatCurrency(product.default_rate)}
-                        </div>
-                        <div style={productSelectorStyles.productRate}>{product.rate_type}</div>
-                        {product.setup_fee > 0 && (
-                          <div style={productSelectorStyles.setupFee}>
-                            +{formatCurrency(product.setup_fee)} setup
-                          </div>
-                        )}
-                      </div>
-                      <span style={productSelectorStyles.addIcon}>+</span>
-                    </button>
-                  </React.Fragment>
-                );
-              })
+                  </div>
+                  <span style={productSelectorStyles.addIcon}>+</span>
+                </button>
+              ))
             )}
           </div>
         )}
