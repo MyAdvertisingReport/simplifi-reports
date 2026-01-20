@@ -888,12 +888,22 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   const getFilteredProducts = () => {
     if (!selectedBrand || !selectedMedium) return [];
     
-    // For LiveWorkPlay, show Web & Social products (they're under WSIC entity)
+    // For LiveWorkPlay, show LWP products first, then all other Web & Social products
     if (selectedBrand === 'lwp') {
-      return products.filter(p => {
+      const allWebSocial = products.filter(p => {
         const productMedium = categoryToMedium(p.category_name);
         return productMedium === 'web-social';
       });
+      
+      // Separate LWP products from others
+      const lwpProducts = allWebSocial.filter(p => entityToBrand[p.entity_id] === 'lwp');
+      const otherProducts = allWebSocial.filter(p => entityToBrand[p.entity_id] !== 'lwp');
+      
+      // Mark products with section info for rendering
+      const markedLwp = lwpProducts.map(p => ({ ...p, _section: 'lwp' }));
+      const markedOther = otherProducts.map(p => ({ ...p, _section: 'other' }));
+      
+      return [...markedLwp, ...markedOther];
     }
     
     return products.filter(p => {
@@ -1041,32 +1051,55 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
                 No products available in this category
               </div>
             ) : (
-              filteredProducts.map(product => (
-                <button
-                  key={product.id}
-                  onClick={() => handleProductSelect(product)}
-                  style={productSelectorStyles.productCard}
-                >
-                  <div style={productSelectorStyles.productInfo}>
-                    <div style={productSelectorStyles.productName}>{product.name}</div>
-                    {product.description && (
-                      <div style={productSelectorStyles.productDesc}>{product.description}</div>
-                    )}
-                  </div>
-                  <div style={productSelectorStyles.productPricing}>
-                    <div style={productSelectorStyles.productPrice}>
-                      {formatCurrency(product.default_rate)}
-                    </div>
-                    <div style={productSelectorStyles.productRate}>{product.rate_type}</div>
-                    {product.setup_fee > 0 && (
-                      <div style={productSelectorStyles.setupFee}>
-                        +{formatCurrency(product.setup_fee)} setup
+              filteredProducts.map((product, index) => {
+                // Check if we need to show a divider before this product
+                const showDivider = selectedBrand === 'lwp' && 
+                  product._section === 'other' && 
+                  (index === 0 || filteredProducts[index - 1]?._section === 'lwp');
+                
+                return (
+                  <React.Fragment key={product.id}>
+                    {showDivider && (
+                      <div style={productSelectorStyles.sectionDivider}>
+                        <span style={productSelectorStyles.dividerLine}></span>
+                        <span style={productSelectorStyles.dividerText}>Multi-Brand Options</span>
+                        <span style={productSelectorStyles.dividerLine}></span>
                       </div>
                     )}
-                  </div>
-                  <span style={productSelectorStyles.addIcon}>+</span>
-                </button>
-              ))
+                    <button
+                      onClick={() => handleProductSelect(product)}
+                      style={{
+                        ...productSelectorStyles.productCard,
+                        ...(product._section === 'lwp' ? productSelectorStyles.featuredProduct : {})
+                      }}
+                    >
+                      <div style={productSelectorStyles.productInfo}>
+                        <div style={productSelectorStyles.productName}>
+                          {product.name}
+                          {product._section === 'lwp' && (
+                            <span style={productSelectorStyles.featuredBadge}>⭐ Featured</span>
+                          )}
+                        </div>
+                        {product.description && (
+                          <div style={productSelectorStyles.productDesc}>{product.description}</div>
+                        )}
+                      </div>
+                      <div style={productSelectorStyles.productPricing}>
+                        <div style={productSelectorStyles.productPrice}>
+                          {formatCurrency(product.default_rate)}
+                        </div>
+                        <div style={productSelectorStyles.productRate}>{product.rate_type}</div>
+                        {product.setup_fee > 0 && (
+                          <div style={productSelectorStyles.setupFee}>
+                            +{formatCurrency(product.setup_fee)} setup
+                          </div>
+                        )}
+                      </div>
+                      <span style={productSelectorStyles.addIcon}>+</span>
+                    </button>
+                  </React.Fragment>
+                );
+              })
             )}
           </div>
         )}
@@ -1263,6 +1296,36 @@ const productSelectorStyles = {
     textAlign: 'center',
     color: '#94a3b8',
     fontSize: '15px',
+  },
+  sectionDivider: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '16px 4px',
+  },
+  dividerLine: {
+    flex: 1,
+    height: '1px',
+    backgroundColor: '#e2e8f0',
+  },
+  dividerText: {
+    fontSize: '12px',
+    fontWeight: '600',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    whiteSpace: 'nowrap',
+  },
+  featuredProduct: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#10b981',
+    borderWidth: '2px',
+  },
+  featuredBadge: {
+    marginLeft: '8px',
+    fontSize: '11px',
+    fontWeight: '600',
+    color: '#10b981',
   },
 };
 
