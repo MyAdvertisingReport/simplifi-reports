@@ -96,6 +96,10 @@ export default function OrderForm() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Success page state
+  const [showSuccessPage, setShowSuccessPage] = useState(false);
+  const [submittedOrder, setSubmittedOrder] = useState(null);
+
   // Fetch initial data
   useEffect(() => {
     fetchInitialData();
@@ -295,6 +299,18 @@ export default function OrderForm() {
       return;
     }
 
+    // Check client has contacts for non-draft submissions
+    if (status !== 'draft') {
+      const hasContacts = selectedClient.contacts?.length > 0 || 
+                          selectedClient.contact_count > 0 ||
+                          selectedClient.contact_first_name;
+      if (!hasContacts) {
+        alert('This client needs at least one contact before you can submit the order. Please add a contact first.');
+        setEditingClient(selectedClient);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const orderData = {
@@ -305,6 +321,7 @@ export default function OrderForm() {
         billing_frequency: billUpfront ? 'upfront' : 'monthly',
         notes: orderNotes,
         internal_notes: scheduleNotes ? `Schedule: ${scheduleNotes}` : '',
+        status: status,
         items: orderItems.map(item => ({
           entity_id: item.entity_id,
           product_id: item.product_id,
@@ -314,6 +331,7 @@ export default function OrderForm() {
           unit_price: item.unit_price,
           discount_percent: 0,
           line_total: item.line_total,
+          setup_fee: item.setup_fee || 0,
           notes: item.price_adjusted ? `Price adjusted from $${item.original_price} (approved)` : item.notes,
         })),
       };
@@ -326,28 +344,32 @@ export default function OrderForm() {
 
       if (response.ok) {
         const newOrder = await response.json();
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
         
-        // Reset form for new order
-        if (status === 'draft') {
-          // Keep the success message but stay on form
+        if (status === 'pending_approval') {
+          // Show success page for submitted orders
+          setSubmittedOrder({
+            ...newOrder,
+            client_name: selectedClient.business_name,
+            term_months: effectiveTermMonths,
+            monthly_total: totals.monthlyTotal,
+            setup_fees: totals.setupFees,
+            total_value: totals.contractTotal,
+            is_one_time: isOneTime
+          });
+          setShowSuccessPage(true);
         } else {
-          // Clear form for next order
-          setSelectedClient(null);
-          setOrderItems([]);
-          setContractStartDate('');
-          setTermMonths('');
-          setCustomTerm('');
-          setIsCustomTerm(false);
-          setIsOneTime(false);
-          setBillUpfront(false);
-          setScheduleNotes('');
-          setOrderNotes('');
+          // Draft saved - show success message
+          setSaveSuccess(true);
+          setTimeout(() => setSaveSuccess(false), 3000);
         }
       } else {
         const error = await response.json();
-        alert(`Failed to save order: ${error.error || 'Unknown error'}`);
+        if (error.code === 'NO_CONTACTS') {
+          alert(error.error);
+          setEditingClient(selectedClient);
+        } else {
+          alert(`Failed to save order: ${error.error || 'Unknown error'}`);
+        }
       }
     } catch (error) {
       console.error('Error saving order:', error);
@@ -357,10 +379,122 @@ export default function OrderForm() {
     }
   };
 
+  // Reset form for new order
+  const resetForm = () => {
+    setSelectedClient(null);
+    setOrderItems([]);
+    setContractStartDate('');
+    setTermMonths('');
+    setCustomTerm('');
+    setIsCustomTerm(false);
+    setIsOneTime(false);
+    setBillUpfront(false);
+    setScheduleNotes('');
+    setOrderNotes('');
+    setShowSuccessPage(false);
+    setSubmittedOrder(null);
+  };
+
   // Format currency
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
   };
+
+  // Show success page if order was submitted
+  if (showSuccessPage && submittedOrder) {
+    return (
+      <div style={successStyles.container}>
+        <div style={successStyles.card}>
+          {/* Success Icon */}
+          <div style={successStyles.iconWrapper}>
+            <svg style={successStyles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+
+          {/* Title */}
+          <h1 style={successStyles.title}>Order Submitted!</h1>
+          <p style={successStyles.subtitle}>
+            Order <span style={successStyles.orderNumber}>{submittedOrder.order_number}</span> has been submitted for approval.
+          </p>
+
+          {/* Order Summary Card */}
+          <div style={successStyles.summaryCard}>
+            <h3 style={successStyles.summaryTitle}>Order Summary</h3>
+            <div style={successStyles.summaryRow}>
+              <span>Client:</span>
+              <span style={successStyles.summaryValue}>{submittedOrder.client_name}</span>
+            </div>
+            <div style={successStyles.summaryRow}>
+              <span>Products:</span>
+              <span style={successStyles.summaryValue}>{submittedOrder.items?.length || orderItems.length} items</span>
+            </div>
+            <div style={successStyles.summaryRow}>
+              <span>Contract Term:</span>
+              <span style={successStyles.summaryValue}>
+                {submittedOrder.is_one_time ? 'One-Time' : `${submittedOrder.term_months} months`}
+              </span>
+            </div>
+            <div style={{...successStyles.summaryRow, ...successStyles.summaryTotal}}>
+              <span>Total Value:</span>
+              <span style={successStyles.totalValue}>
+                {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(submittedOrder.total_value)}
+              </span>
+            </div>
+          </div>
+
+          {/* What's Next Section */}
+          <div style={successStyles.nextStepsCard}>
+            <h3 style={successStyles.nextStepsTitle}>
+              <span style={successStyles.infoIcon}>ℹ️</span> What Happens Next
+            </h3>
+            <ol style={successStyles.stepsList}>
+              <li style={successStyles.step}>
+                <span style={successStyles.stepNumber}>1</span>
+                <span>Your order will be reviewed by management for approval</span>
+              </li>
+              <li style={successStyles.step}>
+                <span style={successStyles.stepNumber}>2</span>
+                <span>Once approved, an agreement will be generated and sent to your client</span>
+              </li>
+              <li style={successStyles.step}>
+                <span style={successStyles.stepNumber}>3</span>
+                <span>After the client signs, the order becomes active and billing begins</span>
+              </li>
+            </ol>
+          </div>
+
+          {/* Pro Tips Section */}
+          <div style={successStyles.tipsCard}>
+            <h3 style={successStyles.tipsTitle}>
+              <span style={successStyles.tipsIcon}>💡</span> Tips for Success
+            </h3>
+            <ul style={successStyles.tipsList}>
+              <li style={successStyles.tip}>
+                <strong>Reach out to your client</strong> – Let them know an agreement is on its way. Emails can land in spam, and a quick heads-up shows you care!
+              </li>
+              <li style={successStyles.tip}>
+                <strong>Set a reminder</strong> – Follow up in 2-3 days if they haven't signed yet
+              </li>
+              <li style={successStyles.tip}>
+                <strong>Prepare creative assets</strong> – Get a head start gathering logos, images, or copy you'll need
+              </li>
+            </ul>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={successStyles.actions}>
+            <a href="/orders" style={successStyles.secondaryButton}>
+              View All Orders
+            </a>
+            <button onClick={resetForm} style={successStyles.primaryButton}>
+              Create Another Order
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -388,7 +522,7 @@ export default function OrderForm() {
         )}
       </div>
 
-      <div style={styles.formGrid}>
+      <div style={styles.formGrid} className="order-form-grid">
         {/* Left Column - Order Details */}
         <div style={styles.leftColumn}>
           {/* Client Selection */}
@@ -728,7 +862,7 @@ export default function OrderForm() {
         </div>
 
         {/* Right Column - Summary */}
-        <div style={styles.rightColumn}>
+        <div style={styles.rightColumn} className="order-summary-column">
           <div style={styles.summaryCard}>
             <h2 style={styles.summaryTitle}>Order Summary</h2>
             
@@ -1401,6 +1535,21 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
     is_primary: false
   };
 
+  // Auto-advance to contacts tab after entering business name (new clients only)
+  const handleBusinessNameBlur = () => {
+    if (!isEdit && formData.business_name.trim() && contacts.length === 0) {
+      // Auto-add first contact and switch to contacts tab
+      const newContact = { 
+        ...emptyContact, 
+        id: `new_${Date.now()}`,
+        contact_type: 'owner'
+      };
+      setContacts([newContact]);
+      setEditingContact(newContact);
+      setShowContactForm(true);
+    }
+  };
+
   // Auto-format website URL
   const formatWebsite = (url) => {
     if (!url) return '';
@@ -1683,6 +1832,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
                     type="text"
                     value={formData.business_name}
                     onChange={(e) => setFormData({...formData, business_name: e.target.value})}
+                    onBlur={handleBusinessNameBlur}
                     style={styles.input}
                     placeholder="Enter business or organization name"
                     required
@@ -1997,6 +2147,197 @@ const clientModalStyles = {
   },
 };
 
+// Success Page Styles
+const successStyles = {
+  container: {
+    minHeight: '100vh',
+    background: 'linear-gradient(135deg, #ecfdf5 0%, #eff6ff 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: '20px',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)',
+    maxWidth: '600px',
+    width: '100%',
+    padding: '40px',
+    textAlign: 'center',
+  },
+  iconWrapper: {
+    width: '80px',
+    height: '80px',
+    backgroundColor: '#dcfce7',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    margin: '0 auto 24px',
+  },
+  icon: {
+    width: '40px',
+    height: '40px',
+    color: '#16a34a',
+  },
+  title: {
+    fontSize: '28px',
+    fontWeight: '700',
+    color: '#1e293b',
+    margin: '0 0 8px 0',
+  },
+  subtitle: {
+    fontSize: '16px',
+    color: '#64748b',
+    margin: '0 0 32px 0',
+  },
+  orderNumber: {
+    fontWeight: '600',
+    color: '#3b82f6',
+  },
+  summaryCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '24px',
+    textAlign: 'left',
+  },
+  summaryTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1e293b',
+    margin: '0 0 16px 0',
+  },
+  summaryRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: '14px',
+    color: '#64748b',
+    marginBottom: '12px',
+  },
+  summaryValue: {
+    fontWeight: '500',
+    color: '#1e293b',
+  },
+  summaryTotal: {
+    paddingTop: '12px',
+    borderTop: '1px solid #e2e8f0',
+    marginBottom: 0,
+  },
+  totalValue: {
+    fontSize: '18px',
+    fontWeight: '700',
+    color: '#16a34a',
+  },
+  nextStepsCard: {
+    backgroundColor: '#eff6ff',
+    border: '1px solid #bfdbfe',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '24px',
+    textAlign: 'left',
+  },
+  nextStepsTitle: {
+    fontSize: '15px',
+    fontWeight: '600',
+    color: '#1e40af',
+    margin: '0 0 16px 0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  infoIcon: {
+    fontSize: '18px',
+  },
+  stepsList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+  },
+  step: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '12px',
+    fontSize: '14px',
+    color: '#1e40af',
+    marginBottom: '12px',
+  },
+  stepNumber: {
+    flexShrink: 0,
+    width: '24px',
+    height: '24px',
+    backgroundColor: '#bfdbfe',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '12px',
+    fontWeight: '700',
+  },
+  tipsCard: {
+    backgroundColor: '#fffbeb',
+    border: '1px solid #fde68a',
+    borderRadius: '12px',
+    padding: '24px',
+    marginBottom: '32px',
+    textAlign: 'left',
+  },
+  tipsTitle: {
+    fontSize: '15px',
+    fontWeight: '600',
+    color: '#92400e',
+    margin: '0 0 16px 0',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  tipsIcon: {
+    fontSize: '18px',
+  },
+  tipsList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+  },
+  tip: {
+    fontSize: '14px',
+    color: '#92400e',
+    marginBottom: '12px',
+    paddingLeft: '20px',
+    position: 'relative',
+  },
+  actions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  primaryButton: {
+    padding: '14px 24px',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '15px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  secondaryButton: {
+    padding: '14px 24px',
+    backgroundColor: '#f1f5f9',
+    color: '#475569',
+    border: 'none',
+    borderRadius: '10px',
+    fontSize: '15px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    textDecoration: 'none',
+    display: 'block',
+    textAlign: 'center',
+  },
+};
+
 // Styles
 const styles = {
   container: {
@@ -2063,6 +2404,10 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '20px',
+    position: 'sticky',
+    top: '24px',
+    alignSelf: 'flex-start',
+    height: 'fit-content',
   },
   card: {
     backgroundColor: 'white',
@@ -2755,7 +3100,20 @@ const styles = {
   },
 };
 
-// Add spinner animation
+// Add spinner animation and responsive styles
 const styleSheet = document.createElement('style');
-styleSheet.textContent = `@keyframes spin { to { transform: rotate(360deg); } }`;
+styleSheet.textContent = `
+  @keyframes spin { to { transform: rotate(360deg); } }
+  
+  /* Mobile responsive - remove sticky on smaller screens */
+  @media (max-width: 1024px) {
+    .order-form-grid {
+      grid-template-columns: 1fr !important;
+    }
+    .order-summary-column {
+      position: static !important;
+      top: auto !important;
+    }
+  }
+`;
 document.head.appendChild(styleSheet);

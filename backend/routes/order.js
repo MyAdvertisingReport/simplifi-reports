@@ -61,7 +61,8 @@ router.get('/clients', async (req, res) => {
         ct.last_name as contact_last_name,
         ct.email as contact_email,
         ct.phone as contact_phone,
-        ct.title as contact_title
+        ct.title as contact_title,
+        (SELECT COUNT(*) FROM contacts WHERE client_id = c.id) as contact_count
       FROM advertising_clients c
       LEFT JOIN contacts ct ON ct.client_id = c.id AND ct.is_primary = true
       WHERE 1=1
@@ -191,6 +192,7 @@ router.post('/clients', async (req, res) => {
     res.status(201).json({
       ...newClient,
       contacts: createdContacts,
+      contact_count: createdContacts.length,
       contact_first_name: primaryContact?.first_name,
       contact_last_name: primaryContact?.last_name,
       contact_email: primaryContact?.email,
@@ -411,6 +413,7 @@ router.put('/clients/:id', async (req, res) => {
     res.json({
       ...updatedClient,
       contacts: allContacts.rows,
+      contact_count: allContacts.rows.length,
       // Legacy fields for backward compatibility
       contact_first_name: primaryContact?.first_name,
       contact_last_name: primaryContact?.last_name,
@@ -450,18 +453,33 @@ const generateOrderNumber = async (poolClient) => {
   return `ORD-${year}-${String(nextNum).padStart(4, '0')}`;
 };
 
-// GET /api/orders - List all orders
+// GET /api/orders - List all orders WITH item counts and proper totals
 router.get('/', async (req, res) => {
   try {
     const { status, client_id, limit = 50 } = req.query;
     
+    // Updated query to include item_count and calculate total_value properly
     let query = `
       SELECT 
         o.*,
         c.business_name as client_name,
-        c.industry as client_industry
+        c.industry as client_industry,
+        COALESCE(item_stats.item_count, 0) as item_count,
+        COALESCE(item_stats.setup_fees_total, 0) as setup_fees_total,
+        CASE 
+          WHEN o.term_months = 1 THEN COALESCE(o.monthly_total, 0) + COALESCE(item_stats.setup_fees_total, 0)
+          ELSE COALESCE(o.monthly_total, 0) * COALESCE(o.term_months, 1) + COALESCE(item_stats.setup_fees_total, 0)
+        END as total_value
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
+      LEFT JOIN (
+        SELECT 
+          order_id,
+          COUNT(*) as item_count,
+          COALESCE(SUM(setup_fee), 0) as setup_fees_total
+        FROM order_items
+        GROUP BY order_id
+      ) item_stats ON item_stats.order_id = o.id
       WHERE 1=1
     `;
     const params = [];
@@ -518,9 +536,21 @@ router.get('/:id', async (req, res) => {
       [id]
     );
 
+    // Calculate totals
+    const items = itemsResult.rows;
+    const monthly_total = items.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
+    const setup_fees_total = items.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0);
+    const order = orderResult.rows[0];
+    const total_value = order.term_months === 1 
+      ? monthly_total + setup_fees_total 
+      : (monthly_total * (order.term_months || 1)) + setup_fees_total;
+
     res.json({
-      ...orderResult.rows[0],
-      items: itemsResult.rows
+      ...order,
+      items: items,
+      item_count: items.length,
+      setup_fees_total,
+      total_value
     });
   } catch (error) {
     console.error('Error fetching order:', error);
@@ -543,7 +573,8 @@ router.post('/', async (req, res) => {
       payment_preference = 'invoice',
       notes,
       internal_notes,
-      items = []
+      items = [],
+      status = 'draft'
     } = req.body;
 
     // Validate required fields
@@ -551,15 +582,37 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: client_id, contract_start_date, contract_end_date' });
     }
 
+    // Validate client has at least one contact for non-draft orders
+    if (status !== 'draft') {
+      const contactCheck = await client.query(
+        'SELECT COUNT(*) as count FROM contacts WHERE client_id = $1',
+        [client_id]
+      );
+      if (parseInt(contactCheck.rows[0].count) === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: 'Client must have at least one contact before submitting an order. Please add a contact first.',
+          code: 'NO_CONTACTS'
+        });
+      }
+    }
+
     // Generate order number
     const order_number = await generateOrderNumber(client);
 
     // Calculate totals
     let monthly_total = 0;
+    let setup_fees_total = 0;
     for (const item of items) {
       monthly_total += parseFloat(item.line_total) || 0;
+      setup_fees_total += parseFloat(item.setup_fee) || 0;
     }
-    const contract_total = monthly_total * (term_months || 1);
+    
+    // For one-time orders (term_months = 1), don't multiply
+    const isOneTime = term_months === 1;
+    const contract_total = isOneTime 
+      ? monthly_total + setup_fees_total 
+      : (monthly_total * (term_months || 1)) + setup_fees_total;
 
     // Create order
     const orderResult = await client.query(
@@ -568,12 +621,12 @@ router.post('/', async (req, res) => {
         term_months, billing_frequency, payment_preference, status,
         monthly_total, contract_total, notes, internal_notes, created_at, updated_at
       ) VALUES (
-        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'draft',
-        $8, $9, $10, $11, NOW(), NOW()
+        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, NOW(), NOW()
       ) RETURNING *`,
       [
         order_number, client_id, contract_start_date, contract_end_date,
-        term_months, billing_frequency, payment_preference,
+        term_months, billing_frequency, payment_preference, status,
         monthly_total, contract_total, notes, internal_notes
       ]
     );
@@ -586,17 +639,17 @@ router.post('/', async (req, res) => {
       const itemResult = await client.query(
         `INSERT INTO order_items (
           id, order_id, entity_id, product_id, product_name, product_category,
-          quantity, unit_price, discount_percent, line_total,
+          quantity, unit_price, discount_percent, line_total, setup_fee,
           spots_per_week, spot_length, ad_size, premium_placement,
           monthly_impressions, notes, created_at, updated_at
         ) VALUES (
-          gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9,
-          $10, $11, $12, $13, $14, $15, NOW(), NOW()
+          gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15, $16, NOW(), NOW()
         ) RETURNING *`,
         [
           newOrder.id, item.entity_id, item.product_id, item.product_name, item.product_category,
           item.quantity || 1, item.unit_price, item.discount_percent || 0, item.line_total,
-          item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
+          item.setup_fee || 0, item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
           item.monthly_impressions, item.notes
         ]
       );
@@ -607,7 +660,10 @@ router.post('/', async (req, res) => {
 
     res.status(201).json({
       ...newOrder,
-      items: createdItems
+      items: createdItems,
+      item_count: createdItems.length,
+      setup_fees_total,
+      total_value: contract_total
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -618,7 +674,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT /api/orders/:id - Update order
+// PUT /api/orders/:id - Update existing order
 router.put('/:id', async (req, res) => {
   const client = await pool.connect();
   try {
@@ -639,12 +695,18 @@ router.put('/:id', async (req, res) => {
 
     // Calculate totals if items provided
     let monthly_total = 0;
+    let setup_fees_total = 0;
     if (items && items.length > 0) {
       for (const item of items) {
         monthly_total += parseFloat(item.line_total) || 0;
+        setup_fees_total += parseFloat(item.setup_fee) || 0;
       }
     }
-    const contract_total = monthly_total * (term_months || 1);
+    
+    const isOneTime = term_months === 1;
+    const contract_total = isOneTime 
+      ? monthly_total + setup_fees_total 
+      : (monthly_total * (term_months || 1)) + setup_fees_total;
 
     // Update order
     const orderResult = await client.query(
@@ -684,17 +746,17 @@ router.put('/:id', async (req, res) => {
         await client.query(
           `INSERT INTO order_items (
             id, order_id, entity_id, product_id, product_name, product_category,
-            quantity, unit_price, discount_percent, line_total,
+            quantity, unit_price, discount_percent, line_total, setup_fee,
             spots_per_week, spot_length, ad_size, premium_placement,
             monthly_impressions, notes, created_at, updated_at
           ) VALUES (
-            gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9,
-            $10, $11, $12, $13, $14, $15, NOW(), NOW()
+            gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            $11, $12, $13, $14, $15, $16, NOW(), NOW()
           )`,
           [
             id, item.entity_id, item.product_id, item.product_name, item.product_category,
             item.quantity || 1, item.unit_price, item.discount_percent || 0, item.line_total,
-            item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
+            item.setup_fee || 0, item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
             item.monthly_impressions, item.notes
           ]
         );
@@ -719,7 +781,10 @@ router.put('/:id', async (req, res) => {
 
     res.json({
       ...finalOrder.rows[0],
-      items: finalItems.rows
+      items: finalItems.rows,
+      item_count: finalItems.rows.length,
+      setup_fees_total,
+      total_value: contract_total
     });
   } catch (error) {
     await client.query('ROLLBACK');
