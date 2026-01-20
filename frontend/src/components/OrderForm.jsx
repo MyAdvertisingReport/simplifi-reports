@@ -185,6 +185,7 @@ export default function OrderForm() {
 
   // Add product to order
   const addProductToOrder = (product) => {
+    const setupFee = parseFloat(product.setup_fee) || 0;
     const newItem = {
       id: Date.now(),
       product_id: product.id,
@@ -195,7 +196,8 @@ export default function OrderForm() {
       original_price: parseFloat(product.default_rate) || 0, // Track original for comparison
       quantity: 1,
       line_total: parseFloat(product.default_rate) || 0,
-      setup_fee: parseFloat(product.setup_fee) || 0,
+      setup_fee: setupFee,
+      original_setup_fee: setupFee, // Track original setup fee for waive/restore
       rate_type: product.rate_type,
       entity_name: product.entity_name,
       category_name: product.category_name,
@@ -664,9 +666,46 @@ export default function OrderForm() {
                       </div>
                     )}
                     
-                    {item.setup_fee > 0 && (
-                      <div style={styles.setupFee}>
-                        Setup fee: {formatCurrency(item.setup_fee)} (one-time)
+                    {/* Setup Fee - editable with waive option */}
+                    {(item.original_setup_fee > 0 || item.setup_fee > 0) && (
+                      <div style={styles.setupFeeRow}>
+                        <div style={styles.setupFeeLabel}>
+                          <span>Setup Fee</span>
+                          {item.setup_fee === 0 && item.original_setup_fee > 0 && (
+                            <span style={styles.waivedBadge}>WAIVED</span>
+                          )}
+                        </div>
+                        <div style={styles.setupFeeControls}>
+                          <input
+                            type="number"
+                            value={item.setup_fee}
+                            onChange={(e) => updateOrderItem(item.id, 'setup_fee', parseFloat(e.target.value) || 0)}
+                            style={{
+                              ...styles.setupFeeInput,
+                              ...(item.setup_fee < item.original_setup_fee ? styles.setupFeeAdjusted : {})
+                            }}
+                            min="0"
+                            step="1"
+                          />
+                          {item.setup_fee > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => updateOrderItem(item.id, 'setup_fee', 0)}
+                              style={styles.waiveButton}
+                            >
+                              Waive
+                            </button>
+                          )}
+                          {item.setup_fee === 0 && item.original_setup_fee > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => updateOrderItem(item.id, 'setup_fee', item.original_setup_fee)}
+                              style={styles.restoreButton}
+                            >
+                              Restore ${item.original_setup_fee}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2311,11 +2350,70 @@ const styles = {
     gap: '4px',
     textAlign: 'right',
   },
-  setupFee: {
-    marginTop: '8px',
+  setupFeeRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: '12px',
+    padding: '10px 12px',
+    backgroundColor: '#fefce8',
+    borderRadius: '8px',
+    border: '1px solid #fef08a',
+  },
+  setupFeeLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '13px',
+    fontWeight: '500',
+    color: '#854d0e',
+  },
+  waivedBadge: {
+    fontSize: '10px',
+    fontWeight: '600',
+    padding: '2px 6px',
+    backgroundColor: '#22c55e',
+    color: 'white',
+    borderRadius: '4px',
+  },
+  setupFeeControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  setupFeeInput: {
+    width: '80px',
+    padding: '6px 8px',
+    border: '1px solid #fde047',
+    borderRadius: '6px',
+    fontSize: '14px',
+    fontWeight: '600',
+    textAlign: 'right',
+    backgroundColor: 'white',
+  },
+  setupFeeAdjusted: {
+    backgroundColor: '#fef9c3',
+    borderColor: '#facc15',
+  },
+  waiveButton: {
+    padding: '6px 12px',
+    backgroundColor: 'transparent',
+    border: '1px solid #dc2626',
+    borderRadius: '6px',
+    color: '#dc2626',
     fontSize: '12px',
-    color: '#64748b',
-    fontStyle: 'italic',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  restoreButton: {
+    padding: '6px 12px',
+    backgroundColor: '#f0fdf4',
+    border: '1px solid #22c55e',
+    borderRadius: '6px',
+    color: '#16a34a',
+    fontSize: '12px',
+    fontWeight: '500',
+    cursor: 'pointer',
   },
   summaryCard: {
     backgroundColor: '#1e3a5f',
