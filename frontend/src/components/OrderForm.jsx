@@ -858,6 +858,7 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   entities.forEach(e => {
     if (e.code === 'wsic') entityToBrand[e.id] = 'wsic';
     if (e.code === 'lkn') entityToBrand[e.id] = 'lkn';
+    if (e.code === 'lwp') entityToBrand[e.id] = 'lwp';
   });
 
   // Get mediums available for selected brand
