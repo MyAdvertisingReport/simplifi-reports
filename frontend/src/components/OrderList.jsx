@@ -526,9 +526,10 @@ export default function OrderList() {
                       )}
                     </div>
                   </th>
+                  <th style={styles.th}>Sales Rep</th>
                   <th style={styles.th} onClick={() => handleSort('created_at')}>
                     <div style={styles.thContent}>
-                      Created
+                      Submitted On
                       {sortField === 'created_at' && (
                         sortDirection === 'asc' ? <Icons.ChevronUp /> : <Icons.ChevronDown />
                       )}
@@ -566,7 +567,9 @@ export default function OrderList() {
                           <span style={styles.dateSeparator}>→</span>
                           <span>{formatDate(order.contract_end_date)}</span>
                         </div>
-                        <span style={styles.termMonths}>{order.term_months} months</span>
+                        <span style={styles.termMonths}>
+                          {order.term_months === 1 ? 'One-Time' : `${order.term_months} months`}
+                        </span>
                       </td>
                       <td style={styles.td}>
                         <span style={styles.productCount}>
@@ -576,10 +579,16 @@ export default function OrderList() {
                       <td style={styles.td}>
                         <div style={styles.valueCell}>
                           <span style={styles.totalValue}>{formatCurrency(order.total_value)}</span>
-                          {order.monthly_total && (
+                          {order.term_months > 1 && order.monthly_total && (
                             <span style={styles.monthlyValue}>{formatCurrency(order.monthly_total)}/mo</span>
                           )}
+                          {order.term_months === 1 && (
+                            <span style={styles.oneTimeLabel}>one-time</span>
+                          )}
                         </div>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={styles.salesRep}>{order.submitted_by_name || '—'}</span>
                       </td>
                       <td style={styles.td}>
                         <span style={styles.dateText}>{formatDate(order.created_at)}</span>
@@ -1132,6 +1141,15 @@ const styles = {
   },
   monthlyValue: {
     fontSize: '12px',
+    color: '#64748b',
+  },
+  oneTimeLabel: {
+    fontSize: '11px',
+    color: '#8b5cf6',
+    fontWeight: '500',
+  },
+  salesRep: {
+    fontSize: '13px',
     color: '#64748b',
   },
   dateText: {
