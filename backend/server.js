@@ -272,7 +272,7 @@ app.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'All fields required' });
     }
 
-    if (!['admin', 'sales'].includes(role)) {
+    if (!['admin', 'sales', 'sales_associate', 'sales_manager'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -281,7 +281,9 @@ app.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Email already exists' });
     }
 
-    const user = await dbHelper.createUser({ email, password, name, role });
+    // Hash password before storing
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await dbHelper.createUser({ email, password: hashedPassword, name, role });
     res.json({ id: user.id, email: user.email, name: user.name, role: user.role });
   } catch (error) {
     console.error('Create user error:', error);
@@ -327,8 +329,8 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
     const updates = {};
     if (email) updates.email = email;
     if (name) updates.name = name;
-    if (role && ['admin', 'sales'].includes(role)) updates.role = role;
-    if (password) updates.password = password;
+    if (role && ['admin', 'sales', 'sales_associate', 'sales_manager'].includes(role)) updates.role = role;
+    if (password) updates.password = await bcrypt.hash(password, 10);
     
     const updatedUser = await dbHelper.updateUser(userId, updates);
     res.json({ id: updatedUser.id, email: updatedUser.email, name: updatedUser.name, role: updatedUser.role });
@@ -362,8 +364,9 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
       return res.status(401).json({ error: 'Current password is incorrect' });
     }
     
-    // Update password
-    await dbHelper.updateUser(req.user.id, { password: newPassword });
+    // Hash and update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await dbHelper.updateUser(req.user.id, { password: hashedPassword });
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     console.error('Change password error:', error);
@@ -402,8 +405,8 @@ app.post('/api/brands', authenticateToken, requireAdmin, async (req, res) => {
 app.get('/api/clients', authenticateToken, async (req, res) => {
   try {
     let clients;
-    // Admins see all clients, sales reps only see assigned clients
-    if (req.user.role === 'admin') {
+    // Admins and sales managers see all clients, sales associates only see assigned clients
+    if (req.user.role === 'admin' || req.user.role === 'sales_manager') {
       clients = await dbHelper.getAllClients();
     } else {
       clients = await dbHelper.getClientsByUserId(req.user.id);
@@ -421,8 +424,9 @@ app.get('/api/clients/:id', authenticateToken, async (req, res) => {
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
-    // Check access for non-admin users
-    if (req.user.role !== 'admin' && !await dbHelper.userHasAccessToClient(req.user.id, req.params.id)) {
+    // Check access for non-admin/non-manager users
+    const hasFullAccess = req.user.role === 'admin' || req.user.role === 'sales_manager';
+    if (!hasFullAccess && !await dbHelper.userHasAccessToClient(req.user.id, req.params.id)) {
       return res.status(403).json({ error: 'Access denied to this client' });
     }
     res.json(client);

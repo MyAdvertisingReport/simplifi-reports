@@ -514,6 +514,26 @@ class DatabaseHelper {
   }
 
   // ==========================================
+  // ALIAS METHODS (for server.js compatibility)
+  // ==========================================
+  
+  async getClientsByUserId(userId) {
+    return this.getClientsForUser(userId);
+  }
+
+  async assignClientToUser(clientId, userId) {
+    return this.assignUserToClient(clientId, userId);
+  }
+
+  async unassignClientFromUser(clientId, userId) {
+    return this.removeUserFromClient(clientId, userId);
+  }
+
+  async getUsersByClientId(clientId) {
+    return this.getClientAssignments(clientId);
+  }
+
+  // ==========================================
   // CLIENT NOTES METHODS
   // ==========================================
   
