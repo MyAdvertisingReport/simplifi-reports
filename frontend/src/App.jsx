@@ -8204,13 +8204,8 @@ function UsersPage() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'sales' });
-  
-  // Assignment modal state
-  const [showAssignModal, setShowAssignModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [userClients, setUserClients] = useState([]);
-  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'sales_associate' });
+  const [activeTab, setActiveTab] = useState('users'); // 'users' or 'assignments'
 
   useEffect(() => { 
     loadData();
@@ -8220,7 +8215,7 @@ function UsersPage() {
     try {
       const [usersData, clientsData] = await Promise.all([
         api.get('/api/users'),
-        api.get('/api/clients')
+        api.get('/api/admin/advertising-clients').catch(() => api.get('/api/clients'))
       ]);
       setUsers(usersData);
       setClients(clientsData);
@@ -8235,39 +8230,55 @@ function UsersPage() {
     try {
       await api.post('/api/users', newUser);
       setShowModal(false);
-      setNewUser({ email: '', password: '', name: '', role: 'sales' });
+      setNewUser({ email: '', password: '', name: '', role: 'sales_associate' });
       loadData();
     } catch (err) { alert(err.message); }
   };
 
-  const openAssignModal = async (u) => {
-    setSelectedUser(u);
-    setShowAssignModal(true);
-    setAssignmentsLoading(true);
+  const handleAssignClient = async (clientId, userId) => {
     try {
-      const assignedClients = await api.get(`/api/users/${u.id}/clients`);
-      setUserClients(assignedClients.map(c => c.id));
-    } catch (err) {
-      console.error(err);
-      setUserClients([]);
-    }
-    setAssignmentsLoading(false);
-  };
-
-  const toggleClientAssignment = async (clientId) => {
-    const isAssigned = userClients.includes(clientId);
-    try {
-      if (isAssigned) {
-        await api.delete(`/api/clients/${clientId}/assignments/${selectedUser.id}`);
-        setUserClients(userClients.filter(id => id !== clientId));
+      if (userId) {
+        await api.post(`/api/clients/${clientId}/assignments`, { userId });
       } else {
-        await api.post(`/api/clients/${clientId}/assignments`, { userId: selectedUser.id });
-        setUserClients([...userClients, clientId]);
+        const client = clients.find(c => c.id === clientId);
+        if (client?.assigned_to) {
+          await api.delete(`/api/clients/${clientId}/assignments/${client.assigned_to}`);
+        }
       }
+      loadData();
     } catch (err) {
       alert('Failed to update assignment: ' + err.message);
     }
   };
+
+  const getAssignedClients = (userId) => {
+    return clients.filter(c => c.assigned_to === userId);
+  };
+
+  const getRoleBadge = (role) => {
+    const styles = {
+      admin: { background: '#dcfce7', color: '#166534' },
+      sales_manager: { background: '#dbeafe', color: '#1e40af' },
+      sales_associate: { background: '#fef3c7', color: '#92400e' },
+      sales: { background: '#f3f4f6', color: '#374151' }
+    };
+    const labels = {
+      admin: 'Admin',
+      sales_manager: 'Sales Manager',
+      sales_associate: 'Sales Associate',
+      sales: 'Sales'
+    };
+    const style = styles[role] || styles.sales;
+    return (
+      <span style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500, ...style }}>
+        {labels[role] || role}
+      </span>
+    );
+  };
+
+  const salesUsers = users.filter(u => 
+    u.role === 'sales_associate' || u.role === 'sales' || u.role === 'sales_manager'
+  );
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
@@ -8283,46 +8294,122 @@ function UsersPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div><h1>Users</h1><p style={{ color: '#6b7280' }}>Manage team members and client assignments</p></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <div><h1>User Management</h1><p style={{ color: '#6b7280' }}>Manage team members and client assignments</p></div>
         <button onClick={() => setShowModal(true)} style={{ padding: '0.625rem 1.25rem', background: '#1e3a8a', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Add User</button>
       </div>
-      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr style={{ background: '#f9fafb' }}>
-            <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Name</th>
-            <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Email</th>
-            <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Role</th>
-            <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Actions</th>
-          </tr></thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>{u.name}</td>
-                <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>{u.email}</td>
-                <td style={{ padding: '0.75rem 1rem' }}>
-                  <span style={{ padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500, background: u.role === 'admin' ? '#dcfce7' : '#fef3c7', color: u.role === 'admin' ? '#166534' : '#92400e' }}>
-                    {u.role === 'admin' ? 'Admin' : 'Sales'}
-                  </span>
-                </td>
-                <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                  {u.role === 'sales' && (
-                    <button 
-                      onClick={() => openAssignModal(u)}
-                      style={{ padding: '0.375rem 0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.875rem' }}
-                    >
-                      Assign Clients
-                    </button>
-                  )}
-                  {u.role === 'admin' && (
-                    <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Full Access</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+
+      {/* Tabs */}
+      <div style={{ borderBottom: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
+        <nav style={{ display: 'flex', gap: '2rem' }}>
+          <button
+            onClick={() => setActiveTab('users')}
+            style={{
+              padding: '0.75rem 0',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'users' ? '2px solid #3b82f6' : '2px solid transparent',
+              color: activeTab === 'users' ? '#3b82f6' : '#6b7280',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+          >
+            Users ({users.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('assignments')}
+            style={{
+              padding: '0.75rem 0',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === 'assignments' ? '2px solid #3b82f6' : '2px solid transparent',
+              color: activeTab === 'assignments' ? '#3b82f6' : '#6b7280',
+              fontWeight: 500,
+              cursor: 'pointer'
+            }}
+          >
+            Client Assignments ({clients.length})
+          </button>
+        </nav>
       </div>
+
+      {/* Users Tab */}
+      {activeTab === 'users' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: '#f9fafb' }}>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Name</th>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Email</th>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Role</th>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Assigned Clients</th>
+            </tr></thead>
+            <tbody>
+              {users.map(u => {
+                const assignedClients = getAssignedClients(u.id);
+                return (
+                  <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>{u.name}</td>
+                    <td style={{ padding: '0.75rem 1rem', color: '#6b7280' }}>{u.email}</td>
+                    <td style={{ padding: '0.75rem 1rem' }}>{getRoleBadge(u.role)}</td>
+                    <td style={{ padding: '0.75rem 1rem' }}>
+                      {u.role === 'admin' || u.role === 'sales_manager' ? (
+                        <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>All clients (by role)</span>
+                      ) : assignedClients.length > 0 ? (
+                        <span style={{ fontSize: '0.875rem' }}>
+                          <strong>{assignedClients.length}</strong> clients
+                        </span>
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontSize: '0.875rem' }}>None assigned</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Assignments Tab */}
+      {activeTab === 'assignments' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr style={{ background: '#f9fafb' }}>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Client</th>
+              <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Assigned To</th>
+            </tr></thead>
+            <tbody>
+              {clients.map(client => (
+                <tr key={client.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    <div style={{ fontWeight: 500 }}>{client.business_name || client.name}</div>
+                    {client.industry && <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{client.industry}</div>}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    <select
+                      value={client.assigned_to || ''}
+                      onChange={(e) => handleAssignClient(client.id, e.target.value || null)}
+                      style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', minWidth: '200px' }}
+                    >
+                      <option value="">Unassigned</option>
+                      {salesUsers.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+              {clients.length === 0 && (
+                <tr>
+                  <td colSpan={2} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>
+                    No clients found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Add User Modal */}
       {showModal && (
@@ -8335,7 +8422,8 @@ function UsersPage() {
               <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Role</label>
               <select value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
                 style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}>
-                <option value="sales">Sales (View Assigned Clients Only)</option>
+                <option value="sales_associate">Sales Associate (View Assigned Clients Only)</option>
+                <option value="sales_manager">Sales Manager (View All Clients)</option>
                 <option value="admin">Admin (Full Access)</option>
               </select>
             </div>
@@ -8345,62 +8433,6 @@ function UsersPage() {
             </div>
           </form>
         </Modal>
-      )}
-
-      {/* Assign Clients Modal */}
-      {showAssignModal && selectedUser && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '500px', maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ margin: '0 0 0.5rem' }}>Assign Clients to {selectedUser.name}</h3>
-            <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1rem' }}>
-              Select which clients this sales rep can view and access.
-            </p>
-            
-            {assignmentsLoading ? (
-              <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>
-            ) : (
-              <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '0.5rem' }}>
-                {clients.length === 0 ? (
-                  <p style={{ padding: '1rem', color: '#6b7280', textAlign: 'center' }}>No clients available. Sync clients from Simpli.fi first.</p>
-                ) : (
-                  clients.map(client => (
-                    <label 
-                      key={client.id} 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        padding: '0.75rem 1rem', 
-                        borderBottom: '1px solid #f3f4f6',
-                        cursor: 'pointer',
-                        background: userClients.includes(client.id) ? '#eff6ff' : 'transparent'
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={userClients.includes(client.id)}
-                        onChange={() => toggleClientAssignment(client.id)}
-                        style={{ marginRight: '0.75rem', width: '18px', height: '18px', cursor: 'pointer' }}
-                      />
-                      <span style={{ fontWeight: 500 }}>{client.name}</span>
-                    </label>
-                  ))
-                )}
-              </div>
-            )}
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
-              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                {userClients.length} client{userClients.length !== 1 ? 's' : ''} assigned
-              </span>
-              <button 
-                onClick={() => setShowAssignModal(false)} 
-                style={{ padding: '0.625rem 1.25rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 500 }}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
