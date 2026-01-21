@@ -458,12 +458,14 @@ router.get('/', async (req, res) => {
   try {
     const { status, client_id, limit = 50 } = req.query;
     
-    // Updated query to include item_count and calculate total_value properly
+    // Updated query to include item_count, calculate total_value, and get submitted_by name
     let query = `
       SELECT 
         o.*,
         c.business_name as client_name,
         c.industry as client_industry,
+        u.name as submitted_by_name,
+        u.email as submitted_by_email,
         COALESCE(item_stats.item_count, 0) as item_count,
         COALESCE(item_stats.setup_fees_total, 0) as setup_fees_total,
         CASE 
@@ -472,6 +474,7 @@ router.get('/', async (req, res) => {
         END as total_value
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
+      LEFT JOIN users u ON o.submitted_by = u.id
       LEFT JOIN (
         SELECT 
           order_id,
@@ -577,6 +580,9 @@ router.post('/', async (req, res) => {
       status = 'draft'
     } = req.body;
 
+    // Get submitted_by from authenticated user (if available)
+    const submitted_by = req.user?.id || null;
+
     // Validate required fields
     if (!client_id || !contract_start_date || !contract_end_date) {
       return res.status(400).json({ error: 'Missing required fields: client_id, contract_start_date, contract_end_date' });
@@ -614,20 +620,20 @@ router.post('/', async (req, res) => {
       ? monthly_total + setup_fees_total 
       : (monthly_total * (term_months || 1)) + setup_fees_total;
 
-    // Create order
+    // Create order with submitted_by
     const orderResult = await client.query(
       `INSERT INTO orders (
         id, order_number, client_id, contract_start_date, contract_end_date,
         term_months, billing_frequency, payment_preference, status,
-        monthly_total, contract_total, notes, internal_notes, created_at, updated_at
+        monthly_total, contract_total, notes, internal_notes, submitted_by, created_at, updated_at
       ) VALUES (
         gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, $12, NOW(), NOW()
+        $9, $10, $11, $12, $13, NOW(), NOW()
       ) RETURNING *`,
       [
         order_number, client_id, contract_start_date, contract_end_date,
         term_months, billing_frequency, payment_preference, status,
-        monthly_total, contract_total, notes, internal_notes
+        monthly_total, contract_total, notes, internal_notes, submitted_by
       ]
     );
 

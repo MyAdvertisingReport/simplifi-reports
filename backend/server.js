@@ -1791,7 +1791,7 @@ app.use('/api/admin', (req, res, next) => {
 // ORDER ROUTES
 // ============================================
 
-app.use('/api/orders', (req, res, next) => {
+app.use('/api/orders', authenticateToken, (req, res, next) => {
   if (!orderRoutesReady) {
     return res.status(503).json({ error: 'Order routes not yet initialized. Please wait...' });
   }
