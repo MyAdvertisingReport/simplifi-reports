@@ -2404,6 +2404,9 @@ function ClientDetailPage({ publicMode = false }) {
   const [reportLink, setReportLink] = useState(null);
   const [copied, setCopied] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('reports'); // 'reports', 'orders', 'overview', 'notes', 'documents', 'invoices'
+  const [clientOrders, setClientOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const { user } = useAuth();
   const { isMobile, isTablet, gridCols } = useResponsive();
   
@@ -2471,6 +2474,25 @@ function ClientDetailPage({ publicMode = false }) {
 
   useEffect(() => { loadClient(); }, [slug]);
   useEffect(() => { if (client?.simplifi_org_id) { loadData(); } }, [client]);
+  
+  // Load orders when Orders tab is selected
+  useEffect(() => {
+    if (activeTab === 'orders' && client?.id && !publicMode) {
+      loadClientOrders();
+    }
+  }, [activeTab, client?.id]);
+
+  const loadClientOrders = async () => {
+    if (!client?.id) return;
+    setOrdersLoading(true);
+    try {
+      const data = await api.get(`/api/orders?clientId=${client.id}`);
+      setClientOrders(data.orders || data || []);
+    } catch (err) {
+      console.error('Failed to load orders:', err);
+    }
+    setOrdersLoading(false);
+  };
 
   const loadClient = async () => {
     try {
@@ -3024,6 +3046,71 @@ function ClientDetailPage({ publicMode = false }) {
         </div>
       </div>
 
+      {/* Tab Navigation - Hidden in public mode */}
+      {!publicMode && (
+        <div style={{ 
+          background: 'white', 
+          borderRadius: '0.75rem', 
+          marginBottom: '1.5rem',
+          border: '1px solid #e5e7eb',
+          overflow: 'hidden'
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            borderBottom: '1px solid #e5e7eb',
+            overflowX: 'auto',
+            WebkitOverflowScrolling: 'touch'
+          }}>
+            {[
+              { id: 'reports', label: 'Reports', icon: BarChart3 },
+              { id: 'orders', label: 'Orders', icon: FileText },
+              { id: 'overview', label: 'Overview', icon: Building2 },
+              { id: 'notes', label: 'Notes', icon: MessageSquare },
+              { id: 'documents', label: 'Documents', icon: FileText, comingSoon: true },
+              { id: 'invoices', label: 'Invoices', icon: DollarSign, comingSoon: true },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '0.875rem 1.25rem',
+                  border: 'none',
+                  background: 'transparent',
+                  borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent',
+                  color: activeTab === tab.id ? '#1e40af' : '#6b7280',
+                  fontWeight: activeTab === tab.id ? 600 : 500,
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <tab.icon size={16} />
+                {tab.label}
+                {tab.comingSoon && (
+                  <span style={{
+                    fontSize: '0.625rem',
+                    padding: '0.125rem 0.375rem',
+                    background: '#f3f4f6',
+                    color: '#9ca3af',
+                    borderRadius: '9999px',
+                    fontWeight: 500
+                  }}>
+                    Soon
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reports Tab Content */}
+      {(publicMode || activeTab === 'reports') && (
+        <>
       {/* Edit Mode Instructions */}
       {editMode && (
         <div style={{ 
@@ -3555,6 +3642,324 @@ function ClientDetailPage({ publicMode = false }) {
             }
           })}
         </>
+      )}
+        </> 
+      )}
+
+      {/* Orders Tab Content */}
+      {!publicMode && activeTab === 'orders' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Order History</h3>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>All orders for {client?.name}</p>
+            </div>
+            <Link 
+              to={`/orders/new?clientId=${client?.id}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                padding: '0.5rem 1rem',
+                background: '#1e3a8a',
+                color: 'white',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                textDecoration: 'none'
+              }}
+            >
+              <FileText size={16} /> New Order
+            </Link>
+          </div>
+          
+          {ordersLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+              <div className="spinner" />
+            </div>
+          ) : clientOrders.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <FileText size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
+              <h4 style={{ margin: '0 0 0.5rem', color: '#374151' }}>No Orders Yet</h4>
+              <p style={{ color: '#6b7280', marginBottom: '1rem' }}>Create the first order for this client.</p>
+              <Link 
+                to={`/orders/new?clientId=${client?.id}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  background: '#1e3a8a',
+                  color: 'white',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  textDecoration: 'none'
+                }}
+              >
+                Create Order
+              </Link>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Order #</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Created</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Monthly</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Contract Total</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '80px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientOrders.map(order => {
+                    const statusColors = {
+                      draft: { bg: '#f3f4f6', text: '#6b7280' },
+                      pending_approval: { bg: '#fef3c7', text: '#92400e' },
+                      approved: { bg: '#d1fae5', text: '#065f46' },
+                      sent: { bg: '#dbeafe', text: '#1e40af' },
+                      signed: { bg: '#dcfce7', text: '#166534' },
+                      active: { bg: '#dcfce7', text: '#166534' },
+                      completed: { bg: '#e5e7eb', text: '#374151' },
+                      rejected: { bg: '#fee2e2', text: '#991b1b' }
+                    };
+                    const status = statusColors[order.status] || statusColors.draft;
+                    return (
+                      <tr key={order.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>
+                          {order.order_number || `#${order.id?.slice(0,8)}`}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '0.25rem 0.625rem',
+                            background: status.bg,
+                            color: status.text,
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            textTransform: 'capitalize'
+                          }}>
+                            {order.status?.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem' }}>
+                          {order.created_at ? new Date(order.created_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace' }}>
+                          {order.monthly_total ? formatCurrency(order.monthly_total) : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>
+                          {order.contract_total ? formatCurrency(order.contract_total) : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <Link 
+                            to={`/orders/${order.id}/edit`}
+                            style={{
+                              padding: '0.375rem 0.75rem',
+                              background: '#f3f4f6',
+                              color: '#374151',
+                              borderRadius: '0.375rem',
+                              fontSize: '0.75rem',
+                              textDecoration: 'none',
+                              fontWeight: 500
+                            }}
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Overview Tab Content */}
+      {!publicMode && activeTab === 'overview' && (
+        <div style={{ display: 'grid', gap: '1.5rem', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
+          {/* Client Details Card */}
+          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Client Details</h3>
+              {user?.role === 'admin' && (
+                <button 
+                  onClick={() => setShowEditModal(true)}
+                  style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '0.375rem', fontSize: '0.75rem', cursor: 'pointer', color: '#374151' }}
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            <div style={{ padding: '1.25rem' }}>
+              <div style={{ display: 'grid', gap: '1rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Business Name</div>
+                  <div style={{ fontWeight: 500 }}>{client?.name || client?.business_name || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Industry</div>
+                  <div>{client?.industry || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Website</div>
+                  <div>{client?.website ? <a href={client.website} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{client.website}</a> : '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Simpli.fi Org ID</div>
+                  <div style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>{client?.simplifi_org_id || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Status</div>
+                  <div>
+                    <span style={{
+                      display: 'inline-block',
+                      padding: '0.25rem 0.625rem',
+                      background: client?.status === 'active' ? '#dcfce7' : '#f3f4f6',
+                      color: client?.status === 'active' ? '#166534' : '#6b7280',
+                      borderRadius: '9999px',
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      textTransform: 'capitalize'
+                    }}>
+                      {client?.status || 'Active'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Assigned Rep Card */}
+          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Assigned Representative</h3>
+            </div>
+            <div style={{ padding: '1.25rem' }}>
+              {client?.assigned_to ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ 
+                    width: '48px', 
+                    height: '48px', 
+                    borderRadius: '50%', 
+                    background: '#dbeafe', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    color: '#1e40af',
+                    fontWeight: 600,
+                    fontSize: '1.125rem'
+                  }}>
+                    {client?.assigned_user_name?.charAt(0) || '?'}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 500 }}>{client?.assigned_user_name || 'Assigned'}</div>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{client?.assigned_user_email || ''}</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>
+                  <Users size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+                  <p style={{ margin: 0, fontSize: '0.875rem' }}>No representative assigned</p>
+                  {user?.role === 'admin' && (
+                    <Link to="/users" style={{ display: 'inline-block', marginTop: '0.75rem', fontSize: '0.875rem', color: '#3b82f6' }}>
+                      Assign in User Management →
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Stats Card */}
+          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden', gridColumn: isMobile ? 'auto' : '1 / -1' }}>
+            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Quick Stats</h3>
+            </div>
+            <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1.5rem' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#1e3a8a' }}>{activeCampaigns.length}</div>
+                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Active Campaigns</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#059669' }}>{clientOrders.length}</div>
+                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Total Orders</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#7c3aed' }}>{formatNumber(activeTotals.impressions)}</div>
+                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Impressions (30d)</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#ea580c' }}>{formatNumber(activeTotals.clicks)}</div>
+                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Clicks (30d)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes Tab Content */}
+      {!publicMode && activeTab === 'notes' && (
+        <InternalNotesSection clientId={client?.id} isCollapsible={false} />
+      )}
+
+      {/* Documents Tab Content - Coming Soon */}
+      {!publicMode && activeTab === 'documents' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '4rem 2rem', textAlign: 'center' }}>
+          <div style={{ 
+            width: '80px', 
+            height: '80px', 
+            borderRadius: '50%', 
+            background: '#f3f4f6', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            margin: '0 auto 1.5rem'
+          }}>
+            <FileText size={36} style={{ color: '#9ca3af' }} />
+          </div>
+          <h3 style={{ margin: '0 0 0.5rem', color: '#111827', fontSize: '1.25rem' }}>Documents Coming Soon</h3>
+          <p style={{ color: '#6b7280', maxWidth: '400px', margin: '0 auto 1.5rem', lineHeight: 1.6 }}>
+            Store and manage client agreements, creative assets, insertion orders, and other important documents all in one place.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>📄 Contracts</span>
+            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>🎨 Creative Assets</span>
+            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>📋 IO Sheets</span>
+          </div>
+        </div>
+      )}
+
+      {/* Invoices Tab Content - Coming Soon */}
+      {!publicMode && activeTab === 'invoices' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '4rem 2rem', textAlign: 'center' }}>
+          <div style={{ 
+            width: '80px', 
+            height: '80px', 
+            borderRadius: '50%', 
+            background: '#f3f4f6', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            margin: '0 auto 1.5rem'
+          }}>
+            <DollarSign size={36} style={{ color: '#9ca3af' }} />
+          </div>
+          <h3 style={{ margin: '0 0 0.5rem', color: '#111827', fontSize: '1.25rem' }}>Invoices Coming Soon</h3>
+          <p style={{ color: '#6b7280', maxWidth: '400px', margin: '0 auto 1.5rem', lineHeight: 1.6 }}>
+            View billing history, track payments, and manage invoices for this client. Integration with QuickBooks coming soon.
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>💳 Payment History</span>
+            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>📊 Billing Summary</span>
+            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>🔗 QuickBooks Sync</span>
+          </div>
+        </div>
       )}
       
       {/* Edit Client Modal */}

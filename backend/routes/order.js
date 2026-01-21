@@ -456,7 +456,10 @@ const generateOrderNumber = async (poolClient) => {
 // GET /api/orders - List all orders WITH item counts and proper totals
 router.get('/', async (req, res) => {
   try {
-    const { status, client_id, limit = 50 } = req.query;
+    const { status, client_id, clientId, limit = 50 } = req.query;
+    
+    // Support both clientId (camelCase) and client_id (snake_case)
+    const filterClientId = clientId || client_id;
     
     // Updated query to include item_count, calculate total_value, and get submitted_by name
     let query = `
@@ -494,16 +497,18 @@ router.get('/', async (req, res) => {
       params.push(status);
     }
 
-    if (client_id) {
+    if (filterClientId) {
       paramCount++;
       query += ` AND o.client_id = $${paramCount}`;
-      params.push(client_id);
+      params.push(filterClientId);
     }
 
     query += ` ORDER BY o.created_at DESC LIMIT ${parseInt(limit)}`;
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    
+    // Return consistent response format
+    res.json({ orders: result.rows });
   } catch (error) {
     console.error('Error fetching orders:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
