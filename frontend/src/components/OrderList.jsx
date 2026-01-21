@@ -2,6 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+// Auth helper - get headers with token
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
 // Icons
 const Icons = {
   Search: () => (
@@ -129,7 +138,9 @@ export default function OrderList() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/orders`);
+      const response = await fetch(`${API_BASE}/api/orders`, {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
       setOrders(data);
@@ -144,8 +155,8 @@ export default function OrderList() {
   const fetchFilterOptions = async () => {
     try {
       const [entitiesRes, categoriesRes] = await Promise.all([
-        fetch(`${API_BASE}/api/orders/entities/list`),
-        fetch(`${API_BASE}/api/orders/categories/list`)
+        fetch(`${API_BASE}/api/orders/entities/list`, { headers: getAuthHeaders() }),
+        fetch(`${API_BASE}/api/orders/categories/list`, { headers: getAuthHeaders() })
       ]);
       if (entitiesRes.ok) setEntities(await entitiesRes.json());
       if (categoriesRes.ok) setCategories(await categoriesRes.json());
@@ -156,7 +167,9 @@ export default function OrderList() {
 
   const fetchOrderDetails = async (orderId) => {
     try {
-      const response = await fetch(`${API_BASE}/api/orders/${orderId}`);
+      const response = await fetch(`${API_BASE}/api/orders/${orderId}`, {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) throw new Error('Failed to fetch order details');
       const data = await response.json();
       setSelectedOrder(data);
@@ -171,7 +184,7 @@ export default function OrderList() {
     try {
       const response = await fetch(`${API_BASE}/api/orders/${orderId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status: newStatus }),
       });
       if (!response.ok) throw new Error('Failed to update status');
