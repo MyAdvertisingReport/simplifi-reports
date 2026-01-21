@@ -2,6 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+// Auth helper - get headers with token
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+};
+
 // Icons
 const Icons = {
   Search: () => (
@@ -108,11 +117,12 @@ export default function OrderForm() {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
+      const headers = getAuthHeaders();
       const [clientsRes, productsRes, entitiesRes, categoriesRes] = await Promise.all([
-        fetch(`${API_BASE}/api/orders/clients?limit=100`),
-        fetch(`${API_BASE}/api/orders/products/list`),
-        fetch(`${API_BASE}/api/orders/entities/list`),
-        fetch(`${API_BASE}/api/orders/categories/list`)
+        fetch(`${API_BASE}/api/orders/clients?limit=100`, { headers }),
+        fetch(`${API_BASE}/api/orders/products/list`, { headers }),
+        fetch(`${API_BASE}/api/orders/entities/list`, { headers }),
+        fetch(`${API_BASE}/api/orders/categories/list`, { headers })
       ]);
 
       if (clientsRes.ok) setClients(await clientsRes.json());
@@ -249,7 +259,7 @@ export default function OrderForm() {
     try {
       const response = await fetch(`${API_BASE}/api/orders/clients`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(clientData),
       });
       
@@ -338,7 +348,7 @@ export default function OrderForm() {
 
       const response = await fetch(`${API_BASE}/api/orders`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(orderData),
       });
 
@@ -1655,7 +1665,7 @@ function ClientModal({ client, onSave, onClose, isEdit = false }) {
       if (isEdit && client?.id) {
         const response = await fetch(`${API_BASE}/api/orders/clients/${client.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify(dataToSave),
         });
         if (response.ok) {
