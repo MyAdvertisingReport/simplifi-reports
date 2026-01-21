@@ -400,12 +400,9 @@ class DatabaseHelper {
   
   async getClientsForUser(userId) {
     const result = await pool.query(`
-      SELECT c.*, b.name as brand_name, b.primary_color as brand_color
-      FROM clients c
-      LEFT JOIN brands b ON c.brand_id = b.id
-      JOIN client_assignments ca ON c.id = ca.client_id
-      WHERE ca.user_id = $1
-      ORDER BY c.name
+      SELECT * FROM advertising_clients
+      WHERE assigned_to = $1
+      ORDER BY business_name
     `, [userId]);
     return result.rows;
   }
@@ -472,42 +469,52 @@ class DatabaseHelper {
 
   // ==========================================
   // CLIENT ASSIGNMENT METHODS
+  // Uses advertising_clients.assigned_to column
   // ==========================================
   
   async getClientAssignments(clientId) {
+    // Get the user assigned to this client
     const result = await pool.query(`
       SELECT u.id, u.email, u.name, u.role
       FROM users u
-      JOIN client_assignments ca ON u.id = ca.user_id
-      WHERE ca.client_id = $1
+      JOIN advertising_clients ac ON u.id = ac.assigned_to
+      WHERE ac.id = $1
     `, [clientId]);
     return result.rows;
   }
 
   async getAllClientAssignments() {
     const result = await pool.query(`
-      SELECT ca.*, c.name as client_name, u.name as user_name, u.email as user_email
-      FROM client_assignments ca
-      JOIN clients c ON ca.client_id = c.id
-      JOIN users u ON ca.user_id = u.id
+      SELECT 
+        ac.id as client_id,
+        ac.business_name as client_name,
+        ac.assigned_to as user_id,
+        u.name as user_name, 
+        u.email as user_email
+      FROM advertising_clients ac
+      JOIN users u ON ac.assigned_to = u.id
+      WHERE ac.assigned_to IS NOT NULL
     `);
     return result.rows;
   }
   
   async assignUserToClient(clientId, userId) {
     await pool.query(
-      'INSERT INTO client_assignments (client_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      'UPDATE advertising_clients SET assigned_to = $2 WHERE id = $1',
       [clientId, userId]
     );
   }
   
   async removeUserFromClient(clientId, userId) {
-    await pool.query('DELETE FROM client_assignments WHERE client_id = $1 AND user_id = $2', [clientId, userId]);
+    await pool.query(
+      'UPDATE advertising_clients SET assigned_to = NULL WHERE id = $1 AND assigned_to = $2',
+      [clientId, userId]
+    );
   }
 
   async userHasAccessToClient(userId, clientId) {
     const result = await pool.query(
-      'SELECT 1 FROM client_assignments WHERE user_id = $1 AND client_id = $2',
+      'SELECT 1 FROM advertising_clients WHERE id = $2 AND assigned_to = $1',
       [userId, clientId]
     );
     return result.rows.length > 0;
