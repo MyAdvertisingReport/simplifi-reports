@@ -18,6 +18,7 @@ const { ReportCenterService } = require('./report-center-service');
 const { initializeDatabase, seedInitialData, DatabaseHelper } = require('./database');
 const adminRoutes = require('./routes/admin');
 const orderRoutes = require('./routes/order');
+const emailRoutes = require('./routes/email');
 
 // Initialize Express
 const app = express();
@@ -1797,6 +1798,12 @@ app.use('/api/orders', authenticateToken, (req, res, next) => {
   }
   next();
 }, orderRoutes);
+
+// ============================================
+// EMAIL ROUTES
+// ============================================
+
+app.use('/api/email', authenticateToken, emailRoutes);
 
 // ============================================
 // ERROR HANDLING
