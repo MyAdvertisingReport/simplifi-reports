@@ -9274,11 +9274,11 @@ function SettingsPage() {
                       </span>
                     </div>
                   </div>
-                  {emailStatus?.fromAddresses && (
+                  {emailStatus?.fromAddresses && typeof emailStatus.fromAddresses === 'object' && (
                     <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
                       <div style={{ color: '#6b7280', marginBottom: '8px' }}>From Addresses:</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px' }}>
-                        {Object.entries(emailStatus.fromAddresses).map(([key, value]) => (
+                        {Object.entries(emailStatus.fromAddresses || {}).map(([key, value]) => (
                           <div key={key}><span style={{ color: '#6b7280' }}>{key}:</span> <span style={{ fontWeight: 500 }}>{value}</span></div>
                         ))}
                       </div>
