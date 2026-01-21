@@ -8276,9 +8276,8 @@ function UsersPage() {
     );
   };
 
-  const salesUsers = users.filter(u => 
-    u.role === 'sales_associate' || u.role === 'sales' || u.role === 'sales_manager'
-  );
+  // All users can be assigned to clients
+  const assignableUsers = users;
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
@@ -8392,8 +8391,8 @@ function UsersPage() {
                       style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', minWidth: '200px' }}
                     >
                       <option value="">Unassigned</option>
-                      {salesUsers.map(u => (
-                        <option key={u.id} value={u.id}>{u.name}</option>
+                      {assignableUsers.map(u => (
+                        <option key={u.id} value={u.id}>{u.name} ({u.role.replace('_', ' ')})</option>
                       ))}
                     </select>
                   </td>
