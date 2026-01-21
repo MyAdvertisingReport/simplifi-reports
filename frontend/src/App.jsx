@@ -8,7 +8,7 @@ import {
   GripVertical, Save, MessageSquare, Pin, Trash2, Edit3, Video, Radio, Code,
   CheckCircle, AlertCircle, Clock, Bookmark, Flag, Download, History, Award,
   TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List,
-  Database, RefreshCw
+  Database, RefreshCw, Mail, Send, Loader2
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
 import OrderForm from './components/OrderForm';
@@ -9047,6 +9047,13 @@ function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   
+  // Email test state
+  const [emailStatus, setEmailStatus] = useState(null);
+  const [emailLoading, setEmailLoading] = useState(true);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [emailResult, setEmailResult] = useState(null);
+  
   // Password change state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -9075,10 +9082,39 @@ function SettingsPage() {
       ]);
       setStatus(statusData);
       setUsers(usersData);
+      
+      // Load email status for admins
+      if (user?.role === 'admin') {
+        try {
+          const emailData = await api.get('/api/email/status');
+          setEmailStatus(emailData);
+        } catch (err) {
+          setEmailStatus({ configured: false, error: err.message });
+        }
+        setEmailLoading(false);
+      }
     } catch (err) {
       console.error(err);
     }
     setLoading(false);
+  };
+
+  const sendTestEmail = async (e) => {
+    e.preventDefault();
+    if (!testEmailAddress) {
+      setEmailResult({ success: false, error: 'Please enter an email address' });
+      return;
+    }
+    try {
+      setSendingTestEmail(true);
+      setEmailResult(null);
+      const response = await api.post('/api/email/test', { to: testEmailAddress });
+      setEmailResult(response);
+    } catch (error) {
+      setEmailResult({ success: false, error: error.message || 'Failed to send test email' });
+    } finally {
+      setSendingTestEmail(false);
+    }
   };
 
   const handleChangePassword = async (e) => {
@@ -9193,6 +9229,126 @@ function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Email Configuration (Admin only) */}
+      {user?.role === 'admin' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
+          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <Mail size={20} style={{ color: '#1e3a8a' }} />
+              <h3 style={{ margin: 0 }}>Email Configuration</h3>
+            </div>
+            <span style={{ 
+              display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '9999px', fontSize: '13px', fontWeight: 500,
+              background: emailStatus?.configured ? '#dcfce7' : '#fef2f2',
+              color: emailStatus?.configured ? '#166534' : '#991b1b'
+            }}>
+              {emailStatus?.configured ? <><CheckCircle size={14} /> Ready</> : <><AlertCircle size={14} /> Not Configured</>}
+            </span>
+          </div>
+          <div style={{ padding: '1.5rem' }}>
+            {emailLoading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <Loader2 size={20} className="spin" />
+                <span>Checking email configuration...</span>
+              </div>
+            ) : (
+              <>
+                {/* Status Details */}
+                <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '16px', marginBottom: '20px', fontSize: '14px' }}>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#6b7280' }}>Provider:</span>
+                      <span style={{ fontWeight: 500 }}>{emailStatus?.provider || 'Unknown'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#6b7280' }}>Service Loaded:</span>
+                      <span style={{ fontWeight: 500, color: emailStatus?.serviceLoaded ? '#166534' : '#991b1b' }}>
+                        {emailStatus?.serviceLoaded ? 'Yes' : 'No'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#6b7280' }}>API Key:</span>
+                      <span style={{ fontWeight: 500, color: emailStatus?.apiKeyConfigured ? '#166534' : '#991b1b' }}>
+                        {emailStatus?.apiKeyConfigured ? 'Configured' : 'Missing'}
+                      </span>
+                    </div>
+                  </div>
+                  {emailStatus?.fromAddresses && (
+                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                      <div style={{ color: '#6b7280', marginBottom: '8px' }}>From Addresses:</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '13px' }}>
+                        {Object.entries(emailStatus.fromAddresses).map(([key, value]) => (
+                          <div key={key}><span style={{ color: '#6b7280' }}>{key}:</span> <span style={{ fontWeight: 500 }}>{value}</span></div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Test Email Form */}
+                <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '20px' }}>
+                  <h4 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: 600 }}>Send Test Email</h4>
+                  <form onSubmit={sendTestEmail} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <input
+                      type="email"
+                      value={testEmailAddress}
+                      onChange={(e) => setTestEmailAddress(e.target.value)}
+                      placeholder="your-email@example.com"
+                      style={{ flex: 1, minWidth: '200px', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' }}
+                      disabled={!emailStatus?.configured}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!emailStatus?.configured || sendingTestEmail}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px',
+                        background: (!emailStatus?.configured || sendingTestEmail) ? '#9ca3af' : '#1e3a8a',
+                        color: 'white', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 500,
+                        cursor: (!emailStatus?.configured || sendingTestEmail) ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {sendingTestEmail ? <><Loader2 size={16} className="spin" /> Sending...</> : <><Send size={16} /> Send Test</>}
+                    </button>
+                  </form>
+
+                  {/* Result Message */}
+                  {emailResult && (
+                    <div style={{
+                      marginTop: '16px', padding: '12px 16px', borderRadius: '8px', display: 'flex', alignItems: 'flex-start', gap: '12px',
+                      background: emailResult.success ? '#dcfce7' : '#fef2f2',
+                      color: emailResult.success ? '#166534' : '#991b1b'
+                    }}>
+                      {emailResult.success ? <CheckCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} /> : <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />}
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{emailResult.success ? 'Email Sent Successfully!' : 'Failed to Send Email'}</div>
+                        <div style={{ fontSize: '13px', marginTop: '4px', opacity: 0.9 }}>
+                          {emailResult.success ? `Message ID: ${emailResult.messageId}` : emailResult.error}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Help Text if not configured */}
+                {!emailStatus?.configured && (
+                  <div style={{ marginTop: '20px', padding: '16px', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fcd34d' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', color: '#92400e' }}>
+                      <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <div style={{ fontWeight: 600, marginBottom: '8px' }}>Configuration Required</div>
+                        <div style={{ fontSize: '14px' }}>
+                          To enable email functionality, set <code style={{ background: '#fff', padding: '2px 6px', borderRadius: '4px' }}>POSTMARK_API_KEY</code> in your environment variables and redeploy.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* User Management (Admin only) */}
       {user?.role === 'admin' && (

@@ -10,8 +10,14 @@
 
 const postmark = require('postmark');
 
-// Initialize Postmark client
-const client = new postmark.ServerClient(process.env.POSTMARK_API_KEY);
+// Initialize Postmark client with defensive check
+let client = null;
+if (process.env.POSTMARK_API_KEY) {
+  client = new postmark.ServerClient(process.env.POSTMARK_API_KEY);
+  console.log('✓ Postmark email client initialized');
+} else {
+  console.warn('⚠ POSTMARK_API_KEY not set - email functionality disabled');
+}
 
 // Email addresses
 const FROM_ADDRESSES = {
@@ -27,6 +33,15 @@ const BASE_URL = process.env.BASE_URL || 'https://myadvertisingreport.com';
  * Send an email via Postmark
  */
 async function sendEmail({ to, from = FROM_ADDRESSES.orders, subject, htmlBody, textBody, tag, metadata }) {
+  // Check if client is initialized
+  if (!client) {
+    console.error('Email send failed: Postmark client not initialized (missing API key)');
+    return { 
+      success: false, 
+      error: 'Email service not configured - POSTMARK_API_KEY is missing'
+    };
+  }
+
   try {
     const result = await client.sendEmail({
       From: from,
@@ -40,10 +55,10 @@ async function sendEmail({ to, from = FROM_ADDRESSES.orders, subject, htmlBody, 
       Metadata: metadata || {}
     });
     
-    console.log(`Email sent successfully: ${result.MessageID} to ${to}`);
+    console.log(`[Email] ✓ Sent successfully: ${result.MessageID} to ${to}`);
     return { success: true, messageId: result.MessageID };
   } catch (error) {
-    console.error('Failed to send email:', error);
+    console.error('[Email] ✗ Failed to send:', error);
     return { success: false, error: error.message };
   }
 }
