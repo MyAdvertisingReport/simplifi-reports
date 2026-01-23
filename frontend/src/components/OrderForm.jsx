@@ -109,6 +109,11 @@ export default function OrderForm() {
   const [showSuccessPage, setShowSuccessPage] = useState(false);
   const [submittedOrder, setSubmittedOrder] = useState(null);
 
+  // Signature modal state
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [signature, setSignature] = useState('');
+  const [signingOrder, setSigningOrder] = useState(null);
+
   // Fetch initial data
   useEffect(() => {
     fetchInitialData();
@@ -319,8 +324,18 @@ export default function OrderForm() {
         setEditingClient(selectedClient);
         return;
       }
+      
+      // Show signature modal for submission
+      setShowSignatureModal(true);
+      return;
     }
 
+    // For drafts, save directly
+    await saveOrderToServer('draft');
+  };
+
+  // Save order to server (called directly for drafts, or after signature for submissions)
+  const saveOrderToServer = async (status = 'draft', signatureValue = null) => {
     setSaving(true);
     try {
       const orderData = {
@@ -331,14 +346,16 @@ export default function OrderForm() {
         billing_frequency: billUpfront ? 'upfront' : 'monthly',
         notes: orderNotes,
         internal_notes: scheduleNotes ? `Schedule: ${scheduleNotes}` : '',
-        status: status,
+        status: 'draft', // Always create as draft first
         items: orderItems.map(item => ({
           entity_id: item.entity_id,
           product_id: item.product_id,
           product_name: item.product_name,
           product_category: item.product_category,
+          entity_name: item.entity_name,
           quantity: item.quantity,
           unit_price: item.unit_price,
+          original_price: item.original_price || item.unit_price,
           discount_percent: 0,
           line_total: item.line_total,
           setup_fee: item.setup_fee || 0,
@@ -346,33 +363,14 @@ export default function OrderForm() {
         })),
       };
 
+      // Step 1: Create the order as draft
       const response = await fetch(`${API_BASE}/api/orders`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(orderData),
       });
 
-      if (response.ok) {
-        const newOrder = await response.json();
-        
-        if (status === 'pending_approval') {
-          // Show success page for submitted orders
-          setSubmittedOrder({
-            ...newOrder,
-            client_name: selectedClient.business_name,
-            term_months: effectiveTermMonths,
-            monthly_total: totals.monthlyTotal,
-            setup_fees: totals.setupFees,
-            total_value: totals.contractTotal,
-            is_one_time: isOneTime
-          });
-          setShowSuccessPage(true);
-        } else {
-          // Draft saved - show success message
-          setSaveSuccess(true);
-          setTimeout(() => setSaveSuccess(false), 3000);
-        }
-      } else {
+      if (!response.ok) {
         const error = await response.json();
         if (error.code === 'NO_CONTACTS') {
           alert(error.error);
@@ -380,13 +378,69 @@ export default function OrderForm() {
         } else {
           alert(`Failed to save order: ${error.error || 'Unknown error'}`);
         }
+        return;
       }
+
+      const newOrder = await response.json();
+
+      // If this is just a draft save, we're done
+      if (status === 'draft') {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        return;
+      }
+
+      // Step 2: Submit the order with signature
+      const submitResponse = await fetch(`${API_BASE}/api/orders/${newOrder.id}/submit`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ 
+          signature: signatureValue,
+          items: orderData.items // Pass items for price adjustment check
+        }),
+      });
+
+      if (!submitResponse.ok) {
+        const error = await submitResponse.json();
+        alert(`Failed to submit order: ${error.error || 'Unknown error'}`);
+        return;
+      }
+
+      const submittedResult = await submitResponse.json();
+
+      // Show success page with all the details
+      setSubmittedOrder({
+        ...submittedResult,
+        client_name: selectedClient.business_name,
+        term_months: effectiveTermMonths,
+        monthly_total: totals.monthlyTotal,
+        setup_fees: totals.setupFees,
+        total_value: totals.contractTotal,
+        is_one_time: isOneTime,
+        auto_approved: submittedResult.auto_approved,
+        items: orderItems.map(item => ({
+          ...item,
+          entity_name: item.entity_name || entities.find(e => e.id === item.entity_id)?.name
+        }))
+      });
+      setShowSuccessPage(true);
+      setShowSignatureModal(false);
+      setSignature('');
     } catch (error) {
       console.error('Error saving order:', error);
       alert('Failed to save order');
     } finally {
       setSaving(false);
     }
+  };
+
+  // Handle signature submission
+  const handleSignatureSubmit = async () => {
+    if (!signature.trim()) {
+      alert('Please type your signature to submit the order');
+      return;
+    }
+    await saveOrderToServer('submit', signature.trim());
   };
 
   // Reset form for new order
@@ -412,21 +466,62 @@ export default function OrderForm() {
 
   // Show success page if order was submitted
   if (showSuccessPage && submittedOrder) {
+    const wasAutoApproved = submittedOrder.auto_approved;
+    const itemsList = submittedOrder.items || orderItems;
+    
     return (
       <div style={successStyles.container}>
         <div style={successStyles.card}>
           {/* Success Icon */}
-          <div style={successStyles.iconWrapper}>
-            <svg style={successStyles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+          <div style={{
+            ...successStyles.iconWrapper,
+            background: wasAutoApproved 
+              ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+              : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+          }}>
+            {wasAutoApproved ? (
+              <svg style={successStyles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg style={successStyles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
           </div>
 
-          {/* Title */}
-          <h1 style={successStyles.title}>Order Submitted!</h1>
+          {/* Title - Different based on approval status */}
+          <h1 style={successStyles.title}>
+            {wasAutoApproved ? 'Order Approved!' : 'Order Submitted!'}
+          </h1>
           <p style={successStyles.subtitle}>
-            Order <span style={successStyles.orderNumber}>{submittedOrder.order_number}</span> has been submitted for approval.
+            Order <span style={successStyles.orderNumber}>{submittedOrder.order_number}</span>
+            {wasAutoApproved 
+              ? ' has been automatically approved and is ready to send to the client.'
+              : ' has been sent to the management team for approval.'}
           </p>
+
+          {/* Status Badge */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '9999px',
+            fontSize: '14px',
+            fontWeight: '600',
+            marginBottom: '24px',
+            background: wasAutoApproved ? '#d1fae5' : '#fef3c7',
+            color: wasAutoApproved ? '#065f46' : '#92400e',
+          }}>
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: wasAutoApproved ? '#10b981' : '#f59e0b',
+            }}></span>
+            {wasAutoApproved ? 'Auto-Approved' : 'Pending Approval'}
+          </div>
 
           {/* Order Summary Card */}
           <div style={successStyles.summaryCard}>
@@ -434,10 +529,6 @@ export default function OrderForm() {
             <div style={successStyles.summaryRow}>
               <span>Client:</span>
               <span style={successStyles.summaryValue}>{submittedOrder.client_name}</span>
-            </div>
-            <div style={successStyles.summaryRow}>
-              <span>Products:</span>
-              <span style={successStyles.summaryValue}>{submittedOrder.items?.length || orderItems.length} items</span>
             </div>
             <div style={successStyles.summaryRow}>
               <span>Contract Term:</span>
@@ -453,25 +544,109 @@ export default function OrderForm() {
             </div>
           </div>
 
-          {/* What's Next Section */}
+          {/* Products Included Section */}
+          <div style={{
+            background: '#f8fafc',
+            borderRadius: '12px',
+            padding: '20px',
+            marginBottom: '24px',
+            textAlign: 'left',
+          }}>
+            <h3 style={{
+              fontSize: '14px',
+              fontWeight: '600',
+              color: '#374151',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
+                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+              Products Included ({itemsList.length})
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {itemsList.map((item, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 14px',
+                  background: 'white',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: '500', color: '#1e293b', fontSize: '14px' }}>
+                      {item.product_name}
+                    </div>
+                    {item.entity_name && (
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        {item.entity_name}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>
+                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.line_total || item.unit_price)}
+                      <span style={{ fontWeight: '400', color: '#64748b' }}>/mo</span>
+                    </div>
+                    {item.setup_fee > 0 && (
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>
+                        +{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(item.setup_fee)} setup
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* What's Next Section - Different based on approval status */}
           <div style={successStyles.nextStepsCard}>
             <h3 style={successStyles.nextStepsTitle}>
-              <span style={successStyles.infoIcon}>ℹ️</span> What Happens Next
+              <span style={successStyles.infoIcon}>{wasAutoApproved ? '🚀' : '⏳'}</span> What Happens Next
             </h3>
-            <ol style={successStyles.stepsList}>
-              <li style={successStyles.step}>
-                <span style={successStyles.stepNumber}>1</span>
-                <span>Your order will be reviewed by management for approval</span>
-              </li>
-              <li style={successStyles.step}>
-                <span style={successStyles.stepNumber}>2</span>
-                <span>Once approved, an agreement will be generated and sent to your client</span>
-              </li>
-              <li style={successStyles.step}>
-                <span style={successStyles.stepNumber}>3</span>
-                <span>After the client signs, the order becomes active and billing begins</span>
-              </li>
-            </ol>
+            {wasAutoApproved ? (
+              <ol style={successStyles.stepsList}>
+                <li style={successStyles.step}>
+                  <span style={{...successStyles.stepNumber, background: '#d1fae5', color: '#065f46'}}>✓</span>
+                  <span><strong>Approved!</strong> Your order was auto-approved (pricing at book value)</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>2</span>
+                  <span>Go to the order and click <strong>"Send to Client"</strong> to generate the contract</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>3</span>
+                  <span>Your client will receive an email with a link to review and sign</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>4</span>
+                  <span>Once signed, the order becomes active and billing begins</span>
+                </li>
+              </ol>
+            ) : (
+              <ol style={successStyles.stepsList}>
+                <li style={successStyles.step}>
+                  <span style={{...successStyles.stepNumber, background: '#fef3c7', color: '#92400e'}}>1</span>
+                  <span>Your order has <strong>price adjustments</strong> and requires management approval</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>2</span>
+                  <span>A manager will review and approve (or request changes)</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>3</span>
+                  <span>Once approved, you can send the agreement to your client</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>4</span>
+                  <span>After the client signs, the order becomes active</span>
+                </li>
+              </ol>
+            )}
           </div>
 
           {/* Pro Tips Section */}
@@ -480,12 +655,25 @@ export default function OrderForm() {
               <span style={successStyles.tipsIcon}>💡</span> Tips for Success
             </h3>
             <ul style={successStyles.tipsList}>
-              <li style={successStyles.tip}>
-                <strong>Reach out to your client</strong> – Let them know an agreement is on its way. Emails can land in spam, and a quick heads-up shows you care!
-              </li>
-              <li style={successStyles.tip}>
-                <strong>Set a reminder</strong> – Follow up in 2-3 days if they haven't signed yet
-              </li>
+              {wasAutoApproved ? (
+                <>
+                  <li style={successStyles.tip}>
+                    <strong>Send it now!</strong> – The sooner you send, the sooner you close. Head to the order to send the contract.
+                  </li>
+                  <li style={successStyles.tip}>
+                    <strong>Give them a heads up</strong> – A quick call or text lets them know to check their email
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li style={successStyles.tip}>
+                    <strong>Check back soon</strong> – Approvals typically happen within a few hours during business days
+                  </li>
+                  <li style={successStyles.tip}>
+                    <strong>Prepare your client</strong> – Let them know an agreement will be coming their way
+                  </li>
+                </>
+              )}
               <li style={successStyles.tip}>
                 <strong>Prepare creative assets</strong> – Get a head start gathering logos, images, or copy you'll need
               </li>
@@ -497,9 +685,18 @@ export default function OrderForm() {
             <a href="/orders" style={successStyles.secondaryButton}>
               View All Orders
             </a>
-            <button onClick={resetForm} style={successStyles.primaryButton}>
-              Create Another Order
-            </button>
+            {wasAutoApproved ? (
+              <a 
+                href={`/orders/${submittedOrder.id}/edit`} 
+                style={successStyles.primaryButton}
+              >
+                View Order & Send to Client
+              </a>
+            ) : (
+              <button onClick={resetForm} style={successStyles.primaryButton}>
+                Create Another Order
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -989,6 +1186,214 @@ export default function OrderForm() {
           isEdit={true}
         />
       )}
+
+      {/* Signature Modal */}
+      {showSignatureModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '20px',
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '16px',
+            width: '100%',
+            maxWidth: '500px',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '24px 24px 0',
+              textAlign: 'center',
+            }}>
+              <div style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                  <path d="m12 19 7-7 3 3-7 7-3-3z"/>
+                  <path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                  <path d="m2 2 7.586 7.586"/>
+                  <circle cx="11" cy="11" r="2"/>
+                </svg>
+              </div>
+              <h2 style={{
+                fontSize: '20px',
+                fontWeight: '700',
+                color: '#1e293b',
+                marginBottom: '8px',
+              }}>
+                Sign & Submit Order
+              </h2>
+              <p style={{
+                fontSize: '14px',
+                color: '#64748b',
+                marginBottom: '24px',
+              }}>
+                By signing below, you confirm this order is accurate and ready for processing.
+              </p>
+            </div>
+
+            {/* Order Summary */}
+            <div style={{
+              margin: '0 24px 20px',
+              padding: '16px',
+              background: '#f8fafc',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b', fontSize: '14px' }}>Client</span>
+                <span style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>{selectedClient?.business_name}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ color: '#64748b', fontSize: '14px' }}>Products</span>
+                <span style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>{orderItems.length} items</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid #e2e8f0' }}>
+                <span style={{ color: '#64748b', fontSize: '14px' }}>Total Value</span>
+                <span style={{ fontWeight: '700', color: '#10b981', fontSize: '16px' }}>
+                  {formatCurrency(totals.contractTotal)}
+                </span>
+              </div>
+            </div>
+
+            {/* Signature Input */}
+            <div style={{ padding: '0 24px 24px' }}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#374151',
+                marginBottom: '8px',
+              }}>
+                Type your full name as signature *
+              </label>
+              <input
+                type="text"
+                value={signature}
+                onChange={(e) => setSignature(e.target.value)}
+                placeholder="Enter your full name"
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  border: '2px dashed #d1d5db',
+                  borderRadius: '12px',
+                  fontSize: '24px',
+                  fontFamily: "'Brush Script MT', 'Segoe Script', cursive",
+                  textAlign: 'center',
+                  background: '#fafafa',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+                autoFocus
+              />
+              <p style={{
+                fontSize: '12px',
+                color: '#64748b',
+                marginTop: '8px',
+                textAlign: 'center',
+              }}>
+                Your electronic signature is legally binding
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              padding: '16px 24px 24px',
+              borderTop: '1px solid #e2e8f0',
+              background: '#f8fafc',
+              borderRadius: '0 0 16px 16px',
+            }}>
+              <button
+                onClick={() => {
+                  setShowSignatureModal(false);
+                  setSignature('');
+                }}
+                disabled={saving}
+                style={{
+                  flex: 1,
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  background: 'white',
+                  color: '#374151',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  opacity: saving ? 0.5 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSignatureSubmit}
+                disabled={saving || !signature.trim()}
+                style={{
+                  flex: 2,
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: (!signature.trim() || saving) 
+                    ? '#94a3b8' 
+                    : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: (!signature.trim() || saving) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                }}
+              >
+                {saving ? (
+                  <>
+                    <span style={{
+                      width: '16px',
+                      height: '16px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: 'white',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite',
+                    }}></span>
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Sign & Submit Order
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Spinner animation for signature modal */}
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
