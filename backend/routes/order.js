@@ -1,14 +1,18 @@
 // ============================================================
 // ORDER FORM API ROUTES
-// Handles order creation, management, and client operations
+// Handles order creation, management, approval workflow, and client signing
 // ============================================================
 
 const express = require('express');
 const router = express.Router();
 const { Pool } = require('pg');
+const crypto = require('crypto');
 
 // Database pool - will be set by the main server
 let pool = null;
+
+// Email service - will be injected
+let emailService = null;
 
 // Initialize the pool
 const initPool = (connectionString) => {
@@ -19,6 +23,12 @@ const initPool = (connectionString) => {
     });
     console.log('Order routes connecting to database');
   }
+};
+
+// Initialize email service
+const initEmailService = (service) => {
+  emailService = service;
+  console.log('Order routes email service initialized');
 };
 
 // Middleware to ensure pool is available
@@ -37,6 +47,34 @@ const ensurePool = (req, res, next) => {
 };
 
 router.use(ensurePool);
+
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+
+// Generate a secure signing token
+const generateSigningToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
+
+// Check if order has price adjustments
+const checkPriceAdjustments = (items) => {
+  if (!items || items.length === 0) return false;
+  return items.some(item => {
+    const unitPrice = parseFloat(item.unit_price) || 0;
+    const originalPrice = parseFloat(item.original_price) || parseFloat(item.unit_price) || 0;
+    return Math.abs(unitPrice - originalPrice) > 0.01; // Allow for floating point
+  });
+};
+
+// Get client IP address from request
+const getClientIP = (req) => {
+  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
+         req.headers['x-real-ip'] || 
+         req.connection?.remoteAddress || 
+         req.ip || 
+         'unknown';
+};
 
 // ============================================================
 // CLIENT ROUTES
@@ -467,8 +505,10 @@ router.get('/', async (req, res) => {
         o.*,
         c.business_name as client_name,
         c.industry as client_industry,
+        c.slug as client_slug,
         u.name as submitted_by_name,
         u.email as submitted_by_email,
+        approver.name as approved_by_name,
         COALESCE(item_stats.item_count, 0) as item_count,
         COALESCE(item_stats.setup_fees_total, 0) as setup_fees_total,
         CASE 
@@ -478,6 +518,7 @@ router.get('/', async (req, res) => {
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.submitted_by = u.id
+      LEFT JOIN users approver ON o.approved_by = approver.id
       LEFT JOIN (
         SELECT 
           order_id,
@@ -515,6 +556,59 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/orders/pending-approvals - Get orders needing approval (for managers)
+router.get('/pending-approvals', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        o.*,
+        c.business_name as client_name,
+        c.industry as client_industry,
+        c.slug as client_slug,
+        u.name as submitted_by_name,
+        u.email as submitted_by_email,
+        COALESCE(item_stats.item_count, 0) as item_count,
+        COALESCE(item_stats.setup_fees_total, 0) as setup_fees_total,
+        CASE 
+          WHEN o.term_months = 1 THEN COALESCE(o.monthly_total, 0) + COALESCE(item_stats.setup_fees_total, 0)
+          ELSE COALESCE(o.monthly_total, 0) * COALESCE(o.term_months, 1) + COALESCE(item_stats.setup_fees_total, 0)
+        END as total_value
+      FROM orders o
+      JOIN advertising_clients c ON o.client_id = c.id
+      LEFT JOIN users u ON o.submitted_by = u.id
+      LEFT JOIN (
+        SELECT 
+          order_id,
+          COUNT(*) as item_count,
+          COALESCE(SUM(setup_fee), 0) as setup_fees_total
+        FROM order_items
+        GROUP BY order_id
+      ) item_stats ON item_stats.order_id = o.id
+      WHERE o.status = 'pending_approval'
+      ORDER BY o.created_at ASC
+    `;
+
+    const result = await pool.query(query);
+    res.json({ orders: result.rows, count: result.rows.length });
+  } catch (error) {
+    console.error('Error fetching pending approvals:', error);
+    res.status(500).json({ error: 'Failed to fetch pending approvals' });
+  }
+});
+
+// GET /api/orders/pending-approvals/count - Get count of pending approvals (for badge)
+router.get('/pending-approvals/count', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT COUNT(*) as count FROM orders WHERE status = 'pending_approval'`
+    );
+    res.json({ count: parseInt(result.rows[0].count) });
+  } catch (error) {
+    console.error('Error fetching pending approvals count:', error);
+    res.status(500).json({ error: 'Failed to fetch count' });
+  }
+});
+
 // GET /api/orders/:id - Get single order with items
 router.get('/:id', async (req, res) => {
   try {
@@ -524,9 +618,15 @@ router.get('/:id', async (req, res) => {
       `SELECT 
         o.*,
         c.business_name as client_name,
-        c.industry as client_industry
+        c.industry as client_industry,
+        c.slug as client_slug,
+        u.name as submitted_by_name,
+        u.email as submitted_by_email,
+        approver.name as approved_by_name
        FROM orders o
        JOIN advertising_clients c ON o.client_id = c.id
+       LEFT JOIN users u ON o.submitted_by = u.id
+       LEFT JOIN users approver ON o.approved_by = approver.id
        WHERE o.id = $1`,
       [id]
     );
@@ -544,6 +644,12 @@ router.get('/:id', async (req, res) => {
       [id]
     );
 
+    // Get primary contact for the client
+    const contactResult = await pool.query(
+      `SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1`,
+      [orderResult.rows[0].client_id]
+    );
+
     // Calculate totals
     const items = itemsResult.rows;
     const monthly_total = items.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
@@ -558,7 +664,8 @@ router.get('/:id', async (req, res) => {
       items: items,
       item_count: items.length,
       setup_fees_total,
-      total_value
+      total_value,
+      primary_contact: contactResult.rows[0] || null
     });
   } catch (error) {
     console.error('Error fetching order:', error);
@@ -625,20 +732,25 @@ router.post('/', async (req, res) => {
       ? monthly_total + setup_fees_total 
       : (monthly_total * (term_months || 1)) + setup_fees_total;
 
+    // Check for price adjustments
+    const has_price_adjustments = checkPriceAdjustments(items);
+
     // Create order with submitted_by
     const orderResult = await client.query(
       `INSERT INTO orders (
         id, order_number, client_id, contract_start_date, contract_end_date,
         term_months, billing_frequency, payment_preference, status,
-        monthly_total, contract_total, notes, internal_notes, submitted_by, created_at, updated_at
+        monthly_total, contract_total, notes, internal_notes, submitted_by, 
+        has_price_adjustments, created_at, updated_at
       ) VALUES (
         gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8,
-        $9, $10, $11, $12, $13, NOW(), NOW()
+        $9, $10, $11, $12, $13, $14, NOW(), NOW()
       ) RETURNING *`,
       [
         order_number, client_id, contract_start_date, contract_end_date,
         term_months, billing_frequency, payment_preference, status,
-        monthly_total, contract_total, notes, internal_notes, submitted_by
+        monthly_total, contract_total, notes, internal_notes, submitted_by,
+        has_price_adjustments
       ]
     );
 
@@ -685,6 +797,695 @@ router.post('/', async (req, res) => {
   }
 });
 
+// ============================================================
+// ORDER SUBMISSION WITH SIGNATURE
+// ============================================================
+
+// POST /api/orders/:id/submit - Submit order for approval with sales rep signature
+router.post('/:id/submit', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const { id } = req.params;
+    const { signature, items } = req.body;
+    const user = req.user;
+
+    if (!signature) {
+      return res.status(400).json({ error: 'Signature is required to submit an order' });
+    }
+
+    // Get the order
+    const orderResult = await client.query(
+      `SELECT o.*, c.business_name as client_name, c.slug as client_slug
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.id = $1`,
+      [id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== 'draft') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only draft orders can be submitted' });
+    }
+
+    // Check client has contacts
+    const contactCheck = await client.query(
+      'SELECT COUNT(*) as count FROM contacts WHERE client_id = $1',
+      [order.client_id]
+    );
+    if (parseInt(contactCheck.rows[0].count) === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: 'Client must have at least one contact before submitting',
+        code: 'NO_CONTACTS'
+      });
+    }
+
+    // Check for price adjustments to determine status
+    const itemsResult = await client.query(
+      'SELECT * FROM order_items WHERE order_id = $1',
+      [id]
+    );
+    
+    // Use provided items or fetched items
+    const orderItems = items || itemsResult.rows;
+    const hasPriceAdjustments = checkPriceAdjustments(orderItems);
+    
+    // If price adjustments exist, needs approval. Otherwise, auto-approve
+    const newStatus = hasPriceAdjustments ? 'pending_approval' : 'approved';
+    const clientIP = getClientIP(req);
+
+    // Update order with signature and status
+    const updateResult = await client.query(
+      `UPDATE orders SET
+        status = $1,
+        submitted_by = $2,
+        submitted_signature = $3,
+        submitted_signature_date = NOW(),
+        submitted_ip_address = $4,
+        has_price_adjustments = $5,
+        approved_by = $6,
+        approved_at = $7,
+        updated_at = NOW()
+       WHERE id = $8
+       RETURNING *`,
+      [
+        newStatus,
+        user?.id || order.submitted_by,
+        signature,
+        clientIP,
+        hasPriceAdjustments,
+        hasPriceAdjustments ? null : user?.id, // Auto-approve if no adjustments
+        hasPriceAdjustments ? null : new Date(),
+        id
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedOrder = {
+      ...updateResult.rows[0],
+      client_name: order.client_name,
+      client_slug: order.client_slug
+    };
+
+    // Send appropriate emails
+    if (emailService) {
+      try {
+        if (hasPriceAdjustments) {
+          // Send approval request email to managers
+          await emailService.sendApprovalRequest({
+            order: updatedOrder,
+            submittedBy: { name: user?.name || 'Unknown', email: user?.email },
+            adjustments: orderItems.filter(item => {
+              const unitPrice = parseFloat(item.unit_price) || 0;
+              const originalPrice = parseFloat(item.original_price) || unitPrice;
+              return Math.abs(unitPrice - originalPrice) > 0.01;
+            }).map(item => ({
+              product_name: item.product_name,
+              original_price: item.original_price || item.unit_price,
+              adjusted_price: item.unit_price,
+              discount_percent: item.discount_percent
+            }))
+          });
+        } else {
+          // Send internal notification for auto-approved order
+          await emailService.sendOrderSubmittedInternal({
+            order: updatedOrder,
+            submittedBy: { name: user?.name || 'Unknown', email: user?.email }
+          });
+        }
+      } catch (emailError) {
+        console.error('Failed to send email notification:', emailError);
+        // Don't fail the request if email fails
+      }
+    }
+
+    res.json({
+      ...updatedOrder,
+      auto_approved: !hasPriceAdjustments,
+      message: hasPriceAdjustments 
+        ? 'Order submitted for approval' 
+        : 'Order submitted and auto-approved (no price adjustments)'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error submitting order:', error);
+    res.status(500).json({ error: 'Failed to submit order' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
+// APPROVAL WORKFLOW
+// ============================================================
+
+// PUT /api/orders/:id/approve - Approve an order (managers only)
+router.put('/:id/approve', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const { id } = req.params;
+    const { notes } = req.body;
+    const user = req.user;
+
+    // Check user has permission (admin or manager)
+    if (!user || !['admin', 'manager'].includes(user.role)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Only managers can approve orders' });
+    }
+
+    // Get the order
+    const orderResult = await client.query(
+      `SELECT o.*, c.business_name as client_name, c.slug as client_slug,
+              u.name as submitted_by_name, u.email as submitted_by_email
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       LEFT JOIN users u ON o.submitted_by = u.id
+       WHERE o.id = $1`,
+      [id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== 'pending_approval') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Order is not pending approval' });
+    }
+
+    // Update order status
+    const updateResult = await client.query(
+      `UPDATE orders SET
+        status = 'approved',
+        approved_by = $1,
+        approved_at = NOW(),
+        approval_notes = $2,
+        updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      [user.id, notes || null, id]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedOrder = {
+      ...updateResult.rows[0],
+      client_name: order.client_name,
+      client_slug: order.client_slug,
+      approved_by_name: user.name
+    };
+
+    // Send approval notification email
+    if (emailService && order.submitted_by_email) {
+      try {
+        await emailService.sendOrderApproved({
+          order: updatedOrder,
+          approvedBy: { name: user.name },
+          submittedBy: { 
+            name: order.submitted_by_name, 
+            email: order.submitted_by_email 
+          }
+        });
+      } catch (emailError) {
+        console.error('Failed to send approval email:', emailError);
+      }
+    }
+
+    res.json({
+      ...updatedOrder,
+      message: 'Order approved successfully'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error approving order:', error);
+    res.status(500).json({ error: 'Failed to approve order' });
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /api/orders/:id/reject - Reject an order (managers only)
+router.put('/:id/reject', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const { id } = req.params;
+    const { reason } = req.body;
+    const user = req.user;
+
+    // Check user has permission
+    if (!user || !['admin', 'manager'].includes(user.role)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Only managers can reject orders' });
+    }
+
+    if (!reason) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Rejection reason is required' });
+    }
+
+    // Get the order
+    const orderResult = await client.query(
+      `SELECT o.*, c.business_name as client_name,
+              u.name as submitted_by_name, u.email as submitted_by_email
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       LEFT JOIN users u ON o.submitted_by = u.id
+       WHERE o.id = $1`,
+      [id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== 'pending_approval') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Order is not pending approval' });
+    }
+
+    // Update order status back to draft with rejection reason
+    const updateResult = await client.query(
+      `UPDATE orders SET
+        status = 'draft',
+        rejected_reason = $1,
+        updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [reason, id]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedOrder = {
+      ...updateResult.rows[0],
+      client_name: order.client_name
+    };
+
+    // Send rejection notification email
+    if (emailService && order.submitted_by_email) {
+      try {
+        await emailService.sendOrderRejected({
+          order: updatedOrder,
+          rejectedBy: { name: user.name },
+          reason: reason,
+          submittedBy: { 
+            name: order.submitted_by_name, 
+            email: order.submitted_by_email 
+          }
+        });
+      } catch (emailError) {
+        console.error('Failed to send rejection email:', emailError);
+      }
+    }
+
+    res.json({
+      ...updatedOrder,
+      message: 'Order rejected and returned to draft'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error rejecting order:', error);
+    res.status(500).json({ error: 'Failed to reject order' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
+// SEND TO CLIENT
+// ============================================================
+
+// POST /api/orders/:id/send-to-client - Generate signing link and send to client
+router.post('/:id/send-to-client', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const { id } = req.params;
+    const { contact_id } = req.body; // Optional: specific contact to send to
+    const user = req.user;
+
+    // Get the order
+    const orderResult = await client.query(
+      `SELECT o.*, c.business_name as client_name, c.slug as client_slug
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.id = $1`,
+      [id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status !== 'approved') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Order must be approved before sending to client' });
+    }
+
+    // Get the contact to send to (specific or primary)
+    let contactQuery = contact_id 
+      ? 'SELECT * FROM contacts WHERE id = $1'
+      : 'SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1';
+    
+    const contactResult = await client.query(
+      contactQuery,
+      [contact_id || order.client_id]
+    );
+
+    if (contactResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No contact found to send the contract to' });
+    }
+
+    const contact = contactResult.rows[0];
+
+    if (!contact.email) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Contact does not have an email address' });
+    }
+
+    // Generate signing token (expires in 7 days)
+    const signingToken = generateSigningToken();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    // Update order with signing token
+    const updateResult = await client.query(
+      `UPDATE orders SET
+        status = 'sent',
+        signing_token = $1,
+        signing_token_expires_at = $2,
+        sent_to_client_at = NOW(),
+        sent_to_client_by = $3,
+        updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      [signingToken, expiresAt, user?.id, id]
+    );
+
+    await client.query('COMMIT');
+
+    const updatedOrder = {
+      ...updateResult.rows[0],
+      client_name: order.client_name,
+      client_slug: order.client_slug
+    };
+
+    // Send contract email to client
+    const baseUrl = process.env.BASE_URL || 'https://myadvertisingreport.com';
+    const signingUrl = `${baseUrl}/sign/${signingToken}`;
+
+    if (emailService) {
+      try {
+        await emailService.sendContractToClient({
+          order: updatedOrder,
+          contact: contact,
+          signingUrl: signingUrl
+        });
+      } catch (emailError) {
+        console.error('Failed to send contract email:', emailError);
+        // Still return success - the link was generated
+      }
+    }
+
+    res.json({
+      ...updatedOrder,
+      signing_url: signingUrl,
+      sent_to: {
+        name: `${contact.first_name} ${contact.last_name}`,
+        email: contact.email
+      },
+      expires_at: expiresAt,
+      message: 'Contract sent to client successfully'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error sending to client:', error);
+    res.status(500).json({ error: 'Failed to send contract to client' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
+// PUBLIC SIGNING ROUTES (No auth required)
+// ============================================================
+
+// GET /api/orders/sign/:token - Get order for signing (public)
+router.get('/sign/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    // Find order by signing token
+    const orderResult = await pool.query(
+      `SELECT 
+        o.id, o.order_number, o.contract_start_date, o.contract_end_date,
+        o.term_months, o.monthly_total, o.contract_total, o.billing_frequency,
+        o.status, o.signing_token_expires_at, o.notes,
+        o.submitted_signature, o.submitted_signature_date,
+        c.business_name as client_name, c.id as client_id,
+        u.name as submitted_by_name
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       LEFT JOIN users u ON o.submitted_by = u.id
+       WHERE o.signing_token = $1`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Contract not found or link is invalid' });
+    }
+
+    const order = orderResult.rows[0];
+
+    // Check if already signed
+    if (order.status === 'signed' || order.status === 'active') {
+      return res.status(400).json({ 
+        error: 'This contract has already been signed',
+        signed: true
+      });
+    }
+
+    // Check if token expired
+    if (new Date() > new Date(order.signing_token_expires_at)) {
+      return res.status(400).json({ 
+        error: 'This signing link has expired. Please contact your representative for a new link.',
+        expired: true
+      });
+    }
+
+    // Check if order is in correct status
+    if (order.status !== 'sent') {
+      return res.status(400).json({ error: 'This contract is not available for signing' });
+    }
+
+    // Get order items
+    const itemsResult = await pool.query(
+      `SELECT product_name, product_category, quantity, unit_price, line_total, setup_fee,
+              e.name as entity_name
+       FROM order_items oi
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1
+       ORDER BY oi.created_at`,
+      [order.id]
+    );
+
+    // Get primary contact
+    const contactResult = await pool.query(
+      'SELECT first_name, last_name, email, title FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1',
+      [order.client_id]
+    );
+
+    // Calculate totals
+    const items = itemsResult.rows;
+    const setup_fees_total = items.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0);
+
+    res.json({
+      order_number: order.order_number,
+      client_name: order.client_name,
+      contract_start_date: order.contract_start_date,
+      contract_end_date: order.contract_end_date,
+      term_months: order.term_months,
+      monthly_total: order.monthly_total,
+      contract_total: order.contract_total,
+      setup_fees_total: setup_fees_total,
+      billing_frequency: order.billing_frequency,
+      notes: order.notes,
+      items: items,
+      contact: contactResult.rows[0] || null,
+      sales_rep: {
+        name: order.submitted_by_name,
+        signature: order.submitted_signature,
+        signed_date: order.submitted_signature_date
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching order for signing:', error);
+    res.status(500).json({ error: 'Failed to load contract' });
+  }
+});
+
+// POST /api/orders/sign/:token - Sign the contract (public)
+router.post('/sign/:token', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const { token } = req.params;
+    const { 
+      signature, 
+      signer_name, 
+      signer_email, 
+      signer_title,
+      agreed_to_terms 
+    } = req.body;
+
+    // Validate required fields
+    if (!signature || !signer_name || !signer_email) {
+      return res.status(400).json({ error: 'Signature, name, and email are required' });
+    }
+
+    if (!agreed_to_terms) {
+      return res.status(400).json({ error: 'You must agree to the terms of service' });
+    }
+
+    // Find order by signing token
+    const orderResult = await client.query(
+      `SELECT o.*, c.business_name as client_name, c.slug as client_slug
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Contract not found or link is invalid' });
+    }
+
+    const order = orderResult.rows[0];
+
+    // Check if already signed
+    if (order.status === 'signed' || order.status === 'active') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This contract has already been signed' });
+    }
+
+    // Check if token expired
+    if (new Date() > new Date(order.signing_token_expires_at)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This signing link has expired' });
+    }
+
+    // Check status
+    if (order.status !== 'sent') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This contract is not available for signing' });
+    }
+
+    const clientIP = getClientIP(req);
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // Update order with signature
+    const updateResult = await client.query(
+      `UPDATE orders SET
+        status = 'signed',
+        signed_by_name = $1,
+        signed_by_email = $2,
+        signed_by_title = $3,
+        signed_at = NOW(),
+        signed_ip_address = $4,
+        signed_user_agent = $5,
+        signing_token = NULL,
+        signing_token_expires_at = NULL,
+        updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [signer_name, signer_email, signer_title, clientIP, userAgent, order.id]
+    );
+
+    await client.query('COMMIT');
+
+    const signedOrder = {
+      ...updateResult.rows[0],
+      client_name: order.client_name,
+      client_slug: order.client_slug
+    };
+
+    // Get contact for confirmation email
+    const contactResult = await pool.query(
+      'SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1',
+      [order.client_id]
+    );
+    const contact = contactResult.rows[0] || { 
+      first_name: signer_name.split(' ')[0],
+      last_name: signer_name.split(' ').slice(1).join(' '),
+      email: signer_email 
+    };
+
+    // Send confirmation emails
+    if (emailService) {
+      try {
+        // Send to client
+        await emailService.sendSignatureConfirmation({
+          order: signedOrder,
+          contact: contact,
+          pdfUrl: null // PDF generation is a future feature
+        });
+
+        // Send internal notification
+        await emailService.sendContractSignedInternal({
+          order: signedOrder,
+          contact: contact
+        });
+      } catch (emailError) {
+        console.error('Failed to send signature confirmation emails:', emailError);
+      }
+    }
+
+    res.json({
+      success: true,
+      order_number: signedOrder.order_number,
+      signed_at: signedOrder.signed_at,
+      message: 'Contract signed successfully! You will receive a confirmation email shortly.'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error signing contract:', error);
+    res.status(500).json({ error: 'Failed to sign contract' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
+// UPDATE ORDER
+// ============================================================
+
 // PUT /api/orders/:id - Update existing order
 router.put('/:id', async (req, res) => {
   const client = await pool.connect();
@@ -719,6 +1520,9 @@ router.put('/:id', async (req, res) => {
       ? monthly_total + setup_fees_total 
       : (monthly_total * (term_months || 1)) + setup_fees_total;
 
+    // Check for price adjustments
+    const has_price_adjustments = items ? checkPriceAdjustments(items) : false;
+
     // Update order
     const orderResult = await client.query(
       `UPDATE orders SET
@@ -732,13 +1536,15 @@ router.put('/:id', async (req, res) => {
         contract_total = $8,
         notes = COALESCE($9, notes),
         internal_notes = COALESCE($10, internal_notes),
+        has_price_adjustments = $11,
         updated_at = NOW()
-       WHERE id = $11
+       WHERE id = $12
        RETURNING *`,
       [
         contract_start_date, contract_end_date, term_months,
         billing_frequency, payment_preference, status,
-        monthly_total, contract_total, notes, internal_notes, id
+        monthly_total, contract_total, notes, internal_notes,
+        has_price_adjustments, id
       ]
     );
 
@@ -947,3 +1753,4 @@ router.get('/categories/list', async (req, res) => {
 
 module.exports = router;
 module.exports.initPool = initPool;
+module.exports.initEmailService = initEmailService;

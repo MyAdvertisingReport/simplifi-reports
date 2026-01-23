@@ -19,6 +19,7 @@ const { initializeDatabase, seedInitialData, DatabaseHelper } = require('./datab
 const adminRoutes = require('./routes/admin');
 const orderRoutes = require('./routes/order');
 const emailRoutes = require('./routes/email');
+const emailService = require('./services/email-service');
 
 // Initialize Express
 const app = express();
@@ -103,6 +104,13 @@ const setupAdminRoutes = () => {
   
   // Initialize order routes with the same pool
   orderRoutes.initPool(process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL);
+  
+  // Inject email service into order routes for notifications
+  if (orderRoutes.initEmailService) {
+    orderRoutes.initEmailService(emailService);
+    console.log('Order routes email service initialized');
+  }
+  
   orderRoutesReady = true;
   console.log('Order routes initialized');
 };
@@ -1789,7 +1797,30 @@ app.use('/api/admin', (req, res, next) => {
 }, adminRoutes);
 
 // ============================================
-// ORDER ROUTES
+// PUBLIC SIGNING ROUTES (No auth required)
+// ============================================
+
+// Public contract signing - no authentication needed
+// Client accesses via token-based URL
+app.get('/api/orders/sign/:token', (req, res, next) => {
+  if (!orderRoutesReady) {
+    return res.status(503).json({ error: 'Service not yet initialized. Please wait...' });
+  }
+  // Manually invoke the router with the modified path
+  req.baseUrl = '/api/orders';
+  orderRoutes(req, res, next);
+});
+
+app.post('/api/orders/sign/:token', (req, res, next) => {
+  if (!orderRoutesReady) {
+    return res.status(503).json({ error: 'Service not yet initialized. Please wait...' });
+  }
+  req.baseUrl = '/api/orders';
+  orderRoutes(req, res, next);
+});
+
+// ============================================
+// ORDER ROUTES (Authenticated)
 // ============================================
 
 app.use('/api/orders', authenticateToken, (req, res, next) => {
