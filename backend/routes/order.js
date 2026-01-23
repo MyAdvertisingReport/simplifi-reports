@@ -693,7 +693,17 @@ router.post('/', async (req, res) => {
     } = req.body;
 
     // Get submitted_by from authenticated user (if available)
-    const submitted_by = req.user?.id || null;
+    // Check if user exists in users table to avoid FK constraint violation
+    let submitted_by = null;
+    if (req.user?.id) {
+      const userCheck = await client.query(
+        'SELECT id FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      if (userCheck.rows.length > 0) {
+        submitted_by = req.user.id;
+      }
+    }
 
     // Validate required fields
     if (!client_id || !contract_start_date || !contract_end_date) {
@@ -863,6 +873,18 @@ router.post('/:id/submit', async (req, res) => {
     const newStatus = hasPriceAdjustments ? 'pending_approval' : 'approved';
     const clientIP = getClientIP(req);
 
+    // Check if user exists in users table to avoid FK constraint violation
+    let validUserId = null;
+    if (user?.id) {
+      const userCheck = await client.query(
+        'SELECT id FROM users WHERE id = $1',
+        [user.id]
+      );
+      if (userCheck.rows.length > 0) {
+        validUserId = user.id;
+      }
+    }
+
     // Update order with signature and status
     const updateResult = await client.query(
       `UPDATE orders SET
@@ -879,11 +901,11 @@ router.post('/:id/submit', async (req, res) => {
        RETURNING *`,
       [
         newStatus,
-        user?.id || order.submitted_by,
+        validUserId || order.submitted_by,
         signature,
         clientIP,
         hasPriceAdjustments,
-        hasPriceAdjustments ? null : user?.id, // Auto-approve if no adjustments
+        hasPriceAdjustments ? null : validUserId, // Auto-approve if no adjustments
         hasPriceAdjustments ? null : new Date(),
         id
       ]
@@ -988,6 +1010,18 @@ router.put('/:id/approve', async (req, res) => {
       return res.status(400).json({ error: 'Order is not pending approval' });
     }
 
+    // Check if user exists in users table to avoid FK constraint violation
+    let validUserId = null;
+    if (user?.id) {
+      const userCheck = await client.query(
+        'SELECT id FROM users WHERE id = $1',
+        [user.id]
+      );
+      if (userCheck.rows.length > 0) {
+        validUserId = user.id;
+      }
+    }
+
     // Update order status
     const updateResult = await client.query(
       `UPDATE orders SET
@@ -998,7 +1032,7 @@ router.put('/:id/approve', async (req, res) => {
         updated_at = NOW()
        WHERE id = $3
        RETURNING *`,
-      [user.id, notes || null, id]
+      [validUserId, notes || null, id]
     );
 
     await client.query('COMMIT');
@@ -1193,6 +1227,18 @@ router.post('/:id/send-to-client', async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
+    // Check if user exists in users table to avoid FK constraint violation
+    let validUserId = null;
+    if (user?.id) {
+      const userCheck = await client.query(
+        'SELECT id FROM users WHERE id = $1',
+        [user.id]
+      );
+      if (userCheck.rows.length > 0) {
+        validUserId = user.id;
+      }
+    }
+
     // Update order with signing token
     const updateResult = await client.query(
       `UPDATE orders SET
@@ -1204,7 +1250,7 @@ router.post('/:id/send-to-client', async (req, res) => {
         updated_at = NOW()
        WHERE id = $4
        RETURNING *`,
-      [signingToken, expiresAt, user?.id, id]
+      [signingToken, expiresAt, validUserId, id]
     );
 
     await client.query('COMMIT');
