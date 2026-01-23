@@ -529,6 +529,8 @@ export default function OrderForm() {
         total_value: totals.contractTotal,
         is_one_time: isOneTime,
         auto_approved: submittedResult.auto_approved,
+        auto_sent: submittedResult.auto_sent,
+        sent_to: submittedResult.sent_to,
         items: orderItems.map(item => ({
           ...item,
           entity_name: item.entity_name || entities.find(e => e.id === item.entity_id)?.name

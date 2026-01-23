@@ -1009,11 +1009,17 @@ router.post('/:id/submit', async (req, res) => {
         
         await client.query('COMMIT');
         
+        // Calculate totals for email
+        const orderMonthlyTotal = parseFloat(updateResult.rows[0].monthly_total) || 0;
+        const orderContractTotal = parseFloat(updateResult.rows[0].contract_total) || orderMonthlyTotal * (updateResult.rows[0].term_months || 1);
+        
         updatedOrder = {
           ...updateResult.rows[0],
           client_name: order.client_name,
           client_slug: order.client_slug,
-          submitted_by_name: user?.name || signature || 'Unknown'
+          submitted_by_name: user?.name || signature || 'Unknown',
+          monthly_total: orderMonthlyTotal,
+          contract_total: orderContractTotal
         };
 
         // Build signing URL
@@ -1023,15 +1029,18 @@ router.post('/:id/submit', async (req, res) => {
         // Send contract email to client
         if (emailService && primaryContact.email) {
           try {
-            await emailService.sendContractToClient({
+            console.log(`[Order Submit] Sending contract email to ${primaryContact.email} for order ${updatedOrder.order_number}`);
+            const emailResult = await emailService.sendContractToClient({
               order: updatedOrder,
               contact: primaryContact,
-              signingUrl: signingUrl,
-              submittedBy: { name: user?.name || signature || 'Unknown' }
+              signingUrl: signingUrl
             });
+            console.log(`[Order Submit] Email result:`, emailResult);
           } catch (emailError) {
             console.error('Failed to send contract email:', emailError);
           }
+        } else {
+          console.log(`[Order Submit] Email not sent - emailService: ${!!emailService}, primaryContact.email: ${primaryContact?.email}`);
         }
       }
 

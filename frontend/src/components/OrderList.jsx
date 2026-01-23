@@ -95,6 +95,8 @@ const statusConfig = {
   draft: { label: 'Draft', bg: '#f1f5f9', color: '#64748b', border: '#e2e8f0' },
   pending_approval: { label: 'Pending Approval', bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
   approved: { label: 'Approved', bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' },
+  sent: { label: 'Sent to Client', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+  signed: { label: 'Signed', bg: '#d1fae5', color: '#065f46', border: '#6ee7b7' },
   active: { label: 'Active', bg: '#dcfce7', color: '#166534', border: '#86efac' },
   completed: { label: 'Completed', bg: '#f3f4f6', color: '#374151', border: '#d1d5db' },
   cancelled: { label: 'Cancelled', bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
@@ -505,14 +507,6 @@ export default function OrderList() {
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th style={styles.th} onClick={() => handleSort('order_number')}>
-                    <div style={styles.thContent}>
-                      Order #
-                      {sortField === 'order_number' && (
-                        sortDirection === 'asc' ? <Icons.ChevronUp /> : <Icons.ChevronDown />
-                      )}
-                    </div>
-                  </th>
                   <th style={styles.th} onClick={() => handleSort('client_name')}>
                     <div style={styles.thContent}>
                       Client
@@ -557,11 +551,9 @@ export default function OrderList() {
                   return (
                     <tr key={order.id} style={styles.tr}>
                       <td style={styles.td}>
-                        <span style={styles.orderNumber}>{order.order_number || '-'}</span>
-                      </td>
-                      <td style={styles.td}>
                         <div style={styles.clientCell}>
                           <span style={styles.clientName}>{order.client_name || 'Unknown Client'}</span>
+                          <span style={{ fontSize: '12px', color: '#64748b' }}>{order.order_number}</span>
                         </div>
                       </td>
                       <td style={styles.td}>
