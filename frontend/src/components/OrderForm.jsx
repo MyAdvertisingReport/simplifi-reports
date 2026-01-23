@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -71,12 +72,20 @@ const Icons = {
 };
 
 export default function OrderForm() {
+  // Get order ID from URL params (for editing existing orders)
+  const { id: orderId } = useParams();
+  const navigate = useNavigate();
+  const isEditMode = !!orderId;
+
   // Data states
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
   const [entities, setEntities] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Existing order data (for edit mode)
+  const [existingOrder, setExistingOrder] = useState(null);
 
   // Form states
   const [selectedClient, setSelectedClient] = useState(null);
@@ -114,10 +123,17 @@ export default function OrderForm() {
   const [signature, setSignature] = useState('');
   const [signingOrder, setSigningOrder] = useState(null);
 
-  // Fetch initial data
+  // Fetch initial data and existing order if in edit mode
   useEffect(() => {
     fetchInitialData();
   }, []);
+
+  // Load existing order when orderId changes or after initial data loads
+  useEffect(() => {
+    if (orderId && clients.length > 0 && entities.length > 0) {
+      loadExistingOrder(orderId);
+    }
+  }, [orderId, clients.length, entities.length]);
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -138,6 +154,77 @@ export default function OrderForm() {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load existing order for editing
+  const loadExistingOrder = async (id) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/${id}`, {
+        headers: getAuthHeaders()
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load order');
+      }
+      
+      const order = await response.json();
+      setExistingOrder(order);
+      
+      // Find and set the client
+      const client = clients.find(c => c.id === order.client_id);
+      if (client) {
+        setSelectedClient(client);
+      }
+      
+      // Set contract dates
+      if (order.contract_start_date) {
+        setContractStartDate(order.contract_start_date.split('T')[0]);
+      }
+      
+      // Set term
+      if (order.term_months === 1) {
+        setIsOneTime(true);
+        setTermMonths('1');
+      } else if ([3, 6, 12].includes(order.term_months)) {
+        setTermMonths(String(order.term_months));
+      } else {
+        setIsCustomTerm(true);
+        setCustomTerm(String(order.term_months));
+      }
+      
+      // Set billing preference
+      setBillUpfront(order.billing_frequency === 'upfront');
+      
+      // Set notes
+      setOrderNotes(order.notes || '');
+      if (order.internal_notes?.startsWith('Schedule: ')) {
+        setScheduleNotes(order.internal_notes.replace('Schedule: ', ''));
+      }
+      
+      // Set order items
+      if (order.items && order.items.length > 0) {
+        const mappedItems = order.items.map(item => ({
+          id: item.id,
+          entity_id: item.entity_id,
+          entity_name: entities.find(e => e.id === item.entity_id)?.name || item.entity_name,
+          product_id: item.product_id,
+          product_name: item.product_name,
+          product_category: item.product_category,
+          quantity: item.quantity || 1,
+          unit_price: parseFloat(item.unit_price) || 0,
+          original_price: parseFloat(item.original_price) || parseFloat(item.unit_price) || 0,
+          line_total: parseFloat(item.line_total) || 0,
+          setup_fee: parseFloat(item.setup_fee) || 0,
+          notes: item.notes,
+          price_adjusted: parseFloat(item.unit_price) !== parseFloat(item.original_price),
+          price_approved: true // Assume existing items were already approved
+        }));
+        setOrderItems(mappedItems);
+      }
+    } catch (error) {
+      console.error('Error loading order:', error);
+      alert('Failed to load order details');
     }
   };
 
@@ -363,35 +450,59 @@ export default function OrderForm() {
         })),
       };
 
-      // Step 1: Create the order as draft
-      const response = await fetch(`${API_BASE}/api/orders`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(orderData),
-      });
+      let savedOrder;
 
-      if (!response.ok) {
-        const error = await response.json();
-        if (error.code === 'NO_CONTACTS') {
-          alert(error.error);
-          setEditingClient(selectedClient);
-        } else {
-          alert(`Failed to save order: ${error.error || 'Unknown error'}`);
+      // Check if we're editing an existing order or creating new
+      if (isEditMode && existingOrder) {
+        // Update existing order
+        const response = await fetch(`${API_BASE}/api/orders/${orderId}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(orderData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          alert(`Failed to update order: ${error.error || 'Unknown error'}`);
+          return;
         }
-        return;
-      }
 
-      const newOrder = await response.json();
+        savedOrder = await response.json();
+      } else {
+        // Create new order as draft
+        const response = await fetch(`${API_BASE}/api/orders`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(orderData),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          if (error.code === 'NO_CONTACTS') {
+            alert(error.error);
+            setEditingClient(selectedClient);
+          } else {
+            alert(`Failed to save order: ${error.error || 'Unknown error'}`);
+          }
+          return;
+        }
+
+        savedOrder = await response.json();
+      }
 
       // If this is just a draft save, we're done
       if (status === 'draft') {
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
+        // If it was a new order, update URL to edit mode
+        if (!isEditMode && savedOrder.id) {
+          navigate(`/orders/${savedOrder.id}/edit`, { replace: true });
+        }
         return;
       }
 
       // Step 2: Submit the order with signature
-      const submitResponse = await fetch(`${API_BASE}/api/orders/${newOrder.id}/submit`, {
+      const submitResponse = await fetch(`${API_BASE}/api/orders/${savedOrder.id}/submit`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ 
@@ -719,8 +830,12 @@ export default function OrderForm() {
       {/* Header */}
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>New Order</h1>
-          <p style={styles.subtitle}>Create a new advertising order</p>
+          <h1 style={styles.title}>{isEditMode ? 'Edit Order' : 'New Order'}</h1>
+          <p style={styles.subtitle}>
+            {isEditMode 
+              ? `Editing ${existingOrder?.order_number || 'order'}` 
+              : 'Create a new advertising order'}
+          </p>
         </div>
         {saveSuccess && (
           <div style={styles.successBanner}>

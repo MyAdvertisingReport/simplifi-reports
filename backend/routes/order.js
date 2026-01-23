@@ -565,7 +565,7 @@ router.get('/pending-approvals', async (req, res) => {
         c.business_name as client_name,
         c.industry as client_industry,
         c.slug as client_slug,
-        u.name as submitted_by_name,
+        COALESCE(u.name, o.submitted_signature, 'Unknown') as submitted_by_name,
         u.email as submitted_by_email,
         COALESCE(item_stats.item_count, 0) as item_count,
         COALESCE(item_stats.setup_fees_total, 0) as setup_fees_total,
@@ -916,7 +916,8 @@ router.post('/:id/submit', async (req, res) => {
     const updatedOrder = {
       ...updateResult.rows[0],
       client_name: order.client_name,
-      client_slug: order.client_slug
+      client_slug: order.client_slug,
+      submitted_by_name: user?.name || 'Unknown' // Include submitter name from JWT
     };
 
     // Send appropriate emails
