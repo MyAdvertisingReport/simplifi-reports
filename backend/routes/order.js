@@ -500,13 +500,14 @@ router.get('/', async (req, res) => {
     const filterClientId = clientId || client_id;
     
     // Updated query to include item_count, calculate total_value, and get submitted_by name
+    // Use COALESCE to fall back to signature if user not found
     let query = `
       SELECT 
         o.*,
         c.business_name as client_name,
         c.industry as client_industry,
         c.slug as client_slug,
-        u.name as submitted_by_name,
+        COALESCE(u.name, o.submitted_signature) as submitted_by_name,
         u.email as submitted_by_email,
         approver.name as approved_by_name,
         COALESCE(item_stats.item_count, 0) as item_count,
@@ -869,8 +870,7 @@ router.post('/:id/submit', async (req, res) => {
     const orderItems = items || itemsResult.rows;
     const hasPriceAdjustments = checkPriceAdjustments(orderItems);
     
-    // If price adjustments exist, needs approval. Otherwise, auto-approve
-    const newStatus = hasPriceAdjustments ? 'pending_approval' : 'approved';
+    // If price adjustments exist, needs approval. Otherwise, auto-approve AND auto-send
     const clientIP = getClientIP(req);
 
     // Check if user exists in users table to avoid FK constraint violation
@@ -885,49 +885,41 @@ router.post('/:id/submit', async (req, res) => {
       }
     }
 
-    // Update order with signature and status
-    const updateResult = await client.query(
-      `UPDATE orders SET
-        status = $1,
-        submitted_by = $2,
-        submitted_signature = $3,
-        submitted_signature_date = NOW(),
-        submitted_ip_address = $4,
-        has_price_adjustments = $5,
-        approved_by = $6,
-        approved_at = $7,
-        updated_at = NOW()
-       WHERE id = $8
-       RETURNING *`,
-      [
-        newStatus,
-        validUserId || order.submitted_by,
-        signature,
-        clientIP,
-        hasPriceAdjustments,
-        hasPriceAdjustments ? null : validUserId, // Auto-approve if no adjustments
-        hasPriceAdjustments ? null : new Date(),
-        id
-      ]
-    );
+    let updatedOrder;
+    let signingUrl = null;
+    let primaryContact = null;
 
-    await client.query('COMMIT');
+    if (hasPriceAdjustments) {
+      // Needs approval - set to pending_approval
+      const updateResult = await client.query(
+        `UPDATE orders SET
+          status = 'pending_approval',
+          submitted_by = $1,
+          submitted_signature = $2,
+          submitted_signature_date = NOW(),
+          submitted_ip_address = $3,
+          has_price_adjustments = true,
+          updated_at = NOW()
+         WHERE id = $4
+         RETURNING *`,
+        [validUserId || order.submitted_by, signature, clientIP, id]
+      );
+      
+      await client.query('COMMIT');
+      
+      updatedOrder = {
+        ...updateResult.rows[0],
+        client_name: order.client_name,
+        client_slug: order.client_slug,
+        submitted_by_name: user?.name || signature || 'Unknown'
+      };
 
-    const updatedOrder = {
-      ...updateResult.rows[0],
-      client_name: order.client_name,
-      client_slug: order.client_slug,
-      submitted_by_name: user?.name || 'Unknown' // Include submitter name from JWT
-    };
-
-    // Send appropriate emails
-    if (emailService) {
-      try {
-        if (hasPriceAdjustments) {
-          // Send approval request email to managers
+      // Send approval request email to managers
+      if (emailService) {
+        try {
           await emailService.sendApprovalRequest({
             order: updatedOrder,
-            submittedBy: { name: user?.name || 'Unknown', email: user?.email },
+            submittedBy: { name: user?.name || signature || 'Unknown', email: user?.email },
             adjustments: orderItems.filter(item => {
               const unitPrice = parseFloat(item.unit_price) || 0;
               const originalPrice = parseFloat(item.original_price) || unitPrice;
@@ -939,25 +931,135 @@ router.post('/:id/submit', async (req, res) => {
               discount_percent: item.discount_percent
             }))
           });
-        } else {
-          // Send internal notification for auto-approved order
+        } catch (emailError) {
+          console.error('Failed to send approval request email:', emailError);
+        }
+      }
+    } else {
+      // Auto-approve AND auto-send to client
+      // Generate signing token
+      const signingToken = generateSigningToken();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      // Get primary contact for the client
+      const contactResult = await client.query(
+        'SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1',
+        [order.client_id]
+      );
+
+      if (contactResult.rows.length === 0) {
+        // No contact - just approve, don't send
+        const updateResult = await client.query(
+          `UPDATE orders SET
+            status = 'approved',
+            submitted_by = $1,
+            submitted_signature = $2,
+            submitted_signature_date = NOW(),
+            submitted_ip_address = $3,
+            has_price_adjustments = false,
+            approved_by = $4,
+            approved_at = NOW(),
+            updated_at = NOW()
+           WHERE id = $5
+           RETURNING *`,
+          [validUserId || order.submitted_by, signature, clientIP, validUserId, id]
+        );
+        
+        await client.query('COMMIT');
+        
+        updatedOrder = {
+          ...updateResult.rows[0],
+          client_name: order.client_name,
+          client_slug: order.client_slug,
+          submitted_by_name: user?.name || signature || 'Unknown'
+        };
+      } else {
+        primaryContact = contactResult.rows[0];
+
+        // Update order: approve AND set signing token (status = 'sent')
+        const updateResult = await client.query(
+          `UPDATE orders SET
+            status = 'sent',
+            submitted_by = $1,
+            submitted_signature = $2,
+            submitted_signature_date = NOW(),
+            submitted_ip_address = $3,
+            has_price_adjustments = false,
+            approved_by = $4,
+            approved_at = NOW(),
+            signing_token = $5,
+            signing_token_expires_at = $6,
+            sent_to_client_at = NOW(),
+            sent_to_client_by = $7,
+            updated_at = NOW()
+           WHERE id = $8
+           RETURNING *`,
+          [
+            validUserId || order.submitted_by, 
+            signature, 
+            clientIP, 
+            validUserId,
+            signingToken,
+            expiresAt,
+            validUserId,
+            id
+          ]
+        );
+        
+        await client.query('COMMIT');
+        
+        updatedOrder = {
+          ...updateResult.rows[0],
+          client_name: order.client_name,
+          client_slug: order.client_slug,
+          submitted_by_name: user?.name || signature || 'Unknown'
+        };
+
+        // Build signing URL
+        const baseUrl = process.env.BASE_URL || 'https://myadvertisingreport.com';
+        signingUrl = `${baseUrl}/sign/${signingToken}`;
+
+        // Send contract email to client
+        if (emailService && primaryContact.email) {
+          try {
+            await emailService.sendContractToClient({
+              order: updatedOrder,
+              contact: primaryContact,
+              signingUrl: signingUrl,
+              submittedBy: { name: user?.name || signature || 'Unknown' }
+            });
+          } catch (emailError) {
+            console.error('Failed to send contract email:', emailError);
+          }
+        }
+      }
+
+      // Also send internal notification
+      if (emailService) {
+        try {
           await emailService.sendOrderSubmittedInternal({
             order: updatedOrder,
-            submittedBy: { name: user?.name || 'Unknown', email: user?.email }
+            submittedBy: { name: user?.name || signature || 'Unknown', email: user?.email },
+            autoSent: !!primaryContact
           });
+        } catch (emailError) {
+          console.error('Failed to send internal notification:', emailError);
         }
-      } catch (emailError) {
-        console.error('Failed to send email notification:', emailError);
-        // Don't fail the request if email fails
       }
     }
 
     res.json({
       ...updatedOrder,
       auto_approved: !hasPriceAdjustments,
+      auto_sent: !hasPriceAdjustments && !!primaryContact,
+      signing_url: signingUrl,
+      sent_to: primaryContact ? `${primaryContact.first_name} ${primaryContact.last_name} (${primaryContact.email})` : null,
       message: hasPriceAdjustments 
         ? 'Order submitted for approval' 
-        : 'Order submitted and auto-approved (no price adjustments)'
+        : (primaryContact 
+            ? 'Order auto-approved and sent to client for signature!'
+            : 'Order auto-approved (no client contact found - please add contact and send manually)')
     });
   } catch (error) {
     await client.query('ROLLBACK');

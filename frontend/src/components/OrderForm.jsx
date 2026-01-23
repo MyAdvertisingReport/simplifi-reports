@@ -578,6 +578,7 @@ export default function OrderForm() {
   // Show success page if order was submitted
   if (showSuccessPage && submittedOrder) {
     const wasAutoApproved = submittedOrder.auto_approved;
+    const wasAutoSent = submittedOrder.auto_sent;
     const itemsList = submittedOrder.items || orderItems;
     
     return (
@@ -586,11 +587,17 @@ export default function OrderForm() {
           {/* Success Icon */}
           <div style={{
             ...successStyles.iconWrapper,
-            background: wasAutoApproved 
-              ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
-              : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+            background: wasAutoSent 
+              ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+              : wasAutoApproved 
+                ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' 
+                : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
           }}>
-            {wasAutoApproved ? (
+            {wasAutoSent ? (
+              <svg style={successStyles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            ) : wasAutoApproved ? (
               <svg style={successStyles.icon} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
@@ -601,15 +608,17 @@ export default function OrderForm() {
             )}
           </div>
 
-          {/* Title - Different based on approval status */}
+          {/* Title - Different based on status */}
           <h1 style={successStyles.title}>
-            {wasAutoApproved ? 'Order Approved!' : 'Order Submitted!'}
+            {wasAutoSent ? 'Contract Sent!' : wasAutoApproved ? 'Order Approved!' : 'Order Submitted!'}
           </h1>
           <p style={successStyles.subtitle}>
             Order <span style={successStyles.orderNumber}>{submittedOrder.order_number}</span>
-            {wasAutoApproved 
-              ? ' has been automatically approved and is ready to send to the client.'
-              : ' has been sent to the management team for approval.'}
+            {wasAutoSent 
+              ? ' has been sent to the client for signature!'
+              : wasAutoApproved 
+                ? ' has been approved but needs a client contact to send.'
+                : ' has been sent to the management team for approval.'}
           </p>
 
           {/* Status Badge */}
@@ -622,17 +631,36 @@ export default function OrderForm() {
             fontSize: '14px',
             fontWeight: '600',
             marginBottom: '24px',
-            background: wasAutoApproved ? '#d1fae5' : '#fef3c7',
-            color: wasAutoApproved ? '#065f46' : '#92400e',
+            background: wasAutoSent ? '#d1fae5' : wasAutoApproved ? '#dbeafe' : '#fef3c7',
+            color: wasAutoSent ? '#065f46' : wasAutoApproved ? '#1e40af' : '#92400e',
           }}>
             <span style={{
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              background: wasAutoApproved ? '#10b981' : '#f59e0b',
+              background: wasAutoSent ? '#10b981' : wasAutoApproved ? '#3b82f6' : '#f59e0b',
             }}></span>
-            {wasAutoApproved ? 'Auto-Approved' : 'Pending Approval'}
+            {wasAutoSent ? 'Sent to Client' : wasAutoApproved ? 'Approved - Needs Contact' : 'Pending Approval'}
           </div>
+
+          {/* Sent To Info (if auto-sent) */}
+          {wasAutoSent && submittedOrder.sent_to && (
+            <div style={{
+              background: '#ecfdf5',
+              border: '1px solid #a7f3d0',
+              borderRadius: '12px',
+              padding: '16px',
+              marginBottom: '24px',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '14px', color: '#065f46', fontWeight: '500' }}>
+                📧 Contract sent to:
+              </div>
+              <div style={{ fontSize: '16px', color: '#047857', fontWeight: '600', marginTop: '4px' }}>
+                {submittedOrder.sent_to}
+              </div>
+            </div>
+          )}
 
           {/* Order Summary Card */}
           <div style={successStyles.summaryCard}>
@@ -714,28 +742,47 @@ export default function OrderForm() {
             </div>
           </div>
 
-          {/* What's Next Section - Different based on approval status */}
+          {/* What's Next Section - Different based on status */}
           <div style={successStyles.nextStepsCard}>
             <h3 style={successStyles.nextStepsTitle}>
-              <span style={successStyles.infoIcon}>{wasAutoApproved ? '🚀' : '⏳'}</span> What Happens Next
+              <span style={successStyles.infoIcon}>{wasAutoSent ? '✉️' : wasAutoApproved ? '🚀' : '⏳'}</span> What Happens Next
             </h3>
-            {wasAutoApproved ? (
+            {wasAutoSent ? (
               <ol style={successStyles.stepsList}>
                 <li style={successStyles.step}>
                   <span style={{...successStyles.stepNumber, background: '#d1fae5', color: '#065f46'}}>✓</span>
-                  <span><strong>Approved!</strong> Your order was auto-approved (pricing at book value)</span>
+                  <span><strong>Sent!</strong> Contract has been emailed to your client</span>
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>2</span>
-                  <span>Go to the order and click <strong>"Send to Client"</strong> to generate the contract</span>
+                  <span>Your client reviews the agreement and signs electronically</span>
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>3</span>
-                  <span>Your client will receive an email with a link to review and sign</span>
+                  <span>You'll receive a notification when they sign</span>
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>4</span>
-                  <span>Once signed, the order becomes active and billing begins</span>
+                  <span>Order becomes active and billing begins!</span>
+                </li>
+              </ol>
+            ) : wasAutoApproved ? (
+              <ol style={successStyles.stepsList}>
+                <li style={successStyles.step}>
+                  <span style={{...successStyles.stepNumber, background: '#dbeafe', color: '#1e40af'}}>✓</span>
+                  <span><strong>Approved!</strong> But no client contact found</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>2</span>
+                  <span>Add a contact to this client with an email address</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>3</span>
+                  <span>Then click <strong>"Send to Client"</strong> from the order</span>
+                </li>
+                <li style={successStyles.step}>
+                  <span style={successStyles.stepNumber}>4</span>
+                  <span>Client signs, order becomes active</span>
                 </li>
               </ol>
             ) : (
@@ -750,7 +797,7 @@ export default function OrderForm() {
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>3</span>
-                  <span>Once approved, you can send the agreement to your client</span>
+                  <span>Once approved, the contract is automatically sent to your client</span>
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>4</span>
@@ -766,13 +813,22 @@ export default function OrderForm() {
               <span style={successStyles.tipsIcon}>💡</span> Tips for Success
             </h3>
             <ul style={successStyles.tipsList}>
-              {wasAutoApproved ? (
+              {wasAutoSent ? (
                 <>
                   <li style={successStyles.tip}>
-                    <strong>Send it now!</strong> – The sooner you send, the sooner you close. Head to the order to send the contract.
+                    <strong>Give them a heads up!</strong> – A quick call or text lets them know to check their email (spam folder too!)
                   </li>
                   <li style={successStyles.tip}>
-                    <strong>Give them a heads up</strong> – A quick call or text lets them know to check their email
+                    <strong>Set a reminder</strong> – Follow up in 2-3 days if they haven't signed
+                  </li>
+                </>
+              ) : wasAutoApproved ? (
+                <>
+                  <li style={successStyles.tip}>
+                    <strong>Add a contact now</strong> – Go to the client page and add their primary contact with email
+                  </li>
+                  <li style={successStyles.tip}>
+                    <strong>Then send!</strong> – Come back to this order and click Send to Client
                   </li>
                 </>
               ) : (
@@ -796,12 +852,16 @@ export default function OrderForm() {
             <a href="/orders" style={successStyles.secondaryButton}>
               View All Orders
             </a>
-            {wasAutoApproved ? (
+            {wasAutoSent ? (
+              <button onClick={resetForm} style={successStyles.primaryButton}>
+                Create Another Order
+              </button>
+            ) : wasAutoApproved ? (
               <a 
-                href={`/orders/${submittedOrder.id}/edit`} 
+                href={`/clients`} 
                 style={successStyles.primaryButton}
               >
-                View Order & Send to Client
+                Add Client Contact
               </a>
             ) : (
               <button onClick={resetForm} style={successStyles.primaryButton}>
