@@ -1,84 +1,188 @@
-# New Chat Prompt Template
-## Copy everything below this line to start a new session
+# WSIC Advertising Platform - New Chat Context
+## Upload this file at the START of every new Claude chat
 
 ---
 
-# WSIC Advertising Platform - Development Session
+## ⚠️ CRITICAL: MONO-REPO FILE STRUCTURE
 
-## ⚠️ CRITICAL: Documentation Protocol
+**This is a MONO-REPO. All git commands use full paths from root:**
 
-**START OF SESSION:**
-1. Review all uploaded documents BEFORE making any changes
-2. Confirm you understand current state by summarizing back to me
-3. Ask for any missing files you need
+```
+simplifi-reports/              ← Git root (push from here)
+├── backend/                   ← Railway deployment
+│   ├── server.js
+│   ├── routes/
+│   │   ├── order.js           ← Order API endpoints
+│   │   ├── admin.js
+│   │   └── email.js
+│   └── services/
+│       └── email-service.js   ← Postmark integration
+│
+└── frontend/                  ← Vercel deployment
+    └── src/
+        ├── App.jsx            ← Main app (10k+ lines)
+        └── components/
+            ├── OrderForm.jsx
+            ├── OrderList.jsx
+            ├── ApprovalsPage.jsx
+            └── ClientSigningPage.jsx
+```
 
-**END OF SESSION:**
-1. Update ROADMAP.md with completed tasks and current status
-2. Update SESSION_SUMMARY.md with what we accomplished
-3. Update FILE_STRUCTURE.md if any files added/moved
-4. Provide the updated documents for me to save
+### 🚨 Git Commands MUST Use Full Paths:
+```bash
+# ✅ CORRECT
+git add backend/routes/order.js frontend/src/components/OrderForm.jsx
 
-**This documentation is our source of truth. Keep it accurate!**
-
----
-
-## 📁 Uploaded Files
-*(List files you're uploading)*
-
-- [ ] ROADMAP.md - Project status and upcoming tasks
-- [ ] SESSION_SUMMARY.md - What we did last session
-- [ ] FILE_STRUCTURE.md - Complete file/folder layout
-- [ ] *(Add specific files needed for today's task)*
-
----
-
-## 🎯 Today's Goal
-*(Describe what you want to accomplish)*
-
-Example: "Continue building order workflow - add approval flow when pricing is changed from book value"
-
----
-
-## 📍 Current State
-*(Brief summary - or say "see SESSION_SUMMARY.md")*
-
-- Last session: [what was done]
-- Current blocker: [if any]
-- Next task per roadmap: [task name]
+# ❌ WRONG
+git add routes/order.js src/components/OrderForm.jsx
+```
 
 ---
 
-## 🔗 Quick Reference
+## 🏗️ Tech Stack
 
-| Resource | Value |
-|----------|-------|
-| Production URL | https://myadvertisingreport.com |
-| Backend API | https://simplifi-reports-production.up.railway.app |
-| Frontend Host | Vercel |
-| Backend Host | Railway |
-| Database | Supabase (PostgreSQL) |
-| Email | Postmark |
-
----
-
-## 📋 Files You May Need to Request
-
-### Backend (ask me to upload from `backend/`)
-- `server.js` - Main server, route registration
-- `routes/order.js` - Order endpoints
-- `routes/email.js` - Email endpoints
-- `services/email-service.js` - Postmark integration
-- `database.js` - DB helpers
-
-### Frontend (ask me to upload from `src/`)
-- `App.jsx` - Main app, all pages
-- `components/OrderForm.jsx` - Order creation
-- `components/OrderList.jsx` - Order listing
-
-### Config (root)
-- `vercel.json` - Frontend routing/proxy
-- `package.json` - Dependencies
+| Layer | Technology | Hosted On |
+|-------|------------|-----------|
+| Frontend | React + Vite | Vercel |
+| Backend | Node.js + Express | Railway |
+| Database | PostgreSQL | Supabase |
+| Email | Postmark | ⚠️ Pending approval (can only send to @myadvertisingreport.com) |
+| Ad Platform | Simpli.fi API | - |
+| Domain | myadvertisingreport.com | Vercel |
 
 ---
 
-**Ready? Please review my uploaded files and confirm what we're working on today.**
+## 📊 Current State (Jan 23, 2026)
+
+### Working Features
+- ✅ User authentication (JWT)
+- ✅ Client management with contacts
+- ✅ Product/package catalog with entities (WSIC, LKN, LWP)
+- ✅ Order creation with sales rep signature
+- ✅ Auto-approval (when no price adjustments)
+- ✅ Auto-send to client (when auto-approved + contact exists)
+- ✅ Approval workflow for price-adjusted orders
+- ✅ Client contract signing (public URL)
+- ✅ Simpli.fi campaign reporting
+- ✅ Public client report pages
+
+### Known Issues
+- ⚠️ Postmark needs account approval for external emails
+- ⚠️ Users table not synced with auth - using signature as fallback for names
+
+---
+
+## 📋 Order Status Flow
+
+```
+draft → pending_approval → approved → sent → signed → active
+              ↓
+         (rejected → draft)
+
+Auto-flow (no price adjustments):
+draft → approved → sent (automatic if contact exists)
+```
+
+### Status Meanings:
+- **draft** - Created but not submitted
+- **pending_approval** - Has price adjustments, needs manager review
+- **approved** - Manager approved (or auto-approved)
+- **sent** - Contract emailed to client
+- **signed** - Client signed electronically
+- **active** - Campaign running
+
+---
+
+## 🗄️ Key Database Tables
+
+```sql
+-- Orders
+orders (id, order_number, client_id, status, monthly_total, contract_total,
+        submitted_by, submitted_signature, approved_by, signing_token, ...)
+
+-- Items
+order_items (id, order_id, product_id, unit_price, original_price, line_total, setup_fee)
+
+-- Clients
+advertising_clients (id, business_name, slug, industry)
+contacts (id, client_id, first_name, last_name, email, is_primary)
+
+-- Products
+products (id, name, category, base_price, entity_id)
+entities (id, name, code)  -- WSIC, LKN, LWP
+```
+
+---
+
+## 🔌 Key API Endpoints
+
+### Orders
+```
+GET    /api/orders                    - List orders
+GET    /api/orders/:id                - Get order details
+POST   /api/orders                    - Create order
+PUT    /api/orders/:id                - Update order
+POST   /api/orders/:id/submit         - Submit with signature
+PUT    /api/orders/:id/approve        - Manager approve
+PUT    /api/orders/:id/reject         - Manager reject
+POST   /api/orders/:id/send-to-client - Generate signing link
+GET    /api/orders/pending-approvals  - List pending
+```
+
+### Public (No Auth)
+```
+GET    /api/orders/sign/:token        - Client views contract
+POST   /api/orders/sign/:token        - Client signs
+```
+
+---
+
+## 🎯 Current Priority
+
+### Immediate
+1. Get Postmark account approved for external email delivery
+2. Add manual "Send to Client" button for approved orders without contacts
+
+### Next Up
+- PDF generation after client signature
+- Order detail view with full history
+- Email notifications (approval, signature)
+
+---
+
+## ⚙️ Environment Variables (Railway)
+
+```
+DATABASE_URL=postgresql://...
+POSTMARK_API_KEY=...
+POSTMARK_FROM_EMAIL=orders@myadvertisingreport.com
+JWT_SECRET=...
+BASE_URL=https://myadvertisingreport.com
+```
+
+---
+
+## 📝 Quick Reference
+
+### Deploy Command (from repo root):
+```bash
+git add . && git commit -m "message" && git push origin main
+```
+
+### Common File Paths:
+| What | Path |
+|------|------|
+| Order API | `backend/routes/order.js` |
+| Order Form | `frontend/src/components/OrderForm.jsx` |
+| Orders List | `frontend/src/components/OrderList.jsx` |
+| Approvals | `frontend/src/components/ApprovalsPage.jsx` |
+| Email Service | `backend/services/email-service.js` |
+| Main App | `frontend/src/App.jsx` |
+
+### App.jsx is HUGE (10k+ lines)
+When asking about App.jsx, specify what section:
+- Authentication: lines ~85-145
+- Sidebar: lines ~528-710
+- Dashboard: lines ~741-1050
+- Client Detail: lines ~2350-3100
+- Routes: lines ~10185-end

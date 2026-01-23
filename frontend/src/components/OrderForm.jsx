@@ -586,6 +586,14 @@ export default function OrderForm() {
     return (
       <div style={successStyles.container}>
         <div style={successStyles.card}>
+          {/* Confetti/Celebration Header */}
+          <div style={{
+            fontSize: '32px',
+            marginBottom: '8px',
+          }}>
+            {wasAutoSent ? '🎉' : wasAutoApproved ? '🚀' : '👏'}
+          </div>
+
           {/* Success Icon */}
           <div style={{
             ...successStyles.iconWrapper,
@@ -610,17 +618,20 @@ export default function OrderForm() {
             )}
           </div>
 
-          {/* Title - Different based on status */}
+          {/* Title - Celebratory messaging */}
           <h1 style={successStyles.title}>
-            {wasAutoSent ? 'Contract Sent!' : wasAutoApproved ? 'Order Approved!' : 'Order Submitted!'}
+            {wasAutoSent 
+              ? "Congratulations! You're So Close!" 
+              : wasAutoApproved 
+                ? "Great Work! Almost There!" 
+                : "Nice Job! Order Submitted!"}
           </h1>
           <p style={successStyles.subtitle}>
-            Order <span style={successStyles.orderNumber}>{submittedOrder.order_number}</span>
             {wasAutoSent 
-              ? ' has been sent to the client for signature!'
+              ? <>Your agreement for <span style={successStyles.orderNumber}>{submittedOrder.client_name}</span> has been sent — now it's time to follow up and close the deal!</>
               : wasAutoApproved 
-                ? ' has been approved but needs a client contact to send.'
-                : ' has been sent to the management team for approval.'}
+                ? <>Order <span style={successStyles.orderNumber}>{submittedOrder.order_number}</span> is approved! Add a contact to send the agreement.</>
+                : <>Order <span style={successStyles.orderNumber}>{submittedOrder.order_number}</span> is with the management team — you'll be notified once it's approved!</>}
           </p>
 
           {/* Status Badge */}
@@ -656,7 +667,7 @@ export default function OrderForm() {
               textAlign: 'center',
             }}>
               <div style={{ fontSize: '14px', color: '#065f46', fontWeight: '500' }}>
-                📧 Contract sent to:
+                📧 Agreement sent to:
               </div>
               <div style={{ fontSize: '16px', color: '#047857', fontWeight: '600', marginTop: '4px' }}>
                 {submittedOrder.sent_to}
@@ -765,7 +776,7 @@ export default function OrderForm() {
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>4</span>
-                  <span>Order becomes active and billing begins!</span>
+                  <span>🎊 Deal closed! Campaign setup begins!</span>
                 </li>
               </ol>
             ) : wasAutoApproved ? (
@@ -784,7 +795,7 @@ export default function OrderForm() {
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>4</span>
-                  <span>Client signs, order becomes active</span>
+                  <span>🎊 Client signs, you close the deal!</span>
                 </li>
               </ol>
             ) : (
@@ -795,56 +806,59 @@ export default function OrderForm() {
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>2</span>
-                  <span>A manager will review and approve (or request changes)</span>
+                  <span>A manager will review and approve (usually within hours)</span>
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>3</span>
-                  <span>Once approved, the contract is automatically sent to your client</span>
+                  <span>Once approved, the agreement is automatically sent to your client</span>
                 </li>
                 <li style={successStyles.step}>
                   <span style={successStyles.stepNumber}>4</span>
-                  <span>After the client signs, the order becomes active</span>
+                  <span>🎊 Client signs, you close the deal!</span>
                 </li>
               </ol>
             )}
           </div>
 
-          {/* Pro Tips Section */}
+          {/* Pro Tips Section - Sales focused */}
           <div style={successStyles.tipsCard}>
             <h3 style={successStyles.tipsTitle}>
-              <span style={successStyles.tipsIcon}>💡</span> Tips for Success
+              <span style={successStyles.tipsIcon}>🎯</span> Close the Deal
             </h3>
             <ul style={successStyles.tipsList}>
               {wasAutoSent ? (
                 <>
                   <li style={successStyles.tip}>
-                    <strong>Give them a heads up!</strong> – A quick call or text lets them know to check their email (spam folder too!)
+                    <strong>Call them now!</strong> – Don't wait. Let them know the agreement is in their inbox (check spam too!)
                   </li>
                   <li style={successStyles.tip}>
-                    <strong>Set a reminder</strong> – Follow up in 2-3 days if they haven't signed
+                    <strong>Be persistent</strong> – Remember, it takes ~11 touches to close. Follow up in 2-3 days if unsigned.
+                  </li>
+                  <li style={successStyles.tip}>
+                    <strong>Reiterate the value</strong> – Remind them how this campaign aligns with their goals
                   </li>
                 </>
               ) : wasAutoApproved ? (
                 <>
                   <li style={successStyles.tip}>
-                    <strong>Add a contact now</strong> – Go to the client page and add their primary contact with email
+                    <strong>Add the decision maker's email</strong> – Go to the client page and add their contact info
                   </li>
                   <li style={successStyles.tip}>
-                    <strong>Then send!</strong> – Come back to this order and click Send to Client
+                    <strong>Then send immediately!</strong> – The sooner you send, the sooner you close
                   </li>
                 </>
               ) : (
                 <>
                   <li style={successStyles.tip}>
-                    <strong>Check back soon</strong> – Approvals typically happen within a few hours during business days
+                    <strong>Keep the momentum</strong> – Let your client know the agreement is being finalized
                   </li>
                   <li style={successStyles.tip}>
-                    <strong>Prepare your client</strong> – Let them know an agreement will be coming their way
+                    <strong>Prepare for the close</strong> – Approvals typically happen within hours during business days
                   </li>
                 </>
               )}
               <li style={successStyles.tip}>
-                <strong>Prepare creative assets</strong> – Get a head start gathering logos, images, or copy you'll need
+                <strong>Start onboarding prep</strong> – Gather logos, images, and creative assets so you're ready to launch
               </li>
             </ul>
           </div>
