@@ -548,8 +548,8 @@ router.get('/', async (req, res) => {
 
     const result = await pool.query(query, params);
     
-    // Return consistent response format
-    res.json({ orders: result.rows });
+    // Return array directly for backward compatibility with OrderList
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching orders:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
