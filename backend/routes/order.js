@@ -1022,6 +1022,16 @@ router.post('/:id/submit', async (req, res) => {
           contract_total: orderContractTotal
         };
 
+        // Fetch items with entity names for email
+        const itemsWithEntities = await client.query(
+          `SELECT oi.*, e.name as entity_name 
+           FROM order_items oi 
+           LEFT JOIN entities e ON oi.entity_id = e.id 
+           WHERE oi.order_id = $1`,
+          [id]
+        );
+        updatedOrder.items = itemsWithEntities.rows;
+
         // Build signing URL
         const baseUrl = process.env.BASE_URL || 'https://myadvertisingreport.com';
         signingUrl = `${baseUrl}/sign/${signingToken}`;

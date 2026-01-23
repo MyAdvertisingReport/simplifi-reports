@@ -376,17 +376,24 @@ async function sendOrderRejected({ order, rejectedBy, reason }) {
  * Send contract to client for signature
  */
 async function sendContractToClient({ order, contact, signingUrl }) {
-  const subject = `Your Advertising Agreement from WSIC - ${order.order_number}`;
+  // Build brand list from items if available
+  const brands = order.items 
+    ? [...new Set(order.items.map(i => i.entity_name).filter(Boolean))]
+    : [];
+  const brandText = brands.length > 0 ? brands.join(' + ') : 'WSIC';
+  
+  // Client-friendly subject line with brands
+  const subject = `${order.client_name} - Your ${brandText} Advertising Agreement`;
   
   const content = `
     <div class="header">
       <h1>Your Advertising Agreement</h1>
-      <p>Please review and sign to get started</p>
+      <p>Ready for your review and signature</p>
     </div>
     <div class="body">
       <p>Hi ${contact.first_name || 'there'},</p>
       
-      <p>Thank you for choosing WSIC for your advertising needs! Your agreement is ready for review.</p>
+      <p>Great news! Your advertising agreement with <strong>${brandText}</strong> is ready. Please review the details below and sign electronically to get started.</p>
       
       <table class="details-table">
         <tr>
@@ -394,8 +401,8 @@ async function sendContractToClient({ order, contact, signingUrl }) {
           <td><strong>${order.client_name}</strong></td>
         </tr>
         <tr>
-          <td>Agreement #</td>
-          <td>${order.order_number}</td>
+          <td>Advertising With</td>
+          <td><strong>${brandText}</strong></td>
         </tr>
         <tr>
           <td>Contract Term</td>
@@ -433,7 +440,7 @@ async function sendContractToClient({ order, contact, signingUrl }) {
     to: contact.email,
     from: FROM_ADDRESSES.orders,
     subject,
-    htmlBody: emailTemplate({ title: subject, preheader: `Your ${order.term_months}-month advertising agreement is ready to sign`, content }),
+    htmlBody: emailTemplate({ title: subject, preheader: `Your ${order.term_months}-month ${brandText} advertising agreement is ready to sign`, content }),
     tag: 'contract-sent',
     metadata: { orderId: order.id, orderNumber: order.order_number, clientId: order.client_id }
   });

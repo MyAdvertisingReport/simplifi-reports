@@ -535,30 +535,9 @@ function Sidebar({ isOpen }) {
   // Track which sections are expanded
   const [expandedSections, setExpandedSections] = useState({ orders: true });
   
-  // Pending approvals count for badge
-  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
-  
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
-  
-  // Fetch pending approvals count for managers/admins
-  useEffect(() => {
-    if (user?.role === 'admin' || user?.role === 'manager') {
-      const fetchCount = async () => {
-        try {
-          const data = await api.get('/api/orders/pending-approvals/count');
-          setPendingApprovalsCount(data.count || 0);
-        } catch (err) {
-          console.error('Failed to fetch pending approvals count:', err);
-        }
-      };
-      fetchCount();
-      // Refresh every 60 seconds
-      const interval = setInterval(fetchCount, 60000);
-      return () => clearInterval(interval);
-    }
-  }, [user?.role]);
   
   // Check if Client View mode is active
   const clientViewActive = localStorage.getItem('clientViewMode') === 'true';
@@ -574,24 +553,12 @@ function Sidebar({ isOpen }) {
     { path: '/clients', icon: Building2, label: 'Clients' },
   ];
   
-  // Order Management section items - base items for everyone
+  // Order Management section items
   const orderItems = [
     { path: '/orders', icon: List, label: 'All Orders' },
     { path: '/orders/new', icon: FileText, label: 'New Order' },
+    { path: '/admin/products', icon: Database, label: 'Products' },
   ];
-  
-  // Add Approvals link for managers and admins (with badge)
-  if (user?.role === 'admin' || user?.role === 'manager') {
-    orderItems.push({ 
-      path: '/approvals', 
-      icon: Clock, 
-      label: 'Approvals',
-      badge: pendingApprovalsCount 
-    });
-  }
-  
-  // Add Products link
-  orderItems.push({ path: '/admin/products', icon: Database, label: 'Products' });
   
   if (user?.role === 'admin') {
     navItems.push({ path: '/users', icon: Users, label: 'Users' });
@@ -599,7 +566,7 @@ function Sidebar({ isOpen }) {
   }
   
   // Check if current path is in order management section
-  const isOrderSection = location.pathname.startsWith('/orders') || location.pathname === '/admin/products' || location.pathname === '/approvals';
+  const isOrderSection = location.pathname.startsWith('/orders') || location.pathname === '/admin/products';
 
   return (
     <aside style={{
@@ -709,7 +676,7 @@ function Sidebar({ isOpen }) {
           {/* Sub-items */}
           {expandedSections.orders && (
             <div style={{ marginLeft: '0.5rem', borderLeft: '2px solid #374151', marginTop: '0.25rem' }}>
-              {orderItems.map(({ path, icon: Icon, label, badge }) => (
+              {orderItems.map(({ path, icon: Icon, label }) => (
                 <Link key={path} to={path} style={{
                   display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.75rem',
                   marginLeft: '0.75rem', marginBottom: '0.125rem', borderRadius: '0.375rem', textDecoration: 'none',
@@ -717,22 +684,7 @@ function Sidebar({ isOpen }) {
                   background: location.pathname === path ? 'rgba(59,130,246,0.2)' : 'transparent',
                   fontSize: '0.875rem'
                 }}>
-                  <Icon size={16} />
-                  <span style={{ fontWeight: 500, flex: 1 }}>{label}</span>
-                  {badge > 0 && (
-                    <span style={{
-                      background: '#fef3c7',
-                      color: '#92400e',
-                      fontSize: '0.7rem',
-                      fontWeight: 600,
-                      padding: '2px 6px',
-                      borderRadius: '9999px',
-                      minWidth: '18px',
-                      textAlign: 'center'
-                    }}>
-                      {badge}
-                    </span>
-                  )}
+                  <Icon size={16} /><span style={{ fontWeight: 500 }}>{label}</span>
                 </Link>
               ))}
             </div>
@@ -10385,10 +10337,9 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/report/:token" element={<PublicReportPage />} />
+          <Route path="/sign/:token" element={<ClientSigningPage />} />
           <Route path="/client/:slug/report" element={<ClientDetailPage publicMode={true} />} />
           <Route path="/client/:slug/report/campaign/:campaignId" element={<CampaignDetailPage publicMode={true} />} />
-          {/* Public signing page - no auth required */}
-          <Route path="/sign/:token" element={<ClientSigningPage />} />
           <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
           <Route path="/clients" element={<ProtectedRoute><ClientsPage /></ProtectedRoute>} />
           <Route path="/client/:slug" element={<ProtectedRoute><ClientDetailPage /></ProtectedRoute>} />
@@ -10399,7 +10350,6 @@ function App() {
           <Route path="/orders" element={<ProtectedRoute><OrderList /></ProtectedRoute>} />
           <Route path="/orders/new" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
           <Route path="/orders/:id/edit" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
-          {/* Approvals page for managers/admins */}
           <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           {/* Redirect old ID-based URLs to dashboard */}
