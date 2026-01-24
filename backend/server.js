@@ -1807,7 +1807,7 @@ app.get('/api/orders/sign/:token', async (req, res) => {
     const { token } = req.params;
     
     // Find order by signing token
-    const orderResult = await pool.query(
+    const orderResult = await adminPool.query(
       `SELECT 
         o.id, o.order_number, o.contract_start_date, o.contract_end_date,
         o.term_months, o.monthly_total, o.contract_total, o.billing_frequency,
@@ -1837,7 +1837,7 @@ app.get('/api/orders/sign/:token', async (req, res) => {
     }
 
     // Get order items with product details
-    const itemsResult = await pool.query(
+    const itemsResult = await adminPool.query(
       `SELECT 
         oi.*, 
         p.name as product_name, 
@@ -1853,7 +1853,7 @@ app.get('/api/orders/sign/:token', async (req, res) => {
     );
 
     // Get primary contact for this client
-    const contactResult = await pool.query(
+    const contactResult = await adminPool.query(
       `SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1`,
       [order.client_id]
     );
@@ -1883,7 +1883,7 @@ app.post('/api/orders/sign/:token', async (req, res) => {
     }
 
     // Find order by signing token
-    const orderResult = await pool.query(
+    const orderResult = await adminPool.query(
       `SELECT o.*, c.business_name as client_name
        FROM orders o
        JOIN advertising_clients c ON o.client_id = c.id
@@ -1912,7 +1912,7 @@ app.post('/api/orders/sign/:token', async (req, res) => {
     const userAgent = req.headers['user-agent'] || 'unknown';
 
     // Update order with signature
-    const updateResult = await pool.query(
+    const updateResult = await adminPool.query(
       `UPDATE orders SET
         status = 'signed',
         client_signature = $1,
