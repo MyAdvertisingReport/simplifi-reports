@@ -61,7 +61,7 @@ export default function ClientSigningPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [contract, setContract] = useState(null);
-  const [step, setStep] = useState('review'); // 'review', 'sign', 'success'
+  const [step, setStep] = useState('review'); // 'review', 'sign', 'payment', 'success'
   
   // Form states
   const [signerName, setSignerName] = useState('');
@@ -70,6 +70,13 @@ export default function ClientSigningPage() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [signature, setSignature] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  
+  // Payment states
+  const [billingPreference, setBillingPreference] = useState('card'); // 'card', 'ach', 'invoice'
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
+  const [clientSecret, setClientSecret] = useState(null);
+  const [stripePublishableKey, setStripePublishableKey] = useState(null);
 
   useEffect(() => {
     loadContract();
@@ -143,12 +150,193 @@ export default function ClientSigningPage() {
       }
       
       const result = await response.json();
-      setStep('success');
+      
+      // Initialize payment and go to payment step
+      await initializePayment();
+      setStep('payment');
     } catch (err) {
       alert(err.message);
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // Initialize payment - create setup intent
+  const initializePayment = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/sign/${token}/payment-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          billing_preference: billingPreference,
+          signer_email: signerEmail,
+          signer_name: signerName
+        })
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to initialize payment');
+      }
+      
+      const data = await response.json();
+      setClientSecret(data.clientSecret);
+      setStripePublishableKey(data.publishableKey);
+    } catch (err) {
+      console.error('Payment initialization error:', err);
+      setPaymentError(err.message);
+    }
+  };
+
+  // Calculate amount with CC fee if applicable
+  const calculateTotalWithFee = () => {
+    const baseAmount = parseFloat(contract?.contract_total) || 0;
+    if (billingPreference === 'card') {
+      const fee = baseAmount * 0.035; // 3.5% fee
+      return { base: baseAmount, fee: fee, total: baseAmount + fee };
+    }
+    return { base: baseAmount, fee: 0, total: baseAmount };
+  };
+
+  // Handle payment form submission
+  const handlePaymentSubmit = async (e) => {
+    e.preventDefault();
+    setPaymentProcessing(true);
+    setPaymentError(null);
+
+    try {
+      const form = e.target;
+      
+      // Load Stripe
+      if (!window.Stripe) {
+        throw new Error('Payment system not loaded. Please refresh and try again.');
+      }
+      
+      const stripe = window.Stripe(stripePublishableKey);
+
+      if (billingPreference === 'card') {
+        // Card payment
+        const cardNumber = form.cardNumber?.value?.replace(/\s/g, '') || '';
+        const expiry = form.expiry?.value?.split('/') || [];
+        const cvc = form.cvc?.value || '';
+        
+        if (!cardNumber || expiry.length < 2 || !cvc) {
+          throw new Error('Please fill in all card details');
+        }
+
+        const { paymentMethod, error: pmError } = await stripe.createPaymentMethod({
+          type: 'card',
+          card: {
+            number: cardNumber,
+            exp_month: parseInt(expiry[0]),
+            exp_year: parseInt('20' + expiry[1]),
+            cvc: cvc
+          },
+          billing_details: {
+            name: signerName,
+            email: signerEmail
+          }
+        });
+
+        if (pmError) throw new Error(pmError.message);
+
+        // Confirm setup intent
+        const { setupIntent, error: siError } = await stripe.confirmCardSetup(clientSecret, {
+          payment_method: paymentMethod.id
+        });
+
+        if (siError) throw new Error(siError.message);
+
+        // Complete on backend
+        await completePayment(setupIntent.payment_method, 'card');
+        
+      } else if (billingPreference === 'ach') {
+        // ACH - use Stripe's bank account collection
+        const { error } = await stripe.confirmUsBankAccountSetup(clientSecret, {
+          payment_method: {
+            us_bank_account: { account_holder_type: 'company' },
+            billing_details: { name: signerName, email: signerEmail }
+          }
+        });
+
+        if (error) throw new Error(error.message);
+        
+        // ACH verification is async, show pending message
+        await completePayment(null, 'ach');
+        
+      } else {
+        // Invoice - still need to collect backup payment method
+        const cardNumber = form.cardNumber?.value?.replace(/\s/g, '') || '';
+        const expiry = form.expiry?.value?.split('/') || [];
+        const cvc = form.cvc?.value || '';
+        
+        if (!cardNumber || expiry.length < 2 || !cvc) {
+          throw new Error('Please provide a backup payment method');
+        }
+
+        const { paymentMethod, error: pmError } = await stripe.createPaymentMethod({
+          type: 'card',
+          card: {
+            number: cardNumber,
+            exp_month: parseInt(expiry[0]),
+            exp_year: parseInt('20' + expiry[1]),
+            cvc: cvc
+          },
+          billing_details: { name: signerName, email: signerEmail }
+        });
+
+        if (pmError) throw new Error(pmError.message);
+
+        const { setupIntent, error: siError } = await stripe.confirmCardSetup(clientSecret, {
+          payment_method: paymentMethod.id
+        });
+
+        if (siError) throw new Error(siError.message);
+
+        await completePayment(setupIntent.payment_method, 'invoice');
+      }
+
+      setStep('success');
+    } catch (err) {
+      console.error('Payment error:', err);
+      setPaymentError(err.message);
+    } finally {
+      setPaymentProcessing(false);
+    }
+  };
+
+  // Complete payment on backend
+  const completePayment = async (paymentMethodId, paymentType) => {
+    const response = await fetch(`${API_BASE}/api/orders/sign/${token}/complete-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        payment_method_id: paymentMethodId,
+        billing_preference: billingPreference,
+        payment_type: paymentType
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || 'Failed to complete payment setup');
+    }
+
+    return response.json();
+  };
+
+  // Get unique brand logos
+  const getBrandLogos = () => {
+    if (!contract?.items) return [];
+    const uniqueLogos = [];
+    const seenLogos = new Set();
+    contract.items.forEach(item => {
+      if (item.entity_logo && !seenLogos.has(item.entity_logo)) {
+        seenLogos.add(item.entity_logo);
+        uniqueLogos.push({ url: item.entity_logo, name: item.entity_name });
+      }
+    });
+    return uniqueLogos;
   };
 
   const formatCurrency = (amount) => {
@@ -484,12 +672,285 @@ export default function ClientSigningPage() {
     );
   }
 
+  // Payment step
+  if (step === 'payment') {
+    const totals = calculateTotalWithFee();
+    const brandLogos = getBrandLogos();
+    
+    // Load Stripe script if needed
+    if (!window.Stripe && stripePublishableKey) {
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      document.body.appendChild(script);
+    }
+    
+    return (
+      <div style={styles.pageContainer}>
+        <div style={styles.header}>
+          {brandLogos.length > 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              {brandLogos.map((logo, idx) => (
+                <img key={idx} src={logo.url} alt={logo.name} 
+                  style={{ height: '50px', maxWidth: '150px', objectFit: 'contain', background: 'white', padding: '8px 12px', borderRadius: '8px' }} />
+              ))}
+            </div>
+          ) : (
+            <div style={styles.logo}>Complete Your Setup</div>
+          )}
+          <div style={styles.headerSubtext}>Set Up Billing</div>
+        </div>
+        
+        <div style={styles.container}>
+          {/* Signed Confirmation Banner */}
+          <div style={{ 
+            background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '12px', 
+            padding: '16px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px'
+          }}>
+            <Icons.CheckCircle size={24} color="#10b981" />
+            <div>
+              <div style={{ fontWeight: '600', color: '#166534' }}>Agreement Signed Successfully!</div>
+              <div style={{ fontSize: '14px', color: '#15803d' }}>Signed by {signerName}</div>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <Icons.DollarSign size={24} color="#3b82f6" />
+              <span style={styles.cardTitle}>Billing Preference</span>
+            </div>
+            <div style={styles.cardBody}>
+              
+              {/* Billing Preference Selection */}
+              <div style={{ marginBottom: '24px' }}>
+                <p style={{ color: '#64748b', marginBottom: '16px' }}>
+                  How would you like to handle payments for this agreement?
+                </p>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {/* Credit Card Option */}
+                  <button type="button" onClick={() => setBillingPreference('card')}
+                    style={{
+                      padding: '16px', border: billingPreference === 'card' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                      borderRadius: '12px', background: billingPreference === 'card' ? '#eff6ff' : 'white',
+                      cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '16px'
+                    }}>
+                    <div style={{ 
+                      width: '24px', height: '24px', borderRadius: '50%', 
+                      border: billingPreference === 'card' ? '8px solid #3b82f6' : '2px solid #d1d5db',
+                      flexShrink: 0, marginTop: '2px'
+                    }} />
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '4px' }}>
+                        💳 Credit Card - Auto Pay
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#64748b' }}>
+                        Automatically charge my card on each billing date
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#ef4444', marginTop: '4px' }}>
+                        +3.5% processing fee
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* ACH Option */}
+                  <button type="button" onClick={() => setBillingPreference('ach')}
+                    style={{
+                      padding: '16px', border: billingPreference === 'ach' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                      borderRadius: '12px', background: billingPreference === 'ach' ? '#eff6ff' : 'white',
+                      cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '16px'
+                    }}>
+                    <div style={{ 
+                      width: '24px', height: '24px', borderRadius: '50%', 
+                      border: billingPreference === 'ach' ? '8px solid #3b82f6' : '2px solid #d1d5db',
+                      flexShrink: 0, marginTop: '2px'
+                    }} />
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '4px' }}>
+                        🏦 Bank Account (ACH) - Auto Pay
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#64748b' }}>
+                        Automatically debit my bank account on each billing date
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#10b981', marginTop: '4px' }}>
+                        No processing fee
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Invoice Option */}
+                  <button type="button" onClick={() => setBillingPreference('invoice')}
+                    style={{
+                      padding: '16px', border: billingPreference === 'invoice' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                      borderRadius: '12px', background: billingPreference === 'invoice' ? '#eff6ff' : 'white',
+                      cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '16px'
+                    }}>
+                    <div style={{ 
+                      width: '24px', height: '24px', borderRadius: '50%', 
+                      border: billingPreference === 'invoice' ? '8px solid #3b82f6' : '2px solid #d1d5db',
+                      flexShrink: 0, marginTop: '2px'
+                    }} />
+                    <div>
+                      <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '4px' }}>
+                        📄 Invoice - Pay Manually
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#64748b' }}>
+                        Receive invoices and pay via check, card, or bank transfer
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#f59e0b', marginTop: '4px' }}>
+                        Requires backup payment method on file
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Payment Summary */}
+              <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <span style={{ color: '#64748b' }}>Agreement Total</span>
+                  <span style={{ color: '#1e293b', fontWeight: '500' }}>{formatCurrency(totals.base)}</span>
+                </div>
+                {billingPreference === 'card' && totals.fee > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <span style={{ color: '#64748b' }}>Processing Fee (3.5%)</span>
+                    <span style={{ color: '#ef4444', fontWeight: '500' }}>{formatCurrency(totals.fee)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '12px', borderTop: '2px solid #e2e8f0' }}>
+                  <span style={{ fontWeight: '600', color: '#1e293b' }}>
+                    {billingPreference === 'invoice' ? 'Invoice Amount' : 
+                     contract?.billing_frequency === 'upfront' ? 'Due Today' : 'Monthly Amount'}
+                  </span>
+                  <span style={{ fontWeight: '700', color: '#10b981', fontSize: '20px' }}>
+                    {formatCurrency(billingPreference === 'invoice' ? totals.base : totals.total)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Invoice Warning */}
+              {billingPreference === 'invoice' && (
+                <div style={{ 
+                  background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '12px',
+                  padding: '16px', marginBottom: '24px'
+                }}>
+                  <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '8px' }}>
+                    📋 Invoice Payment Terms
+                  </div>
+                  <p style={{ fontSize: '14px', color: '#a16207', margin: 0 }}>
+                    You'll receive invoices via email. If payment is not received within 30 days of the due date, 
+                    the backup payment method below will be charged automatically.
+                  </p>
+                </div>
+              )}
+
+              {/* Payment Form */}
+              <form onSubmit={handlePaymentSubmit}>
+                {billingPreference === 'ach' ? (
+                  <div style={{ 
+                    background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px',
+                    padding: '16px', marginBottom: '16px'
+                  }}>
+                    <div style={{ fontWeight: '600', color: '#0369a1', marginBottom: '8px' }}>
+                      🏦 Bank Account Verification
+                    </div>
+                    <p style={{ fontSize: '14px', color: '#0284c7', margin: 0 }}>
+                      Click "Set Up ACH" below to securely link your bank account via Stripe. 
+                      Verification typically completes within 1-2 business days.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ marginBottom: '8px', fontWeight: '500', color: '#374151' }}>
+                      {billingPreference === 'invoice' ? 'Backup Payment Method' : 'Card Details'}
+                    </div>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: '#64748b' }}>
+                        Card Number
+                      </label>
+                      <input name="cardNumber" type="text" placeholder="1234 5678 9012 3456"
+                        style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '10px', fontSize: '16px', boxSizing: 'border-box' }}
+                        required />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: '#64748b' }}>Expiry</label>
+                        <input name="expiry" type="text" placeholder="MM/YY"
+                          style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '10px', fontSize: '16px', boxSizing: 'border-box' }}
+                          required />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '6px', fontSize: '14px', color: '#64748b' }}>CVC</label>
+                        <input name="cvc" type="text" placeholder="123"
+                          style={{ width: '100%', padding: '14px 16px', border: '2px solid #e2e8f0', borderRadius: '10px', fontSize: '16px', boxSizing: 'border-box' }}
+                          required />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {paymentError && (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '16px', marginBottom: '16px', color: '#dc2626' }}>
+                    <strong>Error:</strong> {paymentError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px', color: '#64748b', fontSize: '13px' }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                  <span>Your payment information is secured with 256-bit SSL encryption</span>
+                </div>
+
+                <button type="submit" disabled={paymentProcessing}
+                  style={{
+                    width: '100%', padding: '16px',
+                    background: paymentProcessing ? '#94a3b8' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    color: 'white', border: 'none', borderRadius: '12px',
+                    fontSize: '18px', fontWeight: '600',
+                    cursor: paymentProcessing ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'
+                  }}>
+                  {paymentProcessing ? (
+                    <>
+                      <Icons.Loader size={20} />
+                      Processing...
+                    </>
+                  ) : billingPreference === 'ach' ? (
+                    '🏦 Set Up ACH'
+                  ) : billingPreference === 'invoice' ? (
+                    '📄 Save Backup Payment & Finish'
+                  ) : contract?.billing_frequency === 'upfront' ? (
+                    `💳 Pay ${formatCurrency(totals.total)} Now`
+                  ) : (
+                    '💳 Save Card & Finish'
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
   // Success state
   if (step === 'success') {
+    const brandLogos = getBrandLogos();
     return (
       <div style={styles.pageContainer}>
         <div style={{ ...styles.header, background: 'linear-gradient(135deg, #065f46 0%, #10b981 100%)' }}>
-          <div style={styles.logo}>🎉 Contract Signed!</div>
+          {brandLogos.length > 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              {brandLogos.map((logo, idx) => (
+                <img key={idx} src={logo.url} alt={logo.name} 
+                  style={{ height: '50px', maxWidth: '150px', objectFit: 'contain', background: 'white', padding: '8px 12px', borderRadius: '8px' }} />
+              ))}
+            </div>
+          ) : (
+            <div style={styles.logo}>🎉 You're All Set!</div>
+          )}
+          <div style={styles.headerSubtext}>Welcome Aboard!</div>
         </div>
         <div style={styles.container}>
           <div style={styles.card}>
@@ -497,21 +958,41 @@ export default function ClientSigningPage() {
               <div style={styles.successIcon}>
                 <Icons.CheckCircle size={50} color="white" />
               </div>
-              <h1 style={styles.successTitle}>Welcome to WSIC!</h1>
+              <h1 style={styles.successTitle}>Thank You for Partnering With Us!</h1>
               <p style={styles.successText}>
-                Your advertising agreement has been signed successfully. 
-                You'll receive a confirmation email shortly with a copy of your signed agreement.
+                Your agreement has been signed and billing is all set up. 
+                We're excited to help grow your business!
               </p>
+              
+              {/* Billing Summary */}
+              <div style={{ 
+                background: '#f0fdf4', borderRadius: '12px', padding: '16px', 
+                marginBottom: '20px', maxWidth: '400px', margin: '0 auto 20px'
+              }}>
+                <div style={{ fontWeight: '600', color: '#166534', marginBottom: '8px' }}>
+                  Billing Setup Complete
+                </div>
+                <div style={{ fontSize: '14px', color: '#15803d' }}>
+                  {billingPreference === 'card' && '💳 Credit card will be charged automatically'}
+                  {billingPreference === 'ach' && '🏦 Bank account will be debited automatically'}
+                  {billingPreference === 'invoice' && '📄 Invoices will be sent to your email'}
+                </div>
+              </div>
+
               <div style={{ ...styles.card, textAlign: 'left', maxWidth: '400px', margin: '0 auto' }}>
                 <div style={styles.cardBody}>
                   <h3 style={{ marginBottom: '16px', color: '#1e293b' }}>What's Next?</h3>
                   <ul style={{ paddingLeft: '20px', color: '#374151', lineHeight: '2' }}>
-                    <li>Our team will reach out within 1-2 business days</li>
-                    <li>We'll collect any creative assets needed</li>
+                    <li>Your Sales Associate will be in touch shortly</li>
+                    <li>We'll gather any creative assets needed</li>
                     <li>Your campaign launches on {formatDate(contract?.contract_start_date)}</li>
-                    <li>Access your performance reports anytime</li>
+                    <li>You'll receive performance reports regularly</li>
                   </ul>
                 </div>
+              </div>
+              
+              <div style={{ marginTop: '24px', color: '#64748b', fontSize: '14px' }}>
+                A confirmation email has been sent to <strong>{signerEmail}</strong>
               </div>
             </div>
           </div>

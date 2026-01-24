@@ -1940,6 +1940,242 @@ app.post('/api/orders/sign/:token', async (req, res) => {
   }
 });
 
+// POST /api/orders/sign/:token/payment-setup - Initialize payment
+app.post('/api/orders/sign/:token/payment-setup', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { billing_preference, signer_email, signer_name } = req.body;
+
+    // Find order by signing token
+    const orderResult = await adminPool.query(
+      `SELECT o.*, c.business_name as client_name, c.id as client_id
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid signing token' });
+    }
+
+    const order = orderResult.rows[0];
+
+    // Get order items to determine primary entity
+    const itemsResult = await adminPool.query(
+      `SELECT oi.*, e.code as entity_code, e.name as entity_name
+       FROM order_items oi
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1
+       ORDER BY oi.line_total DESC`,
+      [order.id]
+    );
+
+    // Primary entity is the one with the largest line item
+    const primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+
+    // Initialize Stripe service
+    const { stripeService } = require('./services/stripe-service');
+
+    // Get or create Stripe customer
+    const customer = await stripeService.getOrCreateCustomer(primaryEntityCode, {
+      email: signer_email,
+      businessName: order.client_name,
+      clientId: order.client_id
+    });
+
+    // Create setup intent - use card for both 'card' and 'invoice' (backup), ach for 'ach'
+    const paymentMethodTypes = billing_preference === 'ach' ? ['us_bank_account'] : ['card'];
+    const setupIntent = await stripeService.createSetupIntent(primaryEntityCode, customer.id, paymentMethodTypes);
+
+    // Store Stripe customer ID on client if not already there
+    await adminPool.query(
+      `UPDATE advertising_clients SET stripe_customer_id = $1 WHERE id = $2 AND (stripe_customer_id IS NULL OR stripe_customer_id = '')`,
+      [customer.id, order.client_id]
+    );
+
+    // Store primary entity and billing preference on order
+    await adminPool.query(
+      `UPDATE orders SET stripe_entity_code = $1, stripe_customer_id = $2, billing_preference = $3 WHERE id = $4`,
+      [primaryEntityCode, customer.id, billing_preference, order.id]
+    );
+
+    // Get publishable key for this entity
+    const publishableKeyMap = {
+      wsic: process.env.STRIPE_WSIC_PUBLISHABLE_KEY,
+      lkn: process.env.STRIPE_LKN_PUBLISHABLE_KEY,
+      lwp: process.env.STRIPE_LWP_PUBLISHABLE_KEY || process.env.STRIPE_WSIC_PUBLISHABLE_KEY
+    };
+
+    res.json({
+      clientSecret: setupIntent.client_secret,
+      setupIntentId: setupIntent.id,
+      customerId: customer.id,
+      entityCode: primaryEntityCode,
+      publishableKey: publishableKeyMap[primaryEntityCode] || publishableKeyMap.wsic
+    });
+
+  } catch (error) {
+    console.error('Error setting up payment:', error);
+    res.status(500).json({ error: 'Failed to initialize payment' });
+  }
+});
+
+// POST /api/orders/sign/:token/complete-payment - Complete payment after setup
+app.post('/api/orders/sign/:token/complete-payment', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { payment_method_id, billing_preference, payment_type } = req.body;
+
+    // Find order
+    const orderResult = await adminPool.query(
+      `SELECT o.*, c.business_name as client_name
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid signing token' });
+    }
+
+    const order = orderResult.rows[0];
+    const entityCode = order.stripe_entity_code || 'wsic';
+    const actualBillingPreference = billing_preference || order.billing_preference || 'card';
+
+    const { stripeService } = require('./services/stripe-service');
+
+    // Set as default payment method (if we have one - ACH might be null initially)
+    if (payment_method_id) {
+      await stripeService.setDefaultPaymentMethod(entityCode, order.stripe_customer_id, payment_method_id);
+    }
+
+    // Calculate total with fee if card payment (not for invoice - that's just backup)
+    let chargeAmount = parseFloat(order.contract_total);
+    let processingFee = 0;
+    if (actualBillingPreference === 'card') {
+      processingFee = stripeService.calculateProcessingFee(chargeAmount);
+      chargeAmount += processingFee;
+    }
+
+    // Determine payment behavior based on billing preference
+    // - 'card': Auto-charge (if upfront, charge now; else save for recurring)
+    // - 'ach': Auto-debit (if upfront, charge now; else save for recurring)  
+    // - 'invoice': Save backup payment method, send invoices manually
+
+    if (actualBillingPreference === 'invoice') {
+      // Invoice billing - just save the backup payment method
+      await adminPool.query(
+        `UPDATE orders SET 
+          payment_status = 'invoice_pending',
+          payment_method_id = $1,
+          payment_type = 'backup_card',
+          billing_preference = 'invoice',
+          updated_at = NOW()
+         WHERE id = $2`,
+        [payment_method_id, order.id]
+      );
+
+      res.json({
+        success: true,
+        message: 'Backup payment method saved. You will receive invoices via email.',
+        billing_preference: 'invoice'
+      });
+
+    } else if (order.billing_frequency === 'upfront' && payment_method_id) {
+      // Upfront billing - charge now
+      const chargeResult = await stripeService.chargeCustomer(entityCode, {
+        stripeCustomerId: order.stripe_customer_id,
+        paymentMethodId: payment_method_id,
+        amount: chargeAmount,
+        description: `Advertising Agreement ${order.order_number}`,
+        invoiceId: order.id
+      });
+
+      if (!chargeResult.success) {
+        return res.status(400).json({ error: chargeResult.message || 'Payment failed' });
+      }
+
+      await adminPool.query(
+        `UPDATE orders SET 
+          payment_status = 'paid',
+          payment_method_id = $1,
+          payment_type = $2,
+          processing_fee = $3,
+          stripe_payment_intent_id = $4,
+          billing_preference = $5,
+          paid_at = NOW(),
+          updated_at = NOW()
+         WHERE id = $6`,
+        [payment_method_id, actualBillingPreference, processingFee, chargeResult.paymentIntent?.id, actualBillingPreference, order.id]
+      );
+
+      res.json({
+        success: true,
+        message: 'Payment completed!',
+        charged: true,
+        amount: chargeAmount,
+        processingFee,
+        billing_preference: actualBillingPreference
+      });
+
+    } else {
+      // Monthly billing or ACH pending - save payment method for recurring
+      await adminPool.query(
+        `UPDATE orders SET 
+          payment_status = $1,
+          payment_method_id = $2,
+          payment_type = $3,
+          billing_preference = $4,
+          updated_at = NOW()
+         WHERE id = $5`,
+        [
+          actualBillingPreference === 'ach' ? 'ach_pending' : 'authorized',
+          payment_method_id,
+          actualBillingPreference,
+          actualBillingPreference,
+          order.id
+        ]
+      );
+
+      res.json({
+        success: true,
+        message: actualBillingPreference === 'ach' 
+          ? 'Bank account verification in progress. You will be notified once verified.'
+          : 'Payment method saved for recurring billing.',
+        billing_preference: actualBillingPreference
+      });
+      message: order.billing_frequency === 'upfront' ? 'Payment completed!' : 'Payment method saved!',
+      charged: order.billing_frequency === 'upfront',
+      amount: chargeAmount,
+      processingFee
+    });
+
+  } catch (error) {
+    console.error('Error completing payment:', error);
+    res.status(500).json({ error: 'Failed to complete payment' });
+  }
+});
+
+// GET /api/stripe/publishable-key/:entity - Get publishable key for entity
+app.get('/api/stripe/publishable-key/:entity', (req, res) => {
+  const { entity } = req.params;
+  const keyMap = {
+    wsic: process.env.STRIPE_WSIC_PUBLISHABLE_KEY,
+    lkn: process.env.STRIPE_LKN_PUBLISHABLE_KEY,
+    lwp: process.env.STRIPE_LWP_PUBLISHABLE_KEY || process.env.STRIPE_WSIC_PUBLISHABLE_KEY
+  };
+  
+  const key = keyMap[entity] || keyMap.wsic;
+  
+  if (!key) {
+    return res.status(500).json({ error: 'Stripe not configured for this entity' });
+  }
+  
+  res.json({ key, entity });
+});
+
 // ============================================
 // ORDER ROUTES (Authenticated)
 // ============================================
