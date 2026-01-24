@@ -1284,7 +1284,9 @@ export default function OrderForm() {
                   </div>
                   <div style={styles.summaryRow}>
                     <span>Contract Term</span>
-                    <span>{effectiveTermMonths} months</span>
+                    <span style={{ color: effectiveTermMonths ? '#1e293b' : '#f59e0b', fontWeight: effectiveTermMonths ? '400' : '600' }}>
+                      {effectiveTermMonths ? `${effectiveTermMonths} months` : 'Select term'}
+                    </span>
                   </div>
                 </>
               )}

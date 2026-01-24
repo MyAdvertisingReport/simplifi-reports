@@ -382,8 +382,20 @@ async function sendContractToClient({ order, contact, signingUrl }) {
     : [];
   const brandText = brands.length > 0 ? brands.join(' + ') : 'WSIC';
   
+  // Calculate setup fees from items
+  const setupFees = order.items 
+    ? order.items.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0)
+    : 0;
+  
   // Client-friendly subject line with brands
   const subject = `${order.client_name} - Your ${brandText} Advertising Agreement`;
+  
+  // Build setup fee row if applicable
+  const setupFeeRow = setupFees > 0 ? `
+        <tr>
+          <td>One-Time Setup Fee</td>
+          <td>$${setupFees.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        </tr>` : '';
   
   const content = `
     <div class="header">
@@ -415,7 +427,7 @@ async function sendContractToClient({ order, contact, signingUrl }) {
         <tr>
           <td>Monthly Investment</td>
           <td>$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>
+        </tr>${setupFeeRow}
         <tr>
           <td>Total Agreement Value</td>
           <td class="amount">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
