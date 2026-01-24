@@ -76,6 +76,7 @@ export default function ClientSigningPage() {
   const [stripe, setStripe] = useState(null);
   const [elements, setElements] = useState(null);
   const [cardElement, setCardElement] = useState(null);
+  const [cardMounted, setCardMounted] = useState(false);
   const [clientSecret, setClientSecret] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [paymentMethodId, setPaymentMethodId] = useState(null);
@@ -89,8 +90,12 @@ export default function ClientSigningPage() {
   const [signerName, setSignerName] = useState('');
   const [signerEmail, setSignerEmail] = useState('');
   const [signerTitle, setSignerTitle] = useState('');
+  const [signerPhone, setSignerPhone] = useState('');
   const [signature, setSignature] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  
+  // Contact editing state
+  const [editingContact, setEditingContact] = useState(false);
 
   // Load Stripe.js
   useEffect(() => {
@@ -130,6 +135,7 @@ export default function ClientSigningPage() {
         setSignerName(`${data.contact.first_name || ''} ${data.contact.last_name || ''}`.trim());
         setSignerEmail(data.contact.email || '');
         setSignerTitle(data.contact.title || '');
+        setSignerPhone(data.contact.phone || '');
         setBankAccountName(`${data.contact.first_name || ''} ${data.contact.last_name || ''}`.trim());
       }
     } catch (err) {
@@ -149,7 +155,7 @@ export default function ClientSigningPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          billing_preference: billingPreference,
+          billing_preference: billingPreference || 'card',
           signer_email: signerEmail,
           signer_name: signerName
         })
@@ -178,34 +184,16 @@ export default function ClientSigningPage() {
     }
   };
 
-  // Mount card element when needed
-  useEffect(() => {
-    // Only run when we have elements, are on step 2, and need a card
-    if (!elements || currentStep !== 2) return;
+  // Check if we need a card element based on current selections
+  const needsCardElement = () => {
+    return billingPreference === 'card' || 
+           (billingPreference === 'invoice' && backupPaymentMethod === 'card');
+  };
+
+  // Mount card element - only called once when conditions are right
+  const mountCardElement = () => {
+    if (!elements || !cardElementRef.current || cardMounted) return;
     
-    const needsCard = billingPreference === 'card' || 
-                      (billingPreference === 'invoice' && backupPaymentMethod === 'card');
-    
-    // If we don't need a card, unmount any existing one
-    if (!needsCard) {
-      if (cardElement) {
-        try {
-          cardElement.unmount();
-        } catch (e) {
-          // Ignore unmount errors
-        }
-        setCardElement(null);
-      }
-      return;
-    }
-    
-    // If we already have a card element mounted, don't create another
-    if (cardElement) return;
-    
-    // Wait for the ref to be available
-    if (!cardElementRef.current) return;
-    
-    // Create and mount the card element
     try {
       const card = elements.create('card', {
         style: {
@@ -220,25 +208,38 @@ export default function ClientSigningPage() {
       });
       card.mount(cardElementRef.current);
       setCardElement(card);
+      setCardMounted(true);
     } catch (err) {
       console.error('Error mounting card element:', err);
     }
-  }, [elements, currentStep, billingPreference, backupPaymentMethod, cardElement]);
+  };
 
-  // Cleanup card element when billing preference changes away from card
-  useEffect(() => {
-    const needsCard = billingPreference === 'card' || 
-                      (billingPreference === 'invoice' && backupPaymentMethod === 'card');
-    
-    if (!needsCard && cardElement) {
+  // Unmount card element
+  const unmountCardElement = () => {
+    if (cardElement && cardMounted) {
       try {
         cardElement.unmount();
+        cardElement.destroy();
       } catch (e) {
         // Ignore
       }
       setCardElement(null);
+      setCardMounted(false);
     }
-  }, [billingPreference, backupPaymentMethod]);
+  };
+
+  // Effect to mount/unmount card based on need
+  useEffect(() => {
+    if (currentStep !== 2 || !elements) return;
+    
+    if (needsCardElement() && !cardMounted) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(mountCardElement, 100);
+      return () => clearTimeout(timer);
+    } else if (!needsCardElement() && cardMounted) {
+      unmountCardElement();
+    }
+  }, [elements, currentStep, billingPreference, backupPaymentMethod, cardMounted]);
 
   const calculateAmounts = () => {
     if (!contract) return { contractTotal: 0, monthlyBase: 0, setupFees: 0, firstMonthBase: 0, monthlyWithFee: 0, firstMonthTotal: 0 };
@@ -580,6 +581,92 @@ export default function ClientSigningPage() {
                 <span style={{ color: '#1e293b', fontWeight: '600' }}>Total Contract Value</span>
                 <span style={{ color: '#10b981', fontWeight: '700', fontSize: '20px' }}>{formatCurrency(amounts.contractTotal)}</span>
               </div>
+            </div>
+
+            {/* Contact Card */}
+            <div style={{ marginTop: '20px', background: '#f8fafc', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: editingContact ? '16px' : '0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>👤</span>
+                  <span style={{ fontWeight: '600', color: '#1e293b' }}>Contact Information</span>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setEditingContact(!editingContact)}
+                  style={{ 
+                    background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', 
+                    fontSize: '13px', fontWeight: '500', padding: '4px 8px'
+                  }}
+                >
+                  {editingContact ? 'Done' : 'Edit'}
+                </button>
+              </div>
+              
+              {editingContact ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Full Name</label>
+                    <input 
+                      type="text" 
+                      value={signerName} 
+                      onChange={e => setSignerName(e.target.value)}
+                      style={{ ...styles.input, padding: '8px 12px', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Title</label>
+                    <input 
+                      type="text" 
+                      value={signerTitle} 
+                      onChange={e => setSignerTitle(e.target.value)}
+                      placeholder="Owner, Manager, etc."
+                      style={{ ...styles.input, padding: '8px 12px', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Email</label>
+                    <input 
+                      type="email" 
+                      value={signerEmail} 
+                      onChange={e => setSignerEmail(e.target.value)}
+                      style={{ ...styles.input, padding: '8px 12px', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Phone</label>
+                    <input 
+                      type="tel" 
+                      value={signerPhone} 
+                      onChange={e => setSignerPhone(e.target.value)}
+                      placeholder="(555) 123-4567"
+                      style={{ ...styles.input, padding: '8px 12px', fontSize: '14px' }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '8px' }}>
+                  <div style={{ minWidth: '140px' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Name</div>
+                    <div style={{ color: '#1e293b', fontWeight: '500' }}>{signerName || '-'}</div>
+                  </div>
+                  {signerTitle && (
+                    <div style={{ minWidth: '100px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>Title</div>
+                      <div style={{ color: '#1e293b' }}>{signerTitle}</div>
+                    </div>
+                  )}
+                  <div style={{ minWidth: '180px' }}>
+                    <div style={{ fontSize: '12px', color: '#64748b' }}>Email</div>
+                    <div style={{ color: '#1e293b' }}>{signerEmail || '-'}</div>
+                  </div>
+                  {signerPhone && (
+                    <div style={{ minWidth: '120px' }}>
+                      <div style={{ fontSize: '12px', color: '#64748b' }}>Phone</div>
+                      <div style={{ color: '#1e293b' }}>{signerPhone}</div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {currentStep === 1 && (
