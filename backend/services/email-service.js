@@ -382,6 +382,18 @@ async function sendContractToClient({ order, contact, signingUrl }) {
     : [];
   const brandText = brands.length > 0 ? brands.join(' + ') : 'WSIC';
   
+  // Get unique logo URLs from items
+  const logoUrls = order.items 
+    ? [...new Set(order.items.map(i => i.logo_url).filter(Boolean))]
+    : [];
+  
+  // Build logo HTML - show all brand logos side by side
+  const logosHtml = logoUrls.length > 0 
+    ? `<div style="text-align: center; margin-bottom: 16px;">
+        ${logoUrls.map(url => `<img src="${url}" alt="Logo" style="height: 50px; margin: 0 12px; vertical-align: middle;" />`).join('')}
+       </div>`
+    : '';
+  
   // Calculate setup fees from items
   const setupFees = order.items 
     ? order.items.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0)
@@ -399,6 +411,7 @@ async function sendContractToClient({ order, contact, signingUrl }) {
   
   const content = `
     <div class="header">
+      ${logosHtml}
       <h1>Your Advertising Agreement</h1>
       <p>Ready for your review and signature</p>
     </div>

@@ -1022,9 +1022,9 @@ router.post('/:id/submit', async (req, res) => {
           contract_total: orderContractTotal
         };
 
-        // Fetch items with entity names for email
+        // Fetch items with entity names and logos for email
         const itemsWithEntities = await client.query(
-          `SELECT oi.*, e.name as entity_name 
+          `SELECT oi.*, e.name as entity_name, e.logo_url 
            FROM order_items oi 
            LEFT JOIN entities e ON oi.entity_id = e.id 
            WHERE oi.order_id = $1`,
