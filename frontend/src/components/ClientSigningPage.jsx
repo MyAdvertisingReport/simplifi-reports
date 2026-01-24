@@ -1233,23 +1233,6 @@ export default function ClientSigningPage() {
     );
   }
 
-  // Get unique brand logos from order items
-  const getBrandLogos = () => {
-    if (!contract?.items) return [];
-    const uniqueLogos = [];
-    const seenLogos = new Set();
-    contract.items.forEach(item => {
-      if (item.entity_logo && !seenLogos.has(item.entity_logo)) {
-        seenLogos.add(item.entity_logo);
-        uniqueLogos.push({
-          url: item.entity_logo,
-          name: item.entity_name
-        });
-      }
-    });
-    return uniqueLogos;
-  };
-
   // Review step (default)
   const brandLogos = getBrandLogos();
   
