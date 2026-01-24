@@ -188,14 +188,47 @@ export default function ClientSigningPage() {
     }
   };
 
-  // Calculate amount with CC fee if applicable
+  // Calculate all the amounts
+  const calculateAmounts = () => {
+    const monthlyBase = parseFloat(contract?.monthly_total) || 0;
+    const contractTotal = parseFloat(contract?.contract_total) || 0;
+    
+    // Calculate setup fees from items
+    const setupFees = contract?.items 
+      ? contract.items.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0)
+      : (contract?.setup_fees_total || 0);
+    
+    const firstMonthBase = monthlyBase + setupFees;
+    
+    // Calculate CC fee on first month (if card selected)
+    const ccFeeRate = 0.035;
+    const firstMonthFee = billingPreference === 'card' ? firstMonthBase * ccFeeRate : 0;
+    const firstMonthTotal = firstMonthBase + firstMonthFee;
+    
+    // Monthly with fee (for recurring)
+    const monthlyFee = billingPreference === 'card' ? monthlyBase * ccFeeRate : 0;
+    const monthlyWithFee = monthlyBase + monthlyFee;
+    
+    return {
+      contractTotal,
+      monthlyBase,
+      monthlyFee,
+      monthlyWithFee,
+      setupFees,
+      firstMonthBase,
+      firstMonthFee,
+      firstMonthTotal
+    };
+  };
+
+  // Legacy function for compatibility
   const calculateTotalWithFee = () => {
-    const baseAmount = parseFloat(contract?.contract_total) || 0;
-    if (billingPreference === 'card') {
-      const fee = baseAmount * 0.035; // 3.5% fee
-      return { base: baseAmount, fee: fee, total: baseAmount + fee };
-    }
-    return { base: baseAmount, fee: 0, total: baseAmount };
+    const amounts = calculateAmounts();
+    return { 
+      base: amounts.contractTotal, 
+      fee: amounts.firstMonthFee, 
+      total: amounts.firstMonthTotal 
+    };
   };
 
   // Handle payment form submission
@@ -1101,21 +1134,87 @@ export default function ClientSigningPage() {
                 </button>
               </div>
 
-              {/* Amount Summary */}
-              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: '#64748b' }}>
-                  {billingPreference === 'invoice' ? 'Invoice Amount' : 
-                   contract?.billing_frequency === 'upfront' ? 'Due at Signing' : 'Monthly Amount'}
-                </span>
-                <span style={{ fontWeight: '700', color: '#10b981', fontSize: '18px' }}>
-                  {formatCurrency(billingPreference === 'card' ? totals.total : totals.base)}
-                  {billingPreference === 'card' && totals.fee > 0 && (
-                    <span style={{ fontSize: '12px', color: '#ef4444', marginLeft: '4px' }}>
-                      (incl. {formatCurrency(totals.fee)} fee)
-                    </span>
+              {/* Amount Summary - Three Lines */}
+              {(() => {
+                const amounts = calculateAmounts();
+                return (
+                  <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span style={{ color: '#64748b', fontSize: '14px' }}>Total Contract Value</span>
+                      <span style={{ color: '#1e293b', fontWeight: '500' }}>{formatCurrency(amounts.contractTotal)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span style={{ color: '#64748b', fontSize: '14px' }}>
+                        Monthly Amount
+                        {billingPreference === 'card' && <span style={{ color: '#ef4444' }}> (+3.5% fee)</span>}
+                      </span>
+                      <span style={{ color: '#1e293b', fontWeight: '500' }}>
+                        {formatCurrency(amounts.monthlyWithFee)}
+                        {billingPreference === 'card' && amounts.monthlyFee > 0 && (
+                          <span style={{ fontSize: '11px', color: '#64748b' }}> (incl. {formatCurrency(amounts.monthlyFee)})</span>
+                        )}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#1e293b', fontWeight: '600' }}>
+                        First Month {amounts.setupFees > 0 ? '(incl. setup)' : ''}
+                        {billingPreference === 'card' && <span style={{ color: '#ef4444', fontWeight: '400', fontSize: '12px' }}> +fee</span>}
+                      </span>
+                      <span style={{ color: '#10b981', fontWeight: '700', fontSize: '18px' }}>
+                        {formatCurrency(amounts.firstMonthTotal)}
+                      </span>
+                    </div>
+                    {amounts.setupFees > 0 && (
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', textAlign: 'right' }}>
+                        Includes {formatCurrency(amounts.setupFees)} one-time setup fee
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Card/ACH Input Fields */}
+              {billingPreference !== 'ach' && (
+                <div style={{ marginTop: '20px', padding: '16px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
+                  <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '12px' }}>
+                    {billingPreference === 'invoice' ? '💳 Backup Card (required)' : '💳 Card Details'}
+                  </div>
+                  {billingPreference === 'invoice' && (
+                    <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '12px', marginTop: 0 }}>
+                      This card will only be charged if invoices are not paid within 30 days of the due date.
+                    </p>
                   )}
-                </span>
-              </div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#64748b' }}>Card Number</label>
+                    <input id="cardNumber" name="cardNumber" type="text" placeholder="1234 5678 9012 3456"
+                      style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#64748b' }}>Expiry</label>
+                      <input id="expiry" name="expiry" type="text" placeholder="MM/YY"
+                        style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', color: '#64748b' }}>CVC</label>
+                      <input id="cvc" name="cvc" type="text" placeholder="123"
+                        style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '15px', boxSizing: 'border-box' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {billingPreference === 'ach' && (
+                <div style={{ marginTop: '20px', padding: '16px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px' }}>
+                  <div style={{ fontWeight: '600', color: '#0369a1', marginBottom: '8px' }}>
+                    🏦 Bank Account Setup
+                  </div>
+                  <p style={{ fontSize: '13px', color: '#0284c7', margin: 0 }}>
+                    After signing, you'll be guided through Stripe's secure bank account verification process. 
+                    This typically completes within 1-2 business days.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

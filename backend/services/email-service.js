@@ -377,56 +377,101 @@ async function sendOrderRejected({ order, rejectedBy, reason }) {
  * Send contract to client for signature
  */
 async function sendContractToClient({ order, contact, signingUrl }) {
-  const subject = `Your Advertising Agreement from WSIC - ${order.order_number}`;
+  // Get unique brand names from items
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  
+  // Get unique logos from items
+  const logos = [];
+  const seenLogos = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_logo && !seenLogos.has(item.entity_logo)) {
+        seenLogos.add(item.entity_logo);
+        logos.push({ url: item.entity_logo, name: item.entity_name });
+      }
+    });
+  }
+
+  // Build logo HTML for header
+  const logoHtml = logos.length > 0 
+    ? logos.map(logo => 
+        `<img src="${logo.url}" alt="${logo.name}" style="height: 50px; max-width: 150px; object-fit: contain; margin: 0 12px;" />`
+      ).join('')
+    : '';
+
+  const brandText = brandNames.length > 0 ? brandNames.join(' + ') : 'WSIC';
+  
+  // Calculate setup fees
+  const setupFees = order.items 
+    ? order.items.reduce((sum, item) => sum + parseFloat(item.setup_fee || 0), 0)
+    : 0;
+  const firstMonthTotal = parseFloat(order.monthly_total || 0) + setupFees;
+
+  const subject = `${order.client_name} - Your ${brandText} Advertising Agreement`;
   
   const content = `
     <div class="header">
-      <h1>Your Advertising Agreement</h1>
-      <p>Please review and sign to get started</p>
+      ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
+      <h1 style="color: #ffffff;">Your Advertising Agreement</h1>
+      <p style="color: rgba(255,255,255,0.9);">Ready for your review and signature</p>
     </div>
-    <div class="body">
-      <p>Hi ${contact.first_name || 'there'},</p>
+    <div class="body" style="background-color: #ffffff; color: #374151;">
+      <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
       
-      <p>Thank you for choosing WSIC for your advertising needs! Your agreement is ready for review.</p>
+      <p style="color: #374151;">Great news! Your advertising agreement with <strong>${brandText}</strong> is ready. Please review the details below and sign electronically to get started.</p>
       
-      <table class="details-table">
+      <table class="details-table" style="background-color: #ffffff;">
         <tr>
-          <td>Business</td>
-          <td><strong>${order.client_name}</strong></td>
+          <td style="color: #6b7280;">Business</td>
+          <td style="color: #1f2937;"><strong>${order.client_name}</strong></td>
         </tr>
         <tr>
-          <td>Agreement #</td>
-          <td>${order.order_number}</td>
+          <td style="color: #6b7280;">Contract Term</td>
+          <td style="color: #1f2937;">${order.term_months} month${order.term_months !== 1 ? 's' : ''}</td>
         </tr>
         <tr>
-          <td>Contract Term</td>
-          <td>${order.term_months} month${order.term_months !== 1 ? 's' : ''}</td>
+          <td style="color: #6b7280;">Start Date</td>
+          <td style="color: #1f2937;">${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
         </tr>
         <tr>
-          <td>Start Date</td>
-          <td>${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
+          <td style="color: #6b7280;">Monthly Investment</td>
+          <td style="color: #1f2937;">$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        </tr>
+        ${setupFees > 0 ? `
+        <tr>
+          <td style="color: #6b7280;">Setup Fees</td>
+          <td style="color: #1f2937;">$${setupFees.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
         </tr>
         <tr>
-          <td>Monthly Investment</td>
-          <td>$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="color: #6b7280;">First Month Total</td>
+          <td style="color: #1f2937;"><strong>$${firstMonthTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</strong></td>
         </tr>
+        ` : ''}
         <tr>
-          <td>Total Agreement Value</td>
-          <td class="amount">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+          <td style="color: #6b7280;">Total Agreement Value</td>
+          <td class="amount" style="color: #1e3a8a;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
         </tr>
       </table>
       
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${signingUrl}" class="button button-secondary">Review & Sign Agreement</a>
+        <a href="${signingUrl}" class="button button-secondary" style="background: #059669; color: #ffffff !important;">Review & Sign Agreement</a>
       </div>
       
-      <p class="text-muted text-small">
-        By signing, you agree to our <a href="${BASE_URL}/terms">Terms of Service</a>. 
-        This link will expire in 7 days. If you have any questions, simply reply to this email.
+      <p class="text-muted text-small" style="color: #6b7280;">
+        This link will expire in 7 days. Please reach out to your Sales Associate directly if you have any questions.
       </p>
     </div>
-    <div class="footer">
-      Questions? Contact us at billing@myadvertisingreport.com or call (704) 896-0094
+    <div class="footer" style="color: #6b7280;">
+      Thank you for choosing us as your advertising partner!
     </div>
   `;
 
