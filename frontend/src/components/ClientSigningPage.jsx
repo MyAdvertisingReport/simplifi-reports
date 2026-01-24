@@ -86,7 +86,15 @@ export default function ClientSigningPage() {
       }
       
       const data = await response.json();
-      setContract(data);
+      
+      // Flatten the response - merge order data with contact at top level
+      const contractData = {
+        ...data.order,
+        contact: data.contact,
+        // Calculate setup fees total from items
+        setup_fees_total: data.order.items?.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0) || 0
+      };
+      setContract(contractData);
       
       // Pre-fill contact info if available
       if (data.contact) {
