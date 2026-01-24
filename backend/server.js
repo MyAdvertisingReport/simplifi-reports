@@ -1946,7 +1946,7 @@ app.post('/api/orders/sign/:token/complete', async (req, res) => {
     const { token } = req.params;
     const { 
       signature, signer_name, signer_email, signer_title, agreed_to_terms,
-      billing_preference, payment_details 
+      billing_preference, payment_method_id, ach_account_name 
     } = req.body;
 
     if (!signature) {
@@ -1975,95 +1975,45 @@ app.post('/api/orders/sign/:token/complete', async (req, res) => {
     const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
 
-    // Get primary entity from items
-    const itemsResult = await adminPool.query(
-      `SELECT oi.*, e.code as entity_code FROM order_items oi
-       LEFT JOIN entities e ON oi.entity_id = e.id
-       WHERE oi.order_id = $1 ORDER BY oi.line_total DESC`,
-      [order.id]
-    );
-    const primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+    // Use stored values from setup-intent, or get primary entity
+    let stripeCustomerId = order.stripe_customer_id || order.existing_stripe_id;
+    let primaryEntityCode = order.stripe_entity_code;
+    
+    if (!primaryEntityCode) {
+      const itemsResult = await adminPool.query(
+        `SELECT e.code as entity_code FROM order_items oi
+         LEFT JOIN entities e ON oi.entity_id = e.id
+         WHERE oi.order_id = $1 ORDER BY oi.line_total DESC LIMIT 1`,
+        [order.id]
+      );
+      primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+    }
 
-    // Process payment with Stripe
-    let stripeCustomerId = order.existing_stripe_id;
-    let paymentMethodId = null;
     let paymentStatus = 'pending';
+    let paymentType = billing_preference;
 
-    try {
-      const { stripeService } = require('./services/stripe-service');
-      const stripe = stripeService.getClient(primaryEntityCode);
-
-      // Get or create Stripe customer
-      if (!stripeCustomerId) {
-        const customer = await stripe.customers.create({
-          email: signer_email,
-          name: order.client_name,
-          metadata: { client_id: order.client_id }
-        });
-        stripeCustomerId = customer.id;
+    // If we have a payment method from Stripe Elements, set it as default
+    if (payment_method_id && stripeCustomerId) {
+      try {
+        const Stripe = require('stripe');
+        const stripeSecretKey = process.env[`STRIPE_${primaryEntityCode.toUpperCase()}_SECRET_KEY`] || process.env.STRIPE_WSIC_SECRET_KEY;
+        const stripe = new Stripe(stripeSecretKey);
         
-        // Save to client record
-        await adminPool.query(
-          `UPDATE advertising_clients SET stripe_customer_id = $1 WHERE id = $2`,
-          [stripeCustomerId, order.client_id]
-        );
-      }
-
-      if (payment_details.type === 'card') {
-        // Parse expiry
-        const expiryParts = payment_details.expiry.split('/');
-        const expMonth = parseInt(expiryParts[0]);
-        const expYear = parseInt('20' + expiryParts[1]);
-
-        // Create payment method
-        const paymentMethod = await stripe.paymentMethods.create({
-          type: 'card',
-          card: {
-            number: payment_details.card_number,
-            exp_month: expMonth,
-            exp_year: expYear,
-            cvc: payment_details.cvc,
-          },
-          billing_details: { name: signer_name, email: signer_email },
-        });
-
-        // Attach to customer and set as default
-        await stripe.paymentMethods.attach(paymentMethod.id, { customer: stripeCustomerId });
         await stripe.customers.update(stripeCustomerId, {
-          invoice_settings: { default_payment_method: paymentMethod.id }
+          invoice_settings: { default_payment_method: payment_method_id }
         });
         
-        paymentMethodId = paymentMethod.id;
         paymentStatus = 'authorized';
-
-      } else if (payment_details.type === 'ach') {
-        // Create bank account - Note: Direct bank account creation requires verification
-        // For production, use Stripe's Financial Connections or microdeposits
-        const paymentMethod = await stripe.paymentMethods.create({
-          type: 'us_bank_account',
-          us_bank_account: {
-            account_holder_type: 'company',
-            routing_number: payment_details.routing_number,
-            account_number: payment_details.account_number,
-            account_type: payment_details.account_type || 'checking',
-          },
-          billing_details: { 
-            name: payment_details.account_name || signer_name, 
-            email: signer_email 
-          },
-        });
-
-        await stripe.paymentMethods.attach(paymentMethod.id, { customer: stripeCustomerId });
-        await stripe.customers.update(stripeCustomerId, {
-          invoice_settings: { default_payment_method: paymentMethod.id }
-        });
-        
-        paymentMethodId = paymentMethod.id;
-        paymentStatus = 'ach_pending'; // ACH requires verification
+        paymentType = 'card';
+      } catch (stripeError) {
+        console.error('Error setting default payment method:', stripeError);
+        // Continue anyway - payment method was already attached via SetupIntent
+        paymentStatus = 'authorized';
       }
-    } catch (stripeError) {
-      console.error('Stripe error:', stripeError);
-      return res.status(400).json({ error: stripeError.message || 'Payment processing failed' });
+    } else if (billing_preference === 'ach') {
+      // ACH will be set up separately via Financial Connections
+      paymentStatus = 'ach_pending';
+      paymentType = 'ach';
     }
 
     // Update order with signature and payment info
@@ -2089,7 +2039,7 @@ app.post('/api/orders/sign/:token/complete', async (req, res) => {
       [
         signature, signer_name, signer_email, signer_title || '',
         clientIP, userAgent, billing_preference, primaryEntityCode,
-        stripeCustomerId, paymentMethodId, payment_details.type,
+        stripeCustomerId, payment_method_id || null, paymentType,
         paymentStatus, order.id
       ]
     );
@@ -2117,7 +2067,90 @@ app.post('/api/orders/sign/:token/complete', async (req, res) => {
   }
 });
 
-// POST /api/orders/sign/:token/payment-setup - Initialize payment
+// POST /api/orders/sign/:token/setup-intent - Create Stripe SetupIntent for card collection
+app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { billing_preference, signer_email, signer_name } = req.body;
+
+    // Find order
+    const orderResult = await adminPool.query(
+      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1 AND o.signing_token_expires_at > NOW()`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired signing link' });
+    }
+
+    const order = orderResult.rows[0];
+
+    // Get primary entity
+    const itemsResult = await adminPool.query(
+      `SELECT e.code as entity_code FROM order_items oi
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1 ORDER BY oi.line_total DESC LIMIT 1`,
+      [order.id]
+    );
+    const primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+
+    // Initialize Stripe
+    const Stripe = require('stripe');
+    const stripeSecretKey = process.env[`STRIPE_${primaryEntityCode.toUpperCase()}_SECRET_KEY`] || process.env.STRIPE_WSIC_SECRET_KEY;
+    const stripePublishableKey = process.env[`STRIPE_${primaryEntityCode.toUpperCase()}_PUBLISHABLE_KEY`] || process.env.STRIPE_WSIC_PUBLISHABLE_KEY;
+    
+    if (!stripeSecretKey) {
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+    
+    const stripe = new Stripe(stripeSecretKey);
+
+    // Get or create customer
+    let customerId = order.existing_stripe_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: signer_email,
+        name: order.client_name,
+        metadata: { client_id: order.client_id }
+      });
+      customerId = customer.id;
+      
+      // Save to client
+      await adminPool.query(
+        `UPDATE advertising_clients SET stripe_customer_id = $1 WHERE id = $2`,
+        [customerId, order.client_id]
+      );
+    }
+
+    // Create SetupIntent
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      metadata: { order_id: order.id }
+    });
+
+    // Store entity code on order
+    await adminPool.query(
+      `UPDATE orders SET stripe_entity_code = $1, stripe_customer_id = $2, billing_preference = $3 WHERE id = $4`,
+      [primaryEntityCode, customerId, billing_preference, order.id]
+    );
+
+    res.json({
+      clientSecret: setupIntent.client_secret,
+      publishableKey: stripePublishableKey,
+      customerId
+    });
+
+  } catch (error) {
+    console.error('Error creating setup intent:', error);
+    res.status(500).json({ error: 'Failed to initialize payment' });
+  }
+});
+
+// POST /api/orders/sign/:token/payment-setup - Initialize payment (legacy)
 app.post('/api/orders/sign/:token/payment-setup', async (req, res) => {
   try {
     const { token } = req.params;

@@ -2,9 +2,10 @@
  * ClientSigningPage.jsx
  * Public page for clients to review, provide payment, and sign their advertising agreement
  * Single page with 3 steps: Review Products → Payment Info → Sign
+ * Uses Stripe Elements for PCI-compliant payment collection
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -29,11 +30,6 @@ const Icons = {
   CheckCircle: ({ size = 24, color = 'currentColor' }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-    </svg>
-  ),
-  DollarSign: ({ size = 24, color = 'currentColor' }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
     </svg>
   ),
   CreditCard: ({ size = 24, color = 'currentColor' }) => (
@@ -68,19 +64,22 @@ export default function ClientSigningPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   
-  // Step tracking (1, 2, or 3)
+  // Step tracking
   const [currentStep, setCurrentStep] = useState(1);
   const [step1Complete, setStep1Complete] = useState(false);
   const [step2Complete, setStep2Complete] = useState(false);
   
   // Payment states
   const [billingPreference, setBillingPreference] = useState('card');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [bankRouting, setBankRouting] = useState('');
-  const [bankAccount, setBankAccount] = useState('');
-  const [bankAccountType, setBankAccountType] = useState('checking');
+  const [stripeReady, setStripeReady] = useState(false);
+  const [stripe, setStripe] = useState(null);
+  const [cardElement, setCardElement] = useState(null);
+  const [clientSecret, setClientSecret] = useState(null);
+  const [paymentError, setPaymentError] = useState(null);
+  const [paymentMethodId, setPaymentMethodId] = useState(null);
+  const cardElementRef = useRef(null);
+  
+  // ACH states  
   const [bankAccountName, setBankAccountName] = useState('');
   
   // Signer states
@@ -89,6 +88,18 @@ export default function ClientSigningPage() {
   const [signerTitle, setSignerTitle] = useState('');
   const [signature, setSignature] = useState('');
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+
+  // Load Stripe.js
+  useEffect(() => {
+    if (!window.Stripe) {
+      const script = document.createElement('script');
+      script.src = 'https://js.stripe.com/v3/';
+      script.onload = () => setStripeReady(true);
+      document.body.appendChild(script);
+    } else {
+      setStripeReady(true);
+    }
+  }, []);
 
   useEffect(() => {
     loadContract();
@@ -122,6 +133,60 @@ export default function ClientSigningPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Initialize Stripe Elements when entering step 2
+  const initializeStripe = async () => {
+    if (!stripeReady || stripe) return;
+    
+    try {
+      // Get setup intent from backend
+      const response = await fetch(`${API_BASE}/api/orders/sign/${token}/setup-intent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          billing_preference: billingPreference,
+          signer_email: signerEmail,
+          signer_name: signerName
+        })
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to initialize payment');
+      }
+      
+      const data = await response.json();
+      setClientSecret(data.clientSecret);
+      
+      // Initialize Stripe
+      const stripeInstance = window.Stripe(data.publishableKey);
+      setStripe(stripeInstance);
+      
+      // Create card element
+      const elements = stripeInstance.elements({ clientSecret: data.clientSecret });
+      const card = elements.create('card', {
+        style: {
+          base: {
+            fontSize: '16px',
+            color: '#1e293b',
+            '::placeholder': { color: '#94a3b8' },
+          },
+          invalid: { color: '#dc2626' },
+        },
+      });
+      
+      // Mount after a small delay to ensure DOM is ready
+      setTimeout(() => {
+        if (cardElementRef.current) {
+          card.mount(cardElementRef.current);
+          setCardElement(card);
+        }
+      }, 100);
+      
+    } catch (err) {
+      setPaymentError(err.message);
     }
   };
 
@@ -171,30 +236,65 @@ export default function ClientSigningPage() {
     return new Date(dateString).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
+  // Step 1: Confirm products
   const handleConfirmProducts = () => {
     setStep1Complete(true);
     setCurrentStep(2);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Initialize Stripe when moving to step 2
+    setTimeout(() => initializeStripe(), 200);
   };
 
-  const handleConfirmPayment = () => {
-    if (billingPreference === 'card' || billingPreference === 'invoice') {
-      if (!cardNumber || !cardExpiry || !cardCvc) {
-        alert('Please enter your card details');
-        return;
-      }
-    }
+  // Step 2: Confirm payment
+  const handleConfirmPayment = async () => {
+    setPaymentError(null);
+    
     if (billingPreference === 'ach') {
-      if (!bankRouting || !bankAccount || !bankAccountName) {
-        alert('Please enter your bank account details');
+      if (!bankAccountName) {
+        setPaymentError('Please enter the account holder name');
         return;
       }
+      // For ACH, we'll handle it during final submission
+      setStep2Complete(true);
+      setCurrentStep(3);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
     }
-    setStep2Complete(true);
-    setCurrentStep(3);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // For card payments, confirm the SetupIntent now
+    if (!stripe || !cardElement) {
+      setPaymentError('Payment form not ready. Please wait a moment and try again.');
+      return;
+    }
+    
+    setSubmitting(true);
+    try {
+      const { setupIntent, error } = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: signerName,
+            email: signerEmail,
+          },
+        },
+      });
+      
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      setPaymentMethodId(setupIntent.payment_method);
+      setStep2Complete(true);
+      setCurrentStep(3);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      setPaymentError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
+  // Step 3: Sign and complete
   const handleSubmitSignature = async () => {
     if (!signature.trim()) {
       alert('Please type your signature');
@@ -217,18 +317,9 @@ export default function ClientSigningPage() {
           signer_title: signerTitle.trim(),
           agreed_to_terms: agreedToTerms,
           billing_preference: billingPreference,
-          payment_details: billingPreference === 'ach' ? {
-            type: 'ach',
-            routing_number: bankRouting,
-            account_number: bankAccount,
-            account_type: bankAccountType,
-            account_name: bankAccountName
-          } : {
-            type: 'card',
-            card_number: cardNumber.replace(/\s/g, ''),
-            expiry: cardExpiry,
-            cvc: cardCvc
-          }
+          payment_method_id: paymentMethodId,
+          // For ACH, we send bank info (will be tokenized on backend via Financial Connections)
+          ach_account_name: billingPreference === 'ach' ? bankAccountName : null
         })
       });
 
@@ -270,11 +361,13 @@ export default function ClientSigningPage() {
       background: selected ? '#eff6ff' : 'white', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '12px'
     }),
     radioDot: (selected) => ({ width: '20px', height: '20px', borderRadius: '50%', border: selected ? '6px solid #3b82f6' : '2px solid #d1d5db', flexShrink: 0, marginTop: '2px' }),
+    stripeElement: { padding: '12px 16px', border: '2px solid #e2e8f0', borderRadius: '10px', background: 'white' },
   };
 
   const brandLogos = getBrandLogos();
   const amounts = calculateAmounts();
 
+  // Loading state
   if (loading) {
     return (
       <div style={styles.pageContainer}>
@@ -287,6 +380,7 @@ export default function ClientSigningPage() {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div style={styles.pageContainer}>
@@ -306,6 +400,7 @@ export default function ClientSigningPage() {
     );
   }
 
+  // Success state
   if (success) {
     return (
       <div style={styles.pageContainer}>
@@ -350,6 +445,7 @@ export default function ClientSigningPage() {
     );
   }
 
+  // Main signing page
   return (
     <div style={styles.pageContainer}>
       <div style={styles.header}>
@@ -486,7 +582,7 @@ export default function ClientSigningPage() {
               </div>
             </div>
 
-            {/* Card Fields */}
+            {/* Card Payment Form - Stripe Elements */}
             {(billingPreference === 'card' || billingPreference === 'invoice') && currentStep === 2 && (
               <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
                 <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '16px' }}>
@@ -497,61 +593,52 @@ export default function ClientSigningPage() {
                     This card will only be charged if invoices are not paid within 30 days.
                   </p>
                 )}
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={styles.label}>Card Number</label>
-                  <input type="text" value={cardNumber} onChange={e => setCardNumber(e.target.value)} placeholder="1234 5678 9012 3456" style={styles.input} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={styles.label}>Expiry Date</label>
-                    <input type="text" value={cardExpiry} onChange={e => setCardExpiry(e.target.value)} placeholder="MM/YY" style={styles.input} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>CVC</label>
-                    <input type="text" value={cardCvc} onChange={e => setCardCvc(e.target.value)} placeholder="123" style={styles.input} />
-                  </div>
+                {/* Stripe Card Element Container */}
+                <div ref={cardElementRef} style={styles.stripeElement}></div>
+                {!stripeReady && <p style={{ color: '#64748b', fontSize: '14px', marginTop: '8px' }}>Loading payment form...</p>}
+              </div>
+            )}
+
+            {/* ACH Form */}
+            {billingPreference === 'ach' && currentStep === 2 && (
+              <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '16px' }}>🏦 Bank Account</div>
+                <p style={{ fontSize: '13px', color: '#64748b', marginTop: 0, marginBottom: '16px' }}>
+                  After signing, you'll receive a secure link to connect your bank account via Stripe.
+                </p>
+                <div>
+                  <label style={styles.label}>Account Holder Name</label>
+                  <input 
+                    type="text" 
+                    value={bankAccountName} 
+                    onChange={e => setBankAccountName(e.target.value)} 
+                    placeholder="Business or Personal Name" 
+                    style={styles.input} 
+                  />
                 </div>
               </div>
             )}
 
-            {/* ACH Fields */}
-            {billingPreference === 'ach' && currentStep === 2 && (
-              <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
-                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '16px' }}>🏦 Bank Account Details</div>
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={styles.label}>Account Holder Name</label>
-                  <input type="text" value={bankAccountName} onChange={e => setBankAccountName(e.target.value)} placeholder="Business or Personal Name" style={styles.input} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                  <div>
-                    <label style={styles.label}>Routing Number</label>
-                    <input type="text" value={bankRouting} onChange={e => setBankRouting(e.target.value)} placeholder="9 digits" style={styles.input} />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Account Number</label>
-                    <input type="text" value={bankAccount} onChange={e => setBankAccount(e.target.value)} placeholder="Account number" style={styles.input} />
-                  </div>
-                </div>
-                <div>
-                  <label style={styles.label}>Account Type</label>
-                  <select value={bankAccountType} onChange={e => setBankAccountType(e.target.value)} style={{ ...styles.input, cursor: 'pointer' }}>
-                    <option value="checking">Checking</option>
-                    <option value="savings">Savings</option>
-                  </select>
-                </div>
+            {paymentError && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '12px', padding: '16px', marginBottom: '20px', color: '#dc2626' }}>
+                <strong>Error:</strong> {paymentError}
               </div>
             )}
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '13px', marginBottom: '20px' }}>
               <Icons.Lock size={16} />
-              <span>Your payment information is secured with 256-bit encryption</span>
+              <span>Your payment information is secured with 256-bit encryption via Stripe</span>
             </div>
 
             {currentStep === 2 && (
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                 <button onClick={() => { setStep1Complete(false); setCurrentStep(1); }} style={{ ...styles.button, ...styles.secondaryButton }}>Back</button>
-                <button onClick={handleConfirmPayment} style={{ ...styles.button, ...styles.primaryButton }}>
-                  <Icons.Check size={20} /> Confirm Payment Info
+                <button 
+                  onClick={handleConfirmPayment} 
+                  disabled={submitting}
+                  style={{ ...styles.button, ...styles.primaryButton, opacity: submitting ? 0.6 : 1 }}
+                >
+                  {submitting ? <><Icons.Loader size={20} /> Processing...</> : <><Icons.Check size={20} /> Confirm Payment Info</>}
                 </button>
               </div>
             )}
