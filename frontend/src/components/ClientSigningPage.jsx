@@ -642,11 +642,50 @@ export default function ClientSigningPage() {
     );
   }
 
+  // Get unique brand logos from order items
+  const getBrandLogos = () => {
+    if (!contract?.items) return [];
+    const uniqueLogos = [];
+    const seenLogos = new Set();
+    contract.items.forEach(item => {
+      if (item.entity_logo && !seenLogos.has(item.entity_logo)) {
+        seenLogos.add(item.entity_logo);
+        uniqueLogos.push({
+          url: item.entity_logo,
+          name: item.entity_name
+        });
+      }
+    });
+    return uniqueLogos;
+  };
+
   // Review step (default)
+  const brandLogos = getBrandLogos();
+  
   return (
     <div style={styles.pageContainer}>
       <div style={styles.header}>
-        <div style={styles.logo}>WSIC Advertising</div>
+        {brandLogos.length > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            {brandLogos.map((logo, idx) => (
+              <img 
+                key={idx}
+                src={logo.url} 
+                alt={logo.name} 
+                style={{ 
+                  height: '50px', 
+                  maxWidth: '150px',
+                  objectFit: 'contain',
+                  background: 'white',
+                  padding: '8px 12px',
+                  borderRadius: '8px'
+                }} 
+              />
+            ))}
+          </div>
+        ) : (
+          <div style={styles.logo}>WSIC Advertising</div>
+        )}
         <div style={styles.headerSubtext}>Let's Grow Your Business Together</div>
       </div>
       
