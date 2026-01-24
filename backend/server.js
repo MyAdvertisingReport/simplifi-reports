@@ -1940,6 +1940,183 @@ app.post('/api/orders/sign/:token', async (req, res) => {
   }
 });
 
+// POST /api/orders/sign/:token/complete - Combined signing + payment in one call
+app.post('/api/orders/sign/:token/complete', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { 
+      signature, signer_name, signer_email, signer_title, agreed_to_terms,
+      billing_preference, payment_details 
+    } = req.body;
+
+    if (!signature) {
+      return res.status(400).json({ error: 'Signature is required' });
+    }
+
+    // Find order by signing token
+    const orderResult = await adminPool.query(
+      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1 AND o.signing_token_expires_at > NOW()`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired signing link' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status === 'signed' || order.client_signature) {
+      return res.status(400).json({ error: 'This agreement has already been signed' });
+    }
+
+    const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // Get primary entity from items
+    const itemsResult = await adminPool.query(
+      `SELECT oi.*, e.code as entity_code FROM order_items oi
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1 ORDER BY oi.line_total DESC`,
+      [order.id]
+    );
+    const primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+
+    // Process payment with Stripe
+    let stripeCustomerId = order.existing_stripe_id;
+    let paymentMethodId = null;
+    let paymentStatus = 'pending';
+
+    try {
+      const { stripeService } = require('./services/stripe-service');
+      const stripe = stripeService.getClient(primaryEntityCode);
+
+      // Get or create Stripe customer
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email: signer_email,
+          name: order.client_name,
+          metadata: { client_id: order.client_id }
+        });
+        stripeCustomerId = customer.id;
+        
+        // Save to client record
+        await adminPool.query(
+          `UPDATE advertising_clients SET stripe_customer_id = $1 WHERE id = $2`,
+          [stripeCustomerId, order.client_id]
+        );
+      }
+
+      if (payment_details.type === 'card') {
+        // Parse expiry
+        const expiryParts = payment_details.expiry.split('/');
+        const expMonth = parseInt(expiryParts[0]);
+        const expYear = parseInt('20' + expiryParts[1]);
+
+        // Create payment method
+        const paymentMethod = await stripe.paymentMethods.create({
+          type: 'card',
+          card: {
+            number: payment_details.card_number,
+            exp_month: expMonth,
+            exp_year: expYear,
+            cvc: payment_details.cvc,
+          },
+          billing_details: { name: signer_name, email: signer_email },
+        });
+
+        // Attach to customer and set as default
+        await stripe.paymentMethods.attach(paymentMethod.id, { customer: stripeCustomerId });
+        await stripe.customers.update(stripeCustomerId, {
+          invoice_settings: { default_payment_method: paymentMethod.id }
+        });
+        
+        paymentMethodId = paymentMethod.id;
+        paymentStatus = 'authorized';
+
+      } else if (payment_details.type === 'ach') {
+        // Create bank account - Note: Direct bank account creation requires verification
+        // For production, use Stripe's Financial Connections or microdeposits
+        const paymentMethod = await stripe.paymentMethods.create({
+          type: 'us_bank_account',
+          us_bank_account: {
+            account_holder_type: 'company',
+            routing_number: payment_details.routing_number,
+            account_number: payment_details.account_number,
+            account_type: payment_details.account_type || 'checking',
+          },
+          billing_details: { 
+            name: payment_details.account_name || signer_name, 
+            email: signer_email 
+          },
+        });
+
+        await stripe.paymentMethods.attach(paymentMethod.id, { customer: stripeCustomerId });
+        await stripe.customers.update(stripeCustomerId, {
+          invoice_settings: { default_payment_method: paymentMethod.id }
+        });
+        
+        paymentMethodId = paymentMethod.id;
+        paymentStatus = 'ach_pending'; // ACH requires verification
+      }
+    } catch (stripeError) {
+      console.error('Stripe error:', stripeError);
+      return res.status(400).json({ error: stripeError.message || 'Payment processing failed' });
+    }
+
+    // Update order with signature and payment info
+    const updateResult = await adminPool.query(
+      `UPDATE orders SET
+        status = 'signed',
+        client_signature = $1,
+        client_signature_date = NOW(),
+        client_signer_name = $2,
+        client_signer_email = $3,
+        client_signer_title = $4,
+        client_signer_ip = $5,
+        client_signer_user_agent = $6,
+        billing_preference = $7,
+        stripe_entity_code = $8,
+        stripe_customer_id = $9,
+        payment_method_id = $10,
+        payment_type = $11,
+        payment_status = $12,
+        updated_at = NOW()
+       WHERE id = $13
+       RETURNING *`,
+      [
+        signature, signer_name, signer_email, signer_title || '',
+        clientIP, userAgent, billing_preference, primaryEntityCode,
+        stripeCustomerId, paymentMethodId, payment_details.type,
+        paymentStatus, order.id
+      ]
+    );
+
+    // Send confirmation email
+    try {
+      const { sendSignatureConfirmation } = require('./services/email-service');
+      await sendSignatureConfirmation({
+        order: { ...order, ...updateResult.rows[0] },
+        contact: { first_name: signer_name.split(' ')[0], email: signer_email }
+      });
+    } catch (emailError) {
+      console.error('Failed to send confirmation email:', emailError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Agreement signed and payment information saved!',
+      order: updateResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error completing signing:', error);
+    res.status(500).json({ error: 'Failed to complete signing' });
+  }
+});
+
 // POST /api/orders/sign/:token/payment-setup - Initialize payment
 app.post('/api/orders/sign/:token/payment-setup', async (req, res) => {
   try {
