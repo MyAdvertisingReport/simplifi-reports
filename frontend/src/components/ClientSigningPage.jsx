@@ -70,7 +70,7 @@ export default function ClientSigningPage() {
   const [step2Complete, setStep2Complete] = useState(false);
   
   // Payment states
-  const [billingPreference, setBillingPreference] = useState('card');
+  const [billingPreference, setBillingPreference] = useState(null); // null = none selected
   const [backupPaymentMethod, setBackupPaymentMethod] = useState('card'); // For invoice option
   const [stripeReady, setStripeReady] = useState(false);
   const [stripe, setStripe] = useState(null);
@@ -298,6 +298,12 @@ export default function ClientSigningPage() {
   // Step 2: Confirm payment
   const handleConfirmPayment = async () => {
     setPaymentError(null);
+    
+    // Require a billing preference to be selected
+    if (!billingPreference) {
+      setPaymentError('Please select a payment method');
+      return;
+    }
     
     // For ACH (direct or as invoice backup), just proceed
     if (billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach')) {
@@ -652,7 +658,7 @@ export default function ClientSigningPage() {
                       fontWeight: '500', color: '#1e293b'
                     }}
                   >
-                    🏦 Bank Account
+                    🏦 ACH
                   </button>
                 </div>
               </div>
