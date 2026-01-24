@@ -1798,25 +1798,146 @@ app.use('/api/admin', (req, res, next) => {
 
 // ============================================
 // PUBLIC SIGNING ROUTES (No auth required)
+// These must be defined BEFORE the authenticated /api/orders routes
 // ============================================
 
-// Public contract signing - no authentication needed
-// Client accesses via token-based URL
-app.get('/api/orders/sign/:token', (req, res, next) => {
-  if (!orderRoutesReady) {
-    return res.status(503).json({ error: 'Service not yet initialized. Please wait...' });
+// Public contract signing - GET (view contract)
+app.get('/api/orders/sign/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    // Find order by signing token
+    const orderResult = await pool.query(
+      `SELECT 
+        o.id, o.order_number, o.contract_start_date, o.contract_end_date,
+        o.term_months, o.monthly_total, o.contract_total, o.billing_frequency,
+        o.status, o.signing_token_expires_at, o.notes,
+        o.submitted_signature, o.submitted_signature_date,
+        c.business_name as client_name, c.id as client_id
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired signing link' });
+    }
+
+    const order = orderResult.rows[0];
+
+    // Check if token has expired
+    if (order.signing_token_expires_at && new Date(order.signing_token_expires_at) < new Date()) {
+      return res.status(410).json({ error: 'This signing link has expired. Please contact your sales representative for a new link.' });
+    }
+
+    // Check if already signed
+    if (order.status === 'signed' || order.status === 'active') {
+      return res.status(400).json({ error: 'This agreement has already been signed', alreadySigned: true });
+    }
+
+    // Get order items with product details
+    const itemsResult = await pool.query(
+      `SELECT 
+        oi.*, 
+        p.name as product_name, 
+        p.description as product_description,
+        e.name as entity_name,
+        e.logo_url as entity_logo
+       FROM order_items oi
+       LEFT JOIN products p ON oi.product_id = p.id
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1
+       ORDER BY oi.created_at`,
+      [order.id]
+    );
+
+    // Get primary contact for this client
+    const contactResult = await pool.query(
+      `SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1`,
+      [order.client_id]
+    );
+
+    res.json({
+      order: {
+        ...order,
+        items: itemsResult.rows
+      },
+      contact: contactResult.rows[0] || null
+    });
+
+  } catch (error) {
+    console.error('Error loading contract for signing:', error);
+    res.status(500).json({ error: 'Failed to load contract' });
   }
-  // Manually invoke the router with the modified path
-  req.baseUrl = '/api/orders';
-  orderRoutes(req, res, next);
 });
 
-app.post('/api/orders/sign/:token', (req, res, next) => {
-  if (!orderRoutesReady) {
-    return res.status(503).json({ error: 'Service not yet initialized. Please wait...' });
+// Public contract signing - POST (sign contract)
+app.post('/api/orders/sign/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { signature, signer_name, signer_email, signer_title, agreed_to_terms } = req.body;
+
+    if (!signature) {
+      return res.status(400).json({ error: 'Signature is required' });
+    }
+
+    // Find order by signing token
+    const orderResult = await pool.query(
+      `SELECT o.*, c.business_name as client_name
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired signing link' });
+    }
+
+    const order = orderResult.rows[0];
+
+    // Check if token has expired
+    if (order.signing_token_expires_at && new Date(order.signing_token_expires_at) < new Date()) {
+      return res.status(410).json({ error: 'This signing link has expired' });
+    }
+
+    // Check if already signed
+    if (order.status === 'signed' || order.status === 'active') {
+      return res.status(400).json({ error: 'This agreement has already been signed' });
+    }
+
+    // Get client IP and user agent
+    const clientIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // Update order with signature
+    const updateResult = await pool.query(
+      `UPDATE orders SET
+        status = 'signed',
+        client_signature = $1,
+        client_signature_date = NOW(),
+        client_signer_name = $2,
+        client_signer_email = $3,
+        client_signer_title = $4,
+        client_signer_ip = $5,
+        client_signer_user_agent = $6,
+        updated_at = NOW()
+       WHERE id = $7
+       RETURNING *`,
+      [signature, signer_name, signer_email, signer_title, clientIP, userAgent, order.id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Agreement signed successfully!',
+      order: updateResult.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error signing contract:', error);
+    res.status(500).json({ error: 'Failed to sign contract' });
   }
-  req.baseUrl = '/api/orders';
-  orderRoutes(req, res, next);
 });
 
 // ============================================
