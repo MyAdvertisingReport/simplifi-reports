@@ -89,15 +89,15 @@ function emailTemplate({ title, preheader, content, footerText }) {
     body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5; color: #1f2937; }
     .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
     .card { background: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; }
-    .header { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center; }
-    .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; }
-    .header p { color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 14px; }
+    .header { background-color: #1e3a8a; padding: 32px; text-align: center; }
+    .header h1 { color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600; }
+    .header p { color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px; }
     .body { padding: 32px; background-color: #ffffff; color: #1f2937; }
     .body p { color: #374151; line-height: 1.6; }
-    .footer { padding: 24px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center; font-size: 13px; color: #6b7280; }
-    .button { display: inline-block; padding: 14px 32px; background: #1e3a8a; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 16px 0; }
-    .button:hover { background: #1e40af; }
-    .button-secondary { background: #059669; }
+    .footer { padding: 24px 32px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center; font-size: 13px; color: #6b7280; }
+    .button { display: inline-block; padding: 14px 32px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 16px 0; }
+    .button:hover { background-color: #1e40af; }
+    .button-secondary { background-color: #059669; }
     .details-table { width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #ffffff; }
     .details-table td { padding: 12px 0; border-bottom: 1px solid #e5e7eb; color: #374151; }
     .details-table td:first-child { color: #6b7280; font-size: 14px; }
@@ -419,10 +419,10 @@ async function sendContractToClient({ order, contact, signingUrl }) {
   const subject = `${order.client_name} - Your ${brandText} Advertising Agreement`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+    <div class="header" style="background-color: #1e3a8a; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
       ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
-      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Your Advertising Agreement</h1>
-      <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0;">Ready for your review and signature</p>
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">Your Advertising Agreement</h1>
+      <p style="color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px;">Ready for your review and signature</p>
     </div>
     <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
       <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
@@ -543,10 +543,10 @@ async function sendSignatureConfirmation({ order, contact, pdfUrl }) {
   const subject = `Welcome to the Family, ${order.client_name}! 🎉`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
+    <div class="header" style="background-color: #065f46; background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
       ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
-      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">🎉 Welcome Aboard!</h1>
-      <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0;">We're thrilled to have you as a partner</p>
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">🎉 Welcome Aboard!</h1>
+      <p style="color: #d1fae5 !important; margin: 8px 0 0; font-size: 14px;">We're thrilled to have you as a partner</p>
     </div>
     <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
       <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
@@ -558,7 +558,7 @@ async function sendSignatureConfirmation({ order, contact, pdfUrl }) {
       </p>
       
       <!-- Your Package -->
-      <div style="background: #f0fdf4; border-radius: 12px; padding: 20px; margin: 24px 0;">
+      <div style="background-color: #f0fdf4; border-radius: 12px; padding: 20px; margin: 24px 0;">
         <h3 style="color: #065f46; margin: 0 0 16px 0; font-size: 16px;">📦 Your Advertising Package</h3>
         <table style="width: 100%; border-collapse: collapse;">
           <thead>
@@ -671,10 +671,10 @@ async function sendAchSetupEmail({ order, contact, achSetupUrl }) {
   const subject = `${order.client_name} - Complete Your Bank Account Setup`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+    <div class="header" style="background-color: #1e3a8a; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
       ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
-      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">📬 One More Step!</h1>
-      <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0;">Complete your bank account setup</p>
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">📬 One More Step!</h1>
+      <p style="color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px;">Complete your bank account setup</p>
     </div>
     <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
       <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
@@ -684,7 +684,7 @@ async function sendAchSetupEmail({ order, contact, achSetupUrl }) {
         To complete your setup and confirm your package, please connect your bank account using the secure link below.
       </p>
       
-      <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 12px; padding: 20px; margin: 24px 0;">
+      <div style="background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 12px; padding: 20px; margin: 24px 0;">
         <h3 style="color: #92400e; margin: 0 0 12px 0; font-size: 16px;">⚠️ Action Required</h3>
         <p style="color: #a16207; margin: 0; line-height: 1.6;">
           Your agreement is signed, but your package is <strong>not confirmed</strong> until you complete the bank account setup. 
@@ -693,7 +693,7 @@ async function sendAchSetupEmail({ order, contact, achSetupUrl }) {
       </div>
       
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${achSetupUrl || '#'}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 18px;">Connect Bank Account</a>
+        <a href="${achSetupUrl || '#'}" style="display: inline-block; padding: 16px 40px; background-color: #059669; color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 18px;">Connect Bank Account</a>
       </div>
       
       <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
@@ -716,7 +716,7 @@ async function sendAchSetupEmail({ order, contact, achSetupUrl }) {
         If you have any questions, please reach out to your Sales Associate.
       </p>
     </div>
-    <div class="footer" style="padding: 24px 32px; background: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">
+    <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">
       Questions? Your Sales Associate is here to help!
     </div>
   `;
