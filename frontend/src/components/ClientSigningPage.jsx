@@ -1003,17 +1003,127 @@ export default function ClientSigningPage() {
 
   // Sign step
   if (step === 'sign') {
+    const totals = calculateTotalWithFee();
+    const brandLogos = getBrandLogos();
+    
     return (
       <div style={styles.pageContainer}>
         <div style={styles.header}>
-          <div style={styles.logo}>WSIC Advertising</div>
-          <div style={styles.headerSubtext}>Sign Your Agreement</div>
+          {brandLogos.length > 0 ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '24px', marginBottom: '12px', flexWrap: 'wrap' }}>
+              {brandLogos.map((logo, idx) => (
+                <img key={idx} src={logo.url} alt={logo.name} 
+                  style={{ height: '50px', maxWidth: '150px', objectFit: 'contain', background: 'white', padding: '8px 12px', borderRadius: '8px' }} />
+              ))}
+            </div>
+          ) : (
+            <div style={styles.logo}>WSIC Advertising</div>
+          )}
+          <div style={styles.headerSubtext}>Complete Your Agreement</div>
         </div>
         <div style={styles.container}>
+          {/* Billing Preference Selection */}
           <div style={styles.card}>
             <div style={styles.cardHeader}>
+              <Icons.DollarSign size={24} color="#3b82f6" />
+              <span style={styles.cardTitle}>Step 1: Select Billing Preference</span>
+            </div>
+            <div style={styles.cardBody}>
+              <p style={{ color: '#64748b', marginBottom: '16px', marginTop: 0 }}>
+                How would you like to handle payments for this agreement?
+              </p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '16px' }}>
+                {/* Credit Card Option */}
+                <button type="button" onClick={() => setBillingPreference('card')}
+                  style={{
+                    padding: '16px', border: billingPreference === 'card' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                    borderRadius: '12px', background: billingPreference === 'card' ? '#eff6ff' : 'white',
+                    cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '16px'
+                  }}>
+                  <div style={{ 
+                    width: '20px', height: '20px', borderRadius: '50%', 
+                    border: billingPreference === 'card' ? '6px solid #3b82f6' : '2px solid #d1d5db',
+                    flexShrink: 0, marginTop: '2px'
+                  }} />
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '2px' }}>
+                      💳 Credit Card - Auto Pay
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Automatically charge my card • <span style={{ color: '#ef4444' }}>+3.5% fee</span>
+                    </div>
+                  </div>
+                </button>
+
+                {/* ACH Option */}
+                <button type="button" onClick={() => setBillingPreference('ach')}
+                  style={{
+                    padding: '16px', border: billingPreference === 'ach' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                    borderRadius: '12px', background: billingPreference === 'ach' ? '#eff6ff' : 'white',
+                    cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '16px'
+                  }}>
+                  <div style={{ 
+                    width: '20px', height: '20px', borderRadius: '50%', 
+                    border: billingPreference === 'ach' ? '6px solid #3b82f6' : '2px solid #d1d5db',
+                    flexShrink: 0, marginTop: '2px'
+                  }} />
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '2px' }}>
+                      🏦 Bank Account (ACH) - Auto Pay
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Automatically debit my bank • <span style={{ color: '#10b981' }}>No fee</span>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Invoice Option */}
+                <button type="button" onClick={() => setBillingPreference('invoice')}
+                  style={{
+                    padding: '16px', border: billingPreference === 'invoice' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                    borderRadius: '12px', background: billingPreference === 'invoice' ? '#eff6ff' : 'white',
+                    cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: '16px'
+                  }}>
+                  <div style={{ 
+                    width: '20px', height: '20px', borderRadius: '50%', 
+                    border: billingPreference === 'invoice' ? '6px solid #3b82f6' : '2px solid #d1d5db',
+                    flexShrink: 0, marginTop: '2px'
+                  }} />
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '2px' }}>
+                      📄 Invoice - Pay Manually
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#64748b' }}>
+                      Receive invoices via email • <span style={{ color: '#f59e0b' }}>Backup card required</span>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Amount Summary */}
+              <div style={{ background: '#f8fafc', borderRadius: '8px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#64748b' }}>
+                  {billingPreference === 'invoice' ? 'Invoice Amount' : 
+                   contract?.billing_frequency === 'upfront' ? 'Due at Signing' : 'Monthly Amount'}
+                </span>
+                <span style={{ fontWeight: '700', color: '#10b981', fontSize: '18px' }}>
+                  {formatCurrency(billingPreference === 'card' ? totals.total : totals.base)}
+                  {billingPreference === 'card' && totals.fee > 0 && (
+                    <span style={{ fontSize: '12px', color: '#ef4444', marginLeft: '4px' }}>
+                      (incl. {formatCurrency(totals.fee)} fee)
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Signature Section */}
+          <div style={{ ...styles.card, marginTop: '24px' }}>
+            <div style={styles.cardHeader}>
               <Icons.PenTool size={24} color="#3b82f6" />
-              <span style={styles.cardTitle}>Complete Your Signature</span>
+              <span style={styles.cardTitle}>Step 2: Sign Agreement</span>
             </div>
             <div style={styles.cardBody}>
               <form onSubmit={handleSign} style={styles.form}>

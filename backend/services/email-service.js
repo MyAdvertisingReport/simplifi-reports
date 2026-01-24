@@ -86,21 +86,22 @@ function emailTemplate({ title, preheader, content, footerText }) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style>
-    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5; }
+    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5; color: #1f2937; }
     .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
-    .card { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; }
+    .card { background: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; }
     .header { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center; }
-    .header h1 { color: white; margin: 0; font-size: 24px; font-weight: 600; }
-    .header p { color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 14px; }
-    .body { padding: 32px; }
+    .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 600; }
+    .header p { color: rgba(255,255,255,0.9); margin: 8px 0 0; font-size: 14px; }
+    .body { padding: 32px; background-color: #ffffff; color: #1f2937; }
+    .body p { color: #374151; line-height: 1.6; }
     .footer { padding: 24px 32px; background: #f9fafb; border-top: 1px solid #e5e7eb; text-align: center; font-size: 13px; color: #6b7280; }
-    .button { display: inline-block; padding: 14px 32px; background: #1e3a8a; color: white !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 16px 0; }
+    .button { display: inline-block; padding: 14px 32px; background: #1e3a8a; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 16px 0; }
     .button:hover { background: #1e40af; }
     .button-secondary { background: #059669; }
-    .details-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .details-table td { padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
+    .details-table { width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #ffffff; }
+    .details-table td { padding: 12px 0; border-bottom: 1px solid #e5e7eb; color: #374151; }
     .details-table td:first-child { color: #6b7280; font-size: 14px; }
-    .details-table td:last-child { text-align: right; font-weight: 500; }
+    .details-table td:last-child { text-align: right; font-weight: 500; color: #1f2937; }
     .amount { font-size: 28px; font-weight: 700; color: #1e3a8a; }
     .status-badge { display: inline-block; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
     .status-pending { background: #fef3c7; color: #92400e; }
@@ -376,49 +377,17 @@ async function sendOrderRejected({ order, rejectedBy, reason }) {
  * Send contract to client for signature
  */
 async function sendContractToClient({ order, contact, signingUrl }) {
-  // Build brand list from items if available
-  const brands = order.items 
-    ? [...new Set(order.items.map(i => i.entity_name).filter(Boolean))]
-    : [];
-  const brandText = brands.length > 0 ? brands.join(' + ') : 'WSIC';
-  
-  // Get unique logo URLs from items
-  const logoUrls = order.items 
-    ? [...new Set(order.items.map(i => i.logo_url).filter(Boolean))]
-    : [];
-  
-  // Build logo HTML - show all brand logos side by side
-  const logosHtml = logoUrls.length > 0 
-    ? `<div style="text-align: center; margin-bottom: 16px;">
-        ${logoUrls.map(url => `<img src="${url}" alt="Logo" style="height: 50px; margin: 0 12px; vertical-align: middle;" />`).join('')}
-       </div>`
-    : '';
-  
-  // Calculate setup fees from items
-  const setupFees = order.items 
-    ? order.items.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0)
-    : 0;
-  
-  // Client-friendly subject line with brands
-  const subject = `${order.client_name} - Your ${brandText} Advertising Agreement`;
-  
-  // Build setup fee row if applicable
-  const setupFeeRow = setupFees > 0 ? `
-        <tr>
-          <td>One-Time Setup Fee</td>
-          <td>$${setupFees.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>` : '';
+  const subject = `Your Advertising Agreement from WSIC - ${order.order_number}`;
   
   const content = `
     <div class="header">
-      ${logosHtml}
       <h1>Your Advertising Agreement</h1>
-      <p>Ready for your review and signature</p>
+      <p>Please review and sign to get started</p>
     </div>
     <div class="body">
       <p>Hi ${contact.first_name || 'there'},</p>
       
-      <p>Great news! Your advertising agreement with <strong>${brandText}</strong> is ready. Please review the details below and sign electronically to get started.</p>
+      <p>Thank you for choosing WSIC for your advertising needs! Your agreement is ready for review.</p>
       
       <table class="details-table">
         <tr>
@@ -426,8 +395,8 @@ async function sendContractToClient({ order, contact, signingUrl }) {
           <td><strong>${order.client_name}</strong></td>
         </tr>
         <tr>
-          <td>Advertising With</td>
-          <td><strong>${brandText}</strong></td>
+          <td>Agreement #</td>
+          <td>${order.order_number}</td>
         </tr>
         <tr>
           <td>Contract Term</td>
@@ -440,7 +409,7 @@ async function sendContractToClient({ order, contact, signingUrl }) {
         <tr>
           <td>Monthly Investment</td>
           <td>$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>${setupFeeRow}
+        </tr>
         <tr>
           <td>Total Agreement Value</td>
           <td class="amount">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
@@ -465,7 +434,7 @@ async function sendContractToClient({ order, contact, signingUrl }) {
     to: contact.email,
     from: FROM_ADDRESSES.orders,
     subject,
-    htmlBody: emailTemplate({ title: subject, preheader: `Your ${order.term_months}-month ${brandText} advertising agreement is ready to sign`, content }),
+    htmlBody: emailTemplate({ title: subject, preheader: `Your ${order.term_months}-month advertising agreement is ready to sign`, content }),
     tag: 'contract-sent',
     metadata: { orderId: order.id, orderNumber: order.order_number, clientId: order.client_id }
   });
