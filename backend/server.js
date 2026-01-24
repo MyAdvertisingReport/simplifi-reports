@@ -2044,13 +2044,39 @@ app.post('/api/orders/sign/:token/complete', async (req, res) => {
       ]
     );
 
-    // Send confirmation email
+    // Get order items for email
+    const orderItemsResult = await adminPool.query(
+      `SELECT oi.*, p.name as product_name, e.name as entity_name, e.logo_url as entity_logo
+       FROM order_items oi
+       LEFT JOIN products p ON oi.product_id = p.id
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1`,
+      [order.id]
+    );
+    const orderWithItems = { ...order, ...updateResult.rows[0], items: orderItemsResult.rows };
+
+    // Send appropriate email based on billing preference
     try {
-      const { sendSignatureConfirmation } = require('./services/email-service');
-      await sendSignatureConfirmation({
-        order: { ...order, ...updateResult.rows[0] },
-        contact: { first_name: signer_name.split(' ')[0], email: signer_email }
-      });
+      const needsAchSetup = billing_preference === 'ach';
+      
+      if (needsAchSetup) {
+        // Send ACH setup email - they need to complete bank verification
+        const { sendAchSetupEmail } = require('./services/email-service');
+        // TODO: Generate actual Stripe Financial Connections URL
+        const achSetupUrl = `${process.env.BASE_URL || 'https://www.myadvertisingreport.com'}/ach-setup/${token}`;
+        await sendAchSetupEmail({
+          order: orderWithItems,
+          contact: { first_name: signer_name.split(' ')[0], email: signer_email },
+          achSetupUrl
+        });
+      } else {
+        // Send full confirmation email - payment method already captured
+        const { sendSignatureConfirmation } = require('./services/email-service');
+        await sendSignatureConfirmation({
+          order: orderWithItems,
+          contact: { first_name: signer_name.split(' ')[0], email: signer_email }
+        });
+      }
     } catch (emailError) {
       console.error('Failed to send confirmation email:', emailError);
     }

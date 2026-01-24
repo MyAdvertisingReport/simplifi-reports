@@ -419,28 +419,28 @@ async function sendContractToClient({ order, contact, signingUrl }) {
   const subject = `${order.client_name} - Your ${brandText} Advertising Agreement`;
   
   const content = `
-    <div class="header">
+    <div class="header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
       ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
-      <h1 style="color: #ffffff;">Your Advertising Agreement</h1>
-      <p style="color: rgba(255,255,255,0.9);">Ready for your review and signature</p>
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Your Advertising Agreement</h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0;">Ready for your review and signature</p>
     </div>
-    <div class="body" style="background-color: #ffffff; color: #374151;">
+    <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
       <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
       
       <p style="color: #374151;">Great news! Your advertising agreement with <strong>${brandText}</strong> is ready. Please review the details below and sign electronically to get started.</p>
       
-      <table class="details-table" style="background-color: #ffffff;">
+      <table class="details-table" style="background-color: #ffffff; width: 100%; border-collapse: collapse;">
         <tr>
-          <td style="color: #6b7280;">Business</td>
-          <td style="color: #1f2937;"><strong>${order.client_name}</strong></td>
+          <td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Business</td>
+          <td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;"><strong>${order.client_name}</strong></td>
         </tr>
         <tr>
-          <td style="color: #6b7280;">Contract Term</td>
-          <td style="color: #1f2937;">${order.term_months} month${order.term_months !== 1 ? 's' : ''}</td>
+          <td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Contract Term</td>
+          <td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${order.term_months} month${order.term_months !== 1 ? 's' : ''}</td>
         </tr>
         <tr>
-          <td style="color: #6b7280;">Start Date</td>
-          <td style="color: #1f2937;">${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
+          <td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Start Date</td>
+          <td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
         </tr>
         <tr>
           <td style="color: #6b7280;">Monthly Investment</td>
@@ -519,44 +519,98 @@ async function sendSignatureConfirmation({ order, contact, pdfUrl }) {
       ).join('')
     : '';
 
+  // Build product table
+  let productRows = '';
+  let monthlyTotal = 0;
+  let setupTotal = 0;
+  if (order.items && order.items.length > 0) {
+    order.items.forEach(item => {
+      const monthly = parseFloat(item.line_total || item.monthly_rate || 0);
+      const setup = parseFloat(item.setup_fee || 0);
+      monthlyTotal += monthly;
+      setupTotal += setup;
+      productRows += `
+        <tr>
+          <td style="color: #374151; padding: 10px 0; border-bottom: 1px solid #f3f4f6;">${item.product_name}</td>
+          <td style="color: #374151; padding: 10px 0; border-bottom: 1px solid #f3f4f6;">${item.entity_name || ''}</td>
+          <td style="color: #1f2937; padding: 10px 0; border-bottom: 1px solid #f3f4f6; text-align: right;">$${monthly.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+        </tr>
+      `;
+    });
+  }
+  const contractTotal = parseFloat(order.contract_total || 0);
+
   const subject = `Welcome to the Family, ${order.client_name}! 🎉`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); color: #ffffff;">
+    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
       ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
-      <h1 style="color: #ffffff; margin: 0;">🎉 Welcome Aboard!</h1>
-      <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">We're thrilled to have you as a partner</p>
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">🎉 Welcome Aboard!</h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0;">We're thrilled to have you as a partner</p>
     </div>
-    <div class="body" style="background-color: #ffffff; color: #374151;">
+    <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
       <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
       
       <p style="color: #374151;">
-        <strong>Thank you for trusting ${brandText} with your advertising!</strong> 
+        <strong style="color: #065f46;">Thank you for trusting ${brandText} with your advertising!</strong> 
         We truly appreciate the opportunity to partner with <strong>${order.client_name}</strong>. 
         Our entire team is committed to helping you grow your business and reach your goals.
       </p>
       
-      <table class="details-table" style="background-color: #ffffff;">
+      <!-- Your Package -->
+      <div style="background: #f0fdf4; border-radius: 12px; padding: 20px; margin: 24px 0;">
+        <h3 style="color: #065f46; margin: 0 0 16px 0; font-size: 16px;">📦 Your Advertising Package</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="color: #6b7280; font-weight: 500; font-size: 12px; text-align: left; padding-bottom: 8px; border-bottom: 2px solid #d1fae5;">PRODUCT</th>
+              <th style="color: #6b7280; font-weight: 500; font-size: 12px; text-align: left; padding-bottom: 8px; border-bottom: 2px solid #d1fae5;">BRAND</th>
+              <th style="color: #6b7280; font-weight: 500; font-size: 12px; text-align: right; padding-bottom: 8px; border-bottom: 2px solid #d1fae5;">MONTHLY</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${productRows}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" style="color: #065f46; font-weight: 600; padding-top: 12px;">Monthly Investment</td>
+              <td style="color: #065f46; font-weight: 700; padding-top: 12px; text-align: right;">$${monthlyTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            ${setupTotal > 0 ? `
+            <tr>
+              <td colspan="2" style="color: #6b7280; padding-top: 4px;">One-Time Setup</td>
+              <td style="color: #6b7280; padding-top: 4px; text-align: right;">$${setupTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td colspan="2" style="color: #065f46; font-weight: 600; padding-top: 4px;">${order.term_months}-Month Contract Total</td>
+              <td style="color: #065f46; font-weight: 700; padding-top: 4px; text-align: right;">$${contractTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
         <tr>
-          <td style="color: #6b7280;">Your Campaign Starts</td>
-          <td style="color: #1f2937;"><strong>${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong></td>
+          <td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Your Campaign Starts</td>
+          <td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;"><strong>${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong></td>
         </tr>
         <tr>
-          <td style="color: #6b7280;">Agreement Signed</td>
-          <td style="color: #1f2937;">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
+          <td style="color: #6b7280; padding: 12px 0;">Agreement Signed</td>
+          <td style="color: #1f2937; padding: 12px 0; text-align: right;">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
         </tr>
       </table>
       
       ${pdfUrl ? `
         <div style="text-align: center; margin: 24px 0;">
-          <a href="${pdfUrl}" class="button" style="background: #6b7280; color: #ffffff !important;">Download Your Agreement (PDF)</a>
+          <a href="${pdfUrl}" style="display: inline-block; padding: 14px 32px; background: #6b7280; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600;">Download Your Agreement (PDF)</a>
         </div>
       ` : ''}
       
-      <div class="divider" style="border-top: 1px solid #e5e7eb; margin: 24px 0;"></div>
+      <div style="border-top: 1px solid #e5e7eb; margin: 24px 0;"></div>
       
       <h3 style="color: #1f2937;">What's Next?</h3>
-      <ul style="color: #374151; line-height: 1.8;">
+      <ul style="color: #374151; line-height: 1.8; padding-left: 20px;">
         <li>Your dedicated Sales Associate will be in touch within 1-2 business days</li>
         <li>We'll work with you to gather any creative assets needed</li>
         <li>Your campaign launches on your scheduled start date</li>
@@ -565,7 +619,7 @@ async function sendSignatureConfirmation({ order, contact, pdfUrl }) {
       
       <p style="color: #6b7280; font-size: 14px;">We've attached a copy of your signed agreement for your records.</p>
     </div>
-    <div class="footer" style="color: #6b7280;">
+    <div class="footer" style="padding: 24px 32px; background: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">
       Questions? Your Sales Associate is always just a call or email away. We're here to help!
     </div>
   `;
@@ -576,6 +630,103 @@ async function sendSignatureConfirmation({ order, contact, pdfUrl }) {
     subject,
     htmlBody: emailTemplate({ title: subject, preheader: `Thank you for partnering with ${brandText}! We're excited to help grow your business.`, content }),
     tag: 'contract-signed',
+    metadata: { orderId: order.id, orderNumber: order.order_number, clientId: order.client_id }
+  });
+}
+
+/**
+ * Send ACH setup email - sent when client selects ACH but needs to complete bank verification
+ */
+async function sendAchSetupEmail({ order, contact, achSetupUrl }) {
+  // Get brand names
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  const brandText = brandNames.length > 0 ? brandNames.join(' & ') : 'us';
+
+  // Get logos
+  const logos = [];
+  const seenLogos = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_logo && !seenLogos.has(item.entity_logo)) {
+        seenLogos.add(item.entity_logo);
+        logos.push({ url: item.entity_logo, name: item.entity_name });
+      }
+    });
+  }
+  const logoHtml = logos.length > 0 
+    ? logos.map(logo => 
+        `<img src="${logo.url}" alt="${logo.name}" style="height: 50px; max-width: 150px; object-fit: contain; margin: 0 12px;" />`
+      ).join('')
+    : '';
+
+  const subject = `${order.client_name} - Complete Your Bank Account Setup`;
+  
+  const content = `
+    <div class="header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+      ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px;">📬 One More Step!</h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0;">Complete your bank account setup</p>
+    </div>
+    <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
+      <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
+      
+      <p style="color: #374151;">
+        Thank you for signing your advertising agreement with <strong>${brandText}</strong>! 
+        To complete your setup and confirm your package, please connect your bank account using the secure link below.
+      </p>
+      
+      <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 12px; padding: 20px; margin: 24px 0;">
+        <h3 style="color: #92400e; margin: 0 0 12px 0; font-size: 16px;">⚠️ Action Required</h3>
+        <p style="color: #a16207; margin: 0; line-height: 1.6;">
+          Your agreement is signed, but your package is <strong>not confirmed</strong> until you complete the bank account setup. 
+          This ensures we can process your payments securely with no processing fees.
+        </p>
+      </div>
+      
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${achSetupUrl || '#'}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 18px;">Connect Bank Account</a>
+      </div>
+      
+      <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+        <tr>
+          <td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Business</td>
+          <td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;"><strong>${order.client_name}</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Campaign Starts</td>
+          <td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
+        </tr>
+        <tr>
+          <td style="color: #6b7280; padding: 12px 0;">Payment Method</td>
+          <td style="color: #1f2937; padding: 12px 0; text-align: right;">ACH Bank Transfer (No Fee)</td>
+        </tr>
+      </table>
+      
+      <p style="color: #6b7280; font-size: 14px;">
+        This link is secure and powered by Stripe. Your bank credentials are never shared with us. 
+        If you have any questions, please reach out to your Sales Associate.
+      </p>
+    </div>
+    <div class="footer" style="padding: 24px 32px; background: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">
+      Questions? Your Sales Associate is here to help!
+    </div>
+  `;
+
+  return sendEmail({
+    to: contact.email,
+    from: FROM_ADDRESSES.orders,
+    subject,
+    htmlBody: emailTemplate({ title: subject, preheader: `Complete your bank account setup to confirm your ${brandText} advertising package.`, content }),
+    tag: 'ach-setup',
     metadata: { orderId: order.id, orderNumber: order.order_number, clientId: order.client_id }
   });
 }
@@ -689,6 +840,7 @@ module.exports = {
   sendOrderRejected,
   sendContractToClient,
   sendSignatureConfirmation,
+  sendAchSetupEmail,
   sendContractSignedInternal,
   FROM_ADDRESSES
 };
