@@ -291,7 +291,6 @@ export default function ClientSigningPage() {
   const handleConfirmProducts = () => {
     setStep1Complete(true);
     setCurrentStep(2);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
     // Initialize Stripe when moving to step 2
     setTimeout(() => initializeStripe(), 200);
   };
@@ -314,7 +313,6 @@ export default function ClientSigningPage() {
       }
       setStep2Complete(true);
       setCurrentStep(3);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     
@@ -343,7 +341,6 @@ export default function ClientSigningPage() {
       setPaymentMethodId(setupIntent.payment_method);
       setStep2Complete(true);
       setCurrentStep(3);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setPaymentError(err.message);
     } finally {
@@ -459,9 +456,11 @@ export default function ClientSigningPage() {
 
   // Success state
   if (success) {
+    const needsAchSetup = billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach');
+    
     return (
       <div style={styles.pageContainer}>
-        <div style={{ ...styles.header, background: 'linear-gradient(135deg, #065f46 0%, #10b981 100%)' }}>
+        <div style={{ ...styles.header, background: needsAchSetup ? 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' : 'linear-gradient(135deg, #065f46 0%, #10b981 100%)' }}>
           {brandLogos.length > 0 && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginBottom: '16px', flexWrap: 'wrap' }}>
               {brandLogos.map((logo, idx) => (
@@ -469,27 +468,64 @@ export default function ClientSigningPage() {
               ))}
             </div>
           )}
-          <div style={{ fontSize: '24px', fontWeight: '700' }}>🎉 You're All Set!</div>
-          <div style={{ opacity: 0.9, marginTop: '8px' }}>Welcome Aboard!</div>
+          <div style={{ fontSize: '24px', fontWeight: '700' }}>
+            {needsAchSetup ? '📧 Almost There!' : '🎉 You\'re All Set!'}
+          </div>
+          <div style={{ opacity: 0.9, marginTop: '8px' }}>
+            {needsAchSetup ? 'One more step to complete' : 'Welcome Aboard!'}
+          </div>
         </div>
         <div style={styles.container}>
           <div style={styles.card}>
             <div style={styles.cardBody}>
               <div style={{ textAlign: 'center' }}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-                  <Icons.CheckCircle size={40} color="white" />
-                </div>
-                <h1 style={{ color: '#1e293b', marginBottom: '12px' }}>Thank You for Partnering With Us!</h1>
-                <p style={{ color: '#64748b', marginBottom: '24px' }}>Your agreement has been signed and payment information saved.</p>
-                
-                <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '20px', maxWidth: '400px', margin: '0 auto', textAlign: 'left' }}>
-                  <h3 style={{ color: '#166534', marginTop: 0, marginBottom: '12px' }}>What's Next?</h3>
-                  <ul style={{ color: '#15803d', paddingLeft: '20px', margin: 0, lineHeight: '1.8' }}>
-                    <li>Your Sales Associate will be in touch shortly</li>
-                    <li>We'll gather any creative assets needed</li>
-                    <li>Your campaign launches on {formatDate(contract?.contract_start_date)}</li>
-                  </ul>
-                </div>
+                {needsAchSetup ? (
+                  <>
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                      <span style={{ fontSize: '36px' }}>📬</span>
+                    </div>
+                    <h1 style={{ color: '#1e293b', marginBottom: '12px' }}>Check Your Email</h1>
+                    <p style={{ color: '#64748b', marginBottom: '24px' }}>
+                      Your agreement has been signed! To complete your setup, please connect your bank account.
+                    </p>
+                    
+                    <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '12px', padding: '20px', maxWidth: '450px', margin: '0 auto 20px', textAlign: 'left' }}>
+                      <h3 style={{ color: '#92400e', marginTop: 0, marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span>⚠️</span> Action Required
+                      </h3>
+                      <p style={{ color: '#a16207', margin: 0, lineHeight: '1.6' }}>
+                        We've sent a secure link to <strong>{signerEmail}</strong> to connect your bank account via Stripe. 
+                        Your agreement is <strong>not confirmed</strong> until you complete this step.
+                      </p>
+                    </div>
+                    
+                    <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '20px', maxWidth: '400px', margin: '0 auto', textAlign: 'left' }}>
+                      <h3 style={{ color: '#166534', marginTop: 0, marginBottom: '12px' }}>After Bank Setup:</h3>
+                      <ul style={{ color: '#15803d', paddingLeft: '20px', margin: 0, lineHeight: '1.8' }}>
+                        <li>Your Sales Associate will confirm receipt</li>
+                        <li>We'll gather any creative assets needed</li>
+                        <li>Your campaign launches on {formatDate(contract?.contract_start_date)}</li>
+                      </ul>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                      <Icons.CheckCircle size={40} color="white" />
+                    </div>
+                    <h1 style={{ color: '#1e293b', marginBottom: '12px' }}>Thank You for Partnering With Us!</h1>
+                    <p style={{ color: '#64748b', marginBottom: '24px' }}>Your agreement has been signed and payment information saved.</p>
+                    
+                    <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '20px', maxWidth: '400px', margin: '0 auto', textAlign: 'left' }}>
+                      <h3 style={{ color: '#166534', marginTop: 0, marginBottom: '12px' }}>What's Next?</h3>
+                      <ul style={{ color: '#15803d', paddingLeft: '20px', margin: 0, lineHeight: '1.8' }}>
+                        <li>Your Sales Associate will be in touch shortly</li>
+                        <li>We'll gather any creative assets needed</li>
+                        <li>Your campaign launches on {formatDate(contract?.contract_start_date)}</li>
+                      </ul>
+                    </div>
+                  </>
+                )}
                 
                 <p style={{ color: '#64748b', marginTop: '24px', fontSize: '14px' }}>
                   Confirmation email sent to <strong>{signerEmail}</strong>
