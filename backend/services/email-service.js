@@ -489,53 +489,84 @@ async function sendContractToClient({ order, contact, signingUrl }) {
  * Send signature confirmation to client
  */
 async function sendSignatureConfirmation({ order, contact, pdfUrl }) {
-  const subject = `Agreement Signed - ${order.order_number} | Welcome to WSIC!`;
+  // Get brand names from items
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  const brandText = brandNames.length > 0 ? brandNames.join(' & ') : 'us';
+
+  // Get logos
+  const logos = [];
+  const seenLogos = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_logo && !seenLogos.has(item.entity_logo)) {
+        seenLogos.add(item.entity_logo);
+        logos.push({ url: item.entity_logo, name: item.entity_name });
+      }
+    });
+  }
+  const logoHtml = logos.length > 0 
+    ? logos.map(logo => 
+        `<img src="${logo.url}" alt="${logo.name}" style="height: 50px; max-width: 150px; object-fit: contain; margin: 0 12px;" />`
+      ).join('')
+    : '';
+
+  const subject = `Welcome to the Family, ${order.client_name}! 🎉`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%);">
-      <h1>🎉 Welcome Aboard!</h1>
-      <p>Your agreement has been signed successfully</p>
+    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); color: #ffffff;">
+      ${logoHtml ? `<div style="margin-bottom: 16px;">${logoHtml}</div>` : ''}
+      <h1 style="color: #ffffff; margin: 0;">🎉 Welcome Aboard!</h1>
+      <p style="color: rgba(255,255,255,0.9); margin-top: 8px;">We're thrilled to have you as a partner</p>
     </div>
-    <div class="body">
-      <p>Hi ${contact.first_name || 'there'},</p>
+    <div class="body" style="background-color: #ffffff; color: #374151;">
+      <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
       
-      <p>Thank you for signing your advertising agreement! We're excited to partner with <strong>${order.client_name}</strong> and help grow your business.</p>
+      <p style="color: #374151;">
+        <strong>Thank you for trusting ${brandText} with your advertising!</strong> 
+        We truly appreciate the opportunity to partner with <strong>${order.client_name}</strong>. 
+        Our entire team is committed to helping you grow your business and reach your goals.
+      </p>
       
-      <table class="details-table">
+      <table class="details-table" style="background-color: #ffffff;">
         <tr>
-          <td>Agreement #</td>
-          <td><strong>${order.order_number}</strong></td>
+          <td style="color: #6b7280;">Your Campaign Starts</td>
+          <td style="color: #1f2937;"><strong>${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong></td>
         </tr>
         <tr>
-          <td>Start Date</td>
-          <td>${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
-        </tr>
-        <tr>
-          <td>Signed On</td>
-          <td>${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
+          <td style="color: #6b7280;">Agreement Signed</td>
+          <td style="color: #1f2937;">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td>
         </tr>
       </table>
       
       ${pdfUrl ? `
         <div style="text-align: center; margin: 24px 0;">
-          <a href="${pdfUrl}" class="button" style="background: #6b7280;">Download Signed Agreement (PDF)</a>
+          <a href="${pdfUrl}" class="button" style="background: #6b7280; color: #ffffff !important;">Download Your Agreement (PDF)</a>
         </div>
       ` : ''}
       
-      <div class="divider"></div>
+      <div class="divider" style="border-top: 1px solid #e5e7eb; margin: 24px 0;"></div>
       
-      <h3>What's Next?</h3>
+      <h3 style="color: #1f2937;">What's Next?</h3>
       <ul style="color: #374151; line-height: 1.8;">
-        <li>Our team will reach out within 1-2 business days to kick off your campaign</li>
-        <li>We'll collect any creative assets needed</li>
-        <li>Your campaign will launch on your scheduled start date</li>
-        <li>You'll receive performance reports at your custom dashboard</li>
+        <li>Your dedicated Sales Associate will be in touch within 1-2 business days</li>
+        <li>We'll work with you to gather any creative assets needed</li>
+        <li>Your campaign launches on your scheduled start date</li>
+        <li>You'll have access to performance reports through your personalized dashboard</li>
       </ul>
       
-      <p class="text-muted">A copy of this signed agreement has been attached to this email for your records.</p>
+      <p style="color: #6b7280; font-size: 14px;">We've attached a copy of your signed agreement for your records.</p>
     </div>
-    <div class="footer">
-      Questions? Contact your account representative or email billing@myadvertisingreport.com
+    <div class="footer" style="color: #6b7280;">
+      Questions? Your Sales Associate is always just a call or email away. We're here to help!
     </div>
   `;
 
@@ -543,7 +574,7 @@ async function sendSignatureConfirmation({ order, contact, pdfUrl }) {
     to: contact.email,
     from: FROM_ADDRESSES.orders,
     subject,
-    htmlBody: emailTemplate({ title: subject, preheader: `Welcome to WSIC! Your agreement ${order.order_number} is confirmed.`, content }),
+    htmlBody: emailTemplate({ title: subject, preheader: `Thank you for partnering with ${brandText}! We're excited to help grow your business.`, content }),
     tag: 'contract-signed',
     metadata: { orderId: order.id, orderNumber: order.order_number, clientId: order.client_id }
   });
