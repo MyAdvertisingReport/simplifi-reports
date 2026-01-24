@@ -178,43 +178,64 @@ export default function ClientSigningPage() {
     }
   };
 
-  // Mount card element when elements is ready and ref is available
+  // Mount card element when needed
   useEffect(() => {
-    if (elements && cardElementRef.current && !cardElement && currentStep === 2) {
-      // Check if we need card input (card or invoice with card backup)
-      const needsCard = billingPreference === 'card' || 
-                        (billingPreference === 'invoice' && backupPaymentMethod === 'card');
-      
-      if (needsCard) {
-        const card = elements.create('card', {
-          style: {
-            base: {
-              fontSize: '16px',
-              color: '#1e293b',
-              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-              '::placeholder': { color: '#94a3b8' },
-            },
-            invalid: { color: '#dc2626' },
-          },
-        });
-        card.mount(cardElementRef.current);
-        setCardElement(card);
-      }
-    }
+    // Only run when we have elements, are on step 2, and need a card
+    if (!elements || currentStep !== 2) return;
     
-    // Cleanup on unmount or when switching away from card
-    return () => {
+    const needsCard = billingPreference === 'card' || 
+                      (billingPreference === 'invoice' && backupPaymentMethod === 'card');
+    
+    // If we don't need a card, unmount any existing one
+    if (!needsCard) {
       if (cardElement) {
-        cardElement.unmount();
+        try {
+          cardElement.unmount();
+        } catch (e) {
+          // Ignore unmount errors
+        }
         setCardElement(null);
       }
-    };
-  }, [elements, currentStep, billingPreference, backupPaymentMethod]);
+      return;
+    }
+    
+    // If we already have a card element mounted, don't create another
+    if (cardElement) return;
+    
+    // Wait for the ref to be available
+    if (!cardElementRef.current) return;
+    
+    // Create and mount the card element
+    try {
+      const card = elements.create('card', {
+        style: {
+          base: {
+            fontSize: '16px',
+            color: '#1e293b',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            '::placeholder': { color: '#94a3b8' },
+          },
+          invalid: { color: '#dc2626' },
+        },
+      });
+      card.mount(cardElementRef.current);
+      setCardElement(card);
+    } catch (err) {
+      console.error('Error mounting card element:', err);
+    }
+  }, [elements, currentStep, billingPreference, backupPaymentMethod, cardElement]);
 
-  // Remount card element when billing preference changes
+  // Cleanup card element when billing preference changes away from card
   useEffect(() => {
-    if (cardElement) {
-      cardElement.unmount();
+    const needsCard = billingPreference === 'card' || 
+                      (billingPreference === 'invoice' && backupPaymentMethod === 'card');
+    
+    if (!needsCard && cardElement) {
+      try {
+        cardElement.unmount();
+      } catch (e) {
+        // Ignore
+      }
       setCardElement(null);
     }
   }, [billingPreference, backupPaymentMethod]);
