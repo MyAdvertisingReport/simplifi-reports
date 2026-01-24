@@ -647,7 +647,7 @@ export default function ClientSigningPage() {
     <div style={styles.pageContainer}>
       <div style={styles.header}>
         <div style={styles.logo}>WSIC Advertising</div>
-        <div style={styles.headerSubtext}>Review Your Advertising Agreement</div>
+        <div style={styles.headerSubtext}>Let's Grow Your Business Together</div>
       </div>
       
       <div style={styles.container}>
@@ -655,14 +655,14 @@ export default function ClientSigningPage() {
         <div style={styles.card}>
           <div style={styles.cardHeader}>
             <Icons.FileText size={24} color="#3b82f6" />
-            <span style={styles.cardTitle}>Agreement #{contract.order_number}</span>
+            <span style={styles.cardTitle}>Your Advertising Agreement</span>
           </div>
           <div style={styles.cardBody}>
             <h2 style={{ fontSize: '24px', color: '#1e293b', marginBottom: '8px' }}>
               {contract.client_name}
             </h2>
             <p style={{ color: '#64748b' }}>
-              Please review the details below and sign to confirm your advertising agreement.
+              We're excited to partner with you! Please review the details below and sign to get started on this exciting opportunity.
             </p>
 
             {/* Summary Grid */}
@@ -774,7 +774,7 @@ export default function ClientSigningPage() {
                   Early cancellation may result in fees as outlined in our Terms of Service.
                 </p>
                 <p>
-                  <strong>Questions?</strong> Contact us at billing@myadvertisingreport.com or call (704) 896-0094.
+                  <strong>Questions?</strong> Please reach out to your Sales Associate directly if you have any questions about the billing of your account.
                 </p>
               </div>
             </div>
@@ -798,6 +798,11 @@ export default function ClientSigningPage() {
           <p style={{ marginTop: '12px', fontSize: '13px', color: '#64748b' }}>
             By signing, you agree to our Terms of Service
           </p>
+        </div>
+
+        {/* Thank You Message */}
+        <div style={{ textAlign: 'center', padding: '20px', color: '#64748b', fontSize: '14px' }}>
+          <p>Thank you for choosing us as your advertising partner. We're grateful for the opportunity to help grow your business!</p>
         </div>
       </div>
     </div>
