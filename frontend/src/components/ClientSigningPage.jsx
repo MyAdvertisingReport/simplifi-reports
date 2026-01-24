@@ -71,12 +71,15 @@ export default function ClientSigningPage() {
   
   // Payment states
   const [billingPreference, setBillingPreference] = useState('card');
+  const [backupPaymentMethod, setBackupPaymentMethod] = useState('card'); // For invoice option
   const [stripeReady, setStripeReady] = useState(false);
   const [stripe, setStripe] = useState(null);
+  const [elements, setElements] = useState(null);
   const [cardElement, setCardElement] = useState(null);
   const [clientSecret, setClientSecret] = useState(null);
   const [paymentError, setPaymentError] = useState(null);
   const [paymentMethodId, setPaymentMethodId] = useState(null);
+  const [stripeInitialized, setStripeInitialized] = useState(false);
   const cardElementRef = useRef(null);
   
   // ACH states  
@@ -138,7 +141,7 @@ export default function ClientSigningPage() {
 
   // Initialize Stripe Elements when entering step 2
   const initializeStripe = async () => {
-    if (!stripeReady || stripe) return;
+    if (!stripeReady || stripeInitialized) return;
     
     try {
       // Get setup intent from backend
@@ -164,31 +167,57 @@ export default function ClientSigningPage() {
       const stripeInstance = window.Stripe(data.publishableKey);
       setStripe(stripeInstance);
       
-      // Create card element
-      const elements = stripeInstance.elements({ clientSecret: data.clientSecret });
-      const card = elements.create('card', {
-        style: {
-          base: {
-            fontSize: '16px',
-            color: '#1e293b',
-            '::placeholder': { color: '#94a3b8' },
-          },
-          invalid: { color: '#dc2626' },
-        },
-      });
+      // Create elements instance
+      const elementsInstance = stripeInstance.elements();
+      setElements(elementsInstance);
       
-      // Mount after a small delay to ensure DOM is ready
-      setTimeout(() => {
-        if (cardElementRef.current) {
-          card.mount(cardElementRef.current);
-          setCardElement(card);
-        }
-      }, 100);
+      setStripeInitialized(true);
       
     } catch (err) {
       setPaymentError(err.message);
     }
   };
+
+  // Mount card element when elements is ready and ref is available
+  useEffect(() => {
+    if (elements && cardElementRef.current && !cardElement && currentStep === 2) {
+      // Check if we need card input (card or invoice with card backup)
+      const needsCard = billingPreference === 'card' || 
+                        (billingPreference === 'invoice' && backupPaymentMethod === 'card');
+      
+      if (needsCard) {
+        const card = elements.create('card', {
+          style: {
+            base: {
+              fontSize: '16px',
+              color: '#1e293b',
+              fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              '::placeholder': { color: '#94a3b8' },
+            },
+            invalid: { color: '#dc2626' },
+          },
+        });
+        card.mount(cardElementRef.current);
+        setCardElement(card);
+      }
+    }
+    
+    // Cleanup on unmount or when switching away from card
+    return () => {
+      if (cardElement) {
+        cardElement.unmount();
+        setCardElement(null);
+      }
+    };
+  }, [elements, currentStep, billingPreference, backupPaymentMethod]);
+
+  // Remount card element when billing preference changes
+  useEffect(() => {
+    if (cardElement) {
+      cardElement.unmount();
+      setCardElement(null);
+    }
+  }, [billingPreference, backupPaymentMethod]);
 
   const calculateAmounts = () => {
     if (!contract) return { contractTotal: 0, monthlyBase: 0, setupFees: 0, firstMonthBase: 0, monthlyWithFee: 0, firstMonthTotal: 0 };
@@ -249,12 +278,12 @@ export default function ClientSigningPage() {
   const handleConfirmPayment = async () => {
     setPaymentError(null);
     
-    if (billingPreference === 'ach') {
+    // For ACH (direct or as invoice backup), just proceed
+    if (billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach')) {
       if (!bankAccountName) {
         setPaymentError('Please enter the account holder name');
         return;
       }
-      // For ACH, we'll handle it during final submission
       setStep2Complete(true);
       setCurrentStep(3);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -566,9 +595,47 @@ export default function ClientSigningPage() {
               <div style={styles.radioDot(billingPreference === 'invoice')} />
               <div>
                 <div style={{ fontWeight: '600', color: '#1e293b' }}>📄 Invoice - Pay Manually</div>
-                <div style={{ fontSize: '13px', color: '#64748b' }}>Receive invoices via email • <span style={{ color: '#f59e0b' }}>Backup card required</span></div>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>Receive invoices via email • <span style={{ color: '#f59e0b' }}>Backup payment required</span></div>
               </div>
             </div>
+
+            {/* Backup Payment Method Selection for Invoice */}
+            {billingPreference === 'invoice' && currentStep === 2 && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
+                <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '12px' }}>
+                  Select Backup Payment Method
+                </div>
+                <p style={{ fontSize: '13px', color: '#a16207', marginTop: 0, marginBottom: '12px' }}>
+                  This will only be charged if invoices are not paid within 30 days of the due date.
+                </p>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setBackupPaymentMethod('card')}
+                    style={{
+                      flex: 1, padding: '12px', borderRadius: '8px', cursor: 'pointer',
+                      border: backupPaymentMethod === 'card' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                      background: backupPaymentMethod === 'card' ? '#eff6ff' : 'white',
+                      fontWeight: '500', color: '#1e293b'
+                    }}
+                  >
+                    💳 Credit Card
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackupPaymentMethod('ach')}
+                    style={{
+                      flex: 1, padding: '12px', borderRadius: '8px', cursor: 'pointer',
+                      border: backupPaymentMethod === 'ach' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                      background: backupPaymentMethod === 'ach' ? '#eff6ff' : 'white',
+                      fontWeight: '500', color: '#1e293b'
+                    }}
+                  >
+                    🏦 Bank Account
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Amount Summary */}
             <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '16px', margin: '20px 0' }}>
@@ -583,7 +650,7 @@ export default function ClientSigningPage() {
             </div>
 
             {/* Card Payment Form - Stripe Elements */}
-            {(billingPreference === 'card' || billingPreference === 'invoice') && currentStep === 2 && (
+            {(billingPreference === 'card' || (billingPreference === 'invoice' && backupPaymentMethod === 'card')) && currentStep === 2 && (
               <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
                 <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '16px' }}>
                   {billingPreference === 'invoice' ? '💳 Backup Card Details' : '💳 Card Details'}
@@ -594,20 +661,23 @@ export default function ClientSigningPage() {
                   </p>
                 )}
                 {/* Stripe Card Element Container */}
-                <div ref={cardElementRef} style={styles.stripeElement}></div>
-                {!stripeReady && <p style={{ color: '#64748b', fontSize: '14px', marginTop: '8px' }}>Loading payment form...</p>}
+                <div ref={cardElementRef} style={styles.stripeElement}>
+                  {!elements && <span style={{ color: '#94a3b8' }}>Loading secure payment form...</span>}
+                </div>
               </div>
             )}
 
-            {/* ACH Form */}
-            {billingPreference === 'ach' && currentStep === 2 && (
+            {/* ACH Form - for direct ACH or as invoice backup */}
+            {(billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach')) && currentStep === 2 && (
               <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
-                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '16px' }}>🏦 Bank Account</div>
+                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '16px' }}>
+                  {billingPreference === 'invoice' ? '🏦 Backup Bank Account' : '🏦 Bank Account'}
+                </div>
                 <p style={{ fontSize: '13px', color: '#64748b', marginTop: 0, marginBottom: '16px' }}>
-                  After signing, you'll receive a secure link to connect your bank account via Stripe.
+                  After signing, you'll receive a secure link via email to connect your bank account through Stripe.
                 </p>
                 <div>
-                  <label style={styles.label}>Account Holder Name</label>
+                  <label style={styles.label}>Account Holder Name *</label>
                   <input 
                     type="text" 
                     value={bankAccountName} 
