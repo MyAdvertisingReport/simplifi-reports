@@ -2146,11 +2146,7 @@ app.post('/api/orders/sign/:token/complete-payment', async (req, res) => {
           : 'Payment method saved for recurring billing.',
         billing_preference: actualBillingPreference
       });
-      message: order.billing_frequency === 'upfront' ? 'Payment completed!' : 'Payment method saved!',
-      charged: order.billing_frequency === 'upfront',
-      amount: chargeAmount,
-      processingFee
-    });
+    }
 
   } catch (error) {
     console.error('Error completing payment:', error);
