@@ -321,7 +321,7 @@ export default function BillingPage() {
     select: { padding: '10px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', background: 'white', cursor: 'pointer' },
     invoiceRow: { borderBottom: '1px solid #e2e8f0', cursor: 'pointer', transition: 'background 0.15s' },
     invoiceRowExpanded: { background: '#f8fafc' },
-    invoiceHeader: { display: 'grid', gridTemplateColumns: '1fr 1fr 120px 100px 120px 200px', alignItems: 'center', padding: '16px 20px', gap: '12px' },
+    invoiceHeader: { display: 'grid', gridTemplateColumns: '1.5fr 100px 110px 140px 100px 200px', alignItems: 'center', padding: '16px 20px', gap: '12px' },
     invoiceDetails: { padding: '0 20px 20px 20px', background: '#f8fafc', borderTop: '1px solid #e2e8f0' },
     detailsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', marginBottom: '20px' },
     detailSection: { background: 'white', borderRadius: '8px', padding: '16px', border: '1px solid #e2e8f0' },
@@ -426,11 +426,11 @@ export default function BillingPage() {
 
             {/* Invoice List Header */}
             <div style={{ ...styles.invoiceHeader, background: '#f8fafc', fontWeight: '600', fontSize: '12px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              <div>Invoice</div>
               <div>Client</div>
               <div>Amount</div>
-              <div>Status</div>
               <div>Due Date</div>
+              <div>Sales Associate</div>
+              <div>Status</div>
               <div>Actions</div>
             </div>
 
@@ -454,17 +454,15 @@ export default function BillingPage() {
                     <div style={styles.invoiceHeader} onClick={() => toggleExpand(invoice.id)}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         {isExpanded ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
-                        <div>
-                          <div style={{ fontWeight: '600', color: '#1e293b' }}>{invoice.invoice_number}</div>
-                        </div>
+                        <div style={{ fontWeight: '600', color: '#1e293b' }}>{invoice.client_name}</div>
                       </div>
-                      <div style={{ fontWeight: '500' }}>{invoice.client_name}</div>
                       <div style={{ fontWeight: '600', color: '#1e293b' }}>{formatCurrency(invoice.total)}</div>
+                      <div>{formatDate(invoice.due_date)}</div>
+                      <div style={{ fontSize: '13px', color: '#64748b' }}>{invoice.sales_rep_name || '-'}</div>
                       <div>
                         <StatusBadge status={isOverdue ? 'overdue' : invoice.status} />
                         {isOverdue && <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '2px' }}>{invoice.days_overdue}d overdue</div>}
                       </div>
-                      <div>{formatDate(invoice.due_date)}</div>
                       <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
                         {/* Draft: Edit & Approve & Send */}
                         {invoice.status === 'draft' && (
