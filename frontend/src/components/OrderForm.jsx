@@ -1592,12 +1592,13 @@ export default function OrderForm() {
 }
 
 // ============================================================
-// PRODUCT SELECTOR MODAL - Mobile Optimized Two-Step
+// PRODUCT SELECTOR MODAL - Mobile Optimized with Broadcast Subcategories
 // ============================================================
 function ProductSelectorModal({ products, entities, categories, onSelect, onClose, formatCurrency }) {
-  const [step, setStep] = useState(1); // 1: Brand, 2: Medium, 3: Products
+  const [step, setStep] = useState(1); // 1: Brand, 2: Medium, 3: Subcategory (Broadcast), 4: Products
   const [selectedBrand, setSelectedBrand] = useState(null);
   const [selectedMedium, setSelectedMedium] = useState(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
 
   // Brand configurations with icons and colors
   const brandConfig = {
@@ -1626,12 +1627,19 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
 
   // Medium configurations with icons
   const mediumConfig = {
-    broadcast: { icon: '📻', name: 'Broadcast', description: 'Radio commercials & sponsorships' },
+    broadcast: { icon: '📻', name: 'Broadcast', description: 'Radio commercials & sponsorships', hasSubcategories: true },
     podcast: { icon: '🎙️', name: 'Podcast', description: 'Podcast ads & studio services' },
     'web-social': { icon: '🌐', name: 'Web & Social', description: 'Newsletters, websites & social' },
     events: { icon: '📅', name: 'Events', description: 'Sponsorships & live remotes' },
     programmatic: { icon: '💻', name: 'Programmatic Digital', description: 'Display, OTT/CTV & Meta ads' },
     print: { icon: '📰', name: 'Print', description: 'Magazine ads & editorials' }
+  };
+
+  // Broadcast subcategories
+  const broadcastSubcategories = {
+    commercials: { icon: '🎵', name: 'Commercials', description: 'Radio spot packages' },
+    'show-sponsor': { icon: '🌟', name: 'Show Sponsor', description: 'Title & supporting sponsorships' },
+    'community-calendar': { icon: '📅', name: 'Community Calendar', description: 'Event announcements' }
   };
 
   // Map entity codes to brand keys
@@ -1666,6 +1674,22 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
     return null;
   };
 
+  // Map product to subcategory (for Broadcast)
+  const getProductSubcategory = (product) => {
+    const name = (product.name || '').toLowerCase();
+    if (name.includes('presenting sponsor') || name.includes('supporting sponsor') || name.includes('friend of the show')) {
+      return 'show-sponsor';
+    }
+    if (name.includes('community calendar') || name.includes('calendar')) {
+      return 'community-calendar';
+    }
+    // Default to commercials for radio packages
+    if (name.includes('radio') || name.includes('package') || name.includes('premium') || name.includes('standard') || name.includes('starter') || name.includes('new advertiser') || name.includes('bookend')) {
+      return 'commercials';
+    }
+    return 'commercials';
+  };
+
   // Filter products for selected brand and medium
   const getFilteredProducts = () => {
     if (!selectedBrand || !selectedMedium) return [];
@@ -1676,6 +1700,15 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
         const productBrand = entityToBrand[p.entity_id];
         const productMedium = categoryToMedium(p.category_name);
         return productBrand === 'lwp' && productMedium === 'web-social';
+      });
+    }
+    
+    // For Broadcast with subcategory selected, filter by subcategory
+    if (selectedMedium === 'broadcast' && selectedSubcategory) {
+      return products.filter(p => {
+        const productBrand = entityToBrand[p.entity_id];
+        const productMedium = categoryToMedium(p.category_name);
+        return productBrand === selectedBrand && productMedium === selectedMedium && getProductSubcategory(p) === selectedSubcategory;
       });
     }
     
@@ -1703,13 +1736,27 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
     }).length;
   };
 
+  // Get product count for a subcategory (Broadcast only)
+  const getSubcategoryCount = (subcatKey) => {
+    return products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productMedium = categoryToMedium(p.category_name);
+      return productBrand === selectedBrand && productMedium === 'broadcast' && getProductSubcategory(p) === subcatKey;
+    }).length;
+  };
+
   const handleBrandSelect = (brandCode) => {
     setSelectedBrand(brandCode);
     const mediums = getMediumsForBrand(brandCode);
-    // If only one medium, skip to products
+    // If only one medium, skip to appropriate step
     if (mediums.length === 1) {
       setSelectedMedium(mediums[0]);
-      setStep(3);
+      // If it has subcategories (Broadcast), go to subcategory step
+      if (mediumConfig[mediums[0]]?.hasSubcategories) {
+        setStep(3);
+      } else {
+        setStep(4);
+      }
     } else {
       setStep(2);
     }
@@ -1717,14 +1764,42 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
 
   const handleMediumSelect = (mediumCode) => {
     setSelectedMedium(mediumCode);
-    setStep(3);
+    // If Broadcast, show subcategories first
+    if (mediumConfig[mediumCode]?.hasSubcategories) {
+      setStep(3);
+    } else {
+      setStep(4);
+    }
+  };
+
+  const handleSubcategorySelect = (subcatKey) => {
+    setSelectedSubcategory(subcatKey);
+    setStep(4);
   };
 
   const handleBack = () => {
-    if (step === 3) {
+    if (step === 4) {
+      // Coming from products
+      if (selectedMedium === 'broadcast' && selectedSubcategory) {
+        // Go back to subcategory selection
+        setSelectedSubcategory(null);
+        setStep(3);
+      } else {
+        const mediums = getMediumsForBrand(selectedBrand);
+        if (mediums.length === 1) {
+          // Skip back to brand selection if only one medium
+          setSelectedMedium(null);
+          setSelectedBrand(null);
+          setStep(1);
+        } else {
+          setSelectedMedium(null);
+          setStep(2);
+        }
+      }
+    } else if (step === 3) {
+      // Coming from subcategory or medium selection
       const mediums = getMediumsForBrand(selectedBrand);
       if (mediums.length === 1) {
-        // Skip back to brand selection if only one medium
         setSelectedMedium(null);
         setSelectedBrand(null);
         setStep(1);
@@ -1744,6 +1819,7 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
     setStep(1);
     setSelectedBrand(null);
     setSelectedMedium(null);
+    setSelectedSubcategory(null);
   };
 
   const filteredProducts = getFilteredProducts();
@@ -1763,6 +1839,7 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
             {step === 1 && 'Select Brand'}
             {step === 2 && `${brandConfig[selectedBrand]?.icon} ${brandConfig[selectedBrand]?.name}`}
             {step === 3 && `${mediumConfig[selectedMedium]?.icon} ${mediumConfig[selectedMedium]?.name}`}
+            {step === 4 && (selectedSubcategory ? `${broadcastSubcategories[selectedSubcategory]?.icon} ${broadcastSubcategories[selectedSubcategory]?.name}` : `${mediumConfig[selectedMedium]?.icon} ${mediumConfig[selectedMedium]?.name}`)}
           </h2>
           <button onClick={onClose} style={productSelectorStyles.closeButton}>
             <Icons.X />
@@ -1821,8 +1898,34 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
           </div>
         )}
 
-        {/* Step 3: Select Product */}
-        {step === 3 && (
+        {/* Step 3: Select Subcategory (Broadcast only) */}
+        {step === 3 && selectedMedium === 'broadcast' && (
+          <div style={productSelectorStyles.optionsList}>
+            {Object.entries(broadcastSubcategories).map(([code, config]) => {
+              const count = getSubcategoryCount(code);
+              return (
+                <button
+                  key={code}
+                  onClick={() => handleSubcategorySelect(code)}
+                  style={productSelectorStyles.optionCard}
+                >
+                  <span style={productSelectorStyles.optionIcon}>{config.icon}</span>
+                  <div style={productSelectorStyles.optionContent}>
+                    <div style={productSelectorStyles.optionName}>{config.name}</div>
+                    <div style={productSelectorStyles.optionDesc}>{config.description}</div>
+                  </div>
+                  <div style={productSelectorStyles.optionMeta}>
+                    <span style={productSelectorStyles.productCount}>{count}</span>
+                    <span style={productSelectorStyles.optionArrow}>→</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Step 4: Select Product */}
+        {step === 4 && (
           <div style={productSelectorStyles.productsList}>
             {filteredProducts.length === 0 ? (
               <div style={productSelectorStyles.emptyState}>
