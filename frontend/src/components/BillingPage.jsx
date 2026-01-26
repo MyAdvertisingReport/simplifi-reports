@@ -139,7 +139,7 @@ export default function BillingPage() {
 
   // Combined Approve & Send
   const handleApproveAndSend = async (invoice) => {
-    if (!confirm(`Approve and send invoice ${invoice.invoice_number} to ${invoice.client_name}?\n\nThe client will receive an email with:\n• Invoice details and payment link\n• Warning about auto-charge on day 30 if unpaid`)) {
+    if (!confirm(`📧 Ready to send invoice to ${invoice.client_name}?\n\n✅ Invoice: ${invoice.invoice_number}\n💰 Amount: ${formatCurrency(invoice.total)}\n📅 Due: ${formatDate(invoice.due_date)}\n\nThe client will receive a professional invoice email with a secure payment link. Click OK to approve and send!`)) {
       return;
     }
     

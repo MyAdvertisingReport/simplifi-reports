@@ -839,7 +839,34 @@ async function sendTestEmail(to) {
  * Send invoice to client
  */
 async function sendInvoiceToClient({ invoice, contact }) {
-  const subject = `Invoice ${invoice.invoice_number} from WSIC Media Group`;
+  // Determine primary brand from invoice items (highest priced item's entity)
+  let primaryBrand = 'WSIC'; // default
+  let highestPrice = 0;
+  
+  if (invoice.items && invoice.items.length > 0) {
+    invoice.items.forEach(item => {
+      const itemPrice = parseFloat(item.amount || item.unit_price || 0);
+      if (itemPrice > highestPrice) {
+        highestPrice = itemPrice;
+        // Determine brand from item description or entity
+        const desc = (item.description || '').toLowerCase();
+        if (desc.includes('lake norman') || desc.includes('lkn') || desc.includes('print')) {
+          primaryBrand = 'Lake Norman Woman';
+        } else if (desc.includes('liveworkplay') || desc.includes('lwp')) {
+          primaryBrand = 'LiveWorkPlay LKN';
+        } else {
+          primaryBrand = 'WSIC';
+        }
+      }
+    });
+  }
+  
+  // Format invoice month for subject line
+  const invoiceMonth = invoice.billing_period_start 
+    ? new Date(invoice.billing_period_start).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : new Date(invoice.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  
+  const subject = `${primaryBrand} - ${invoiceMonth} Invoice`;
   
   const itemsHtml = invoice.items?.map(item => `
     <tr>
@@ -868,24 +895,33 @@ async function sendInvoiceToClient({ invoice, contact }) {
       ? `ACH - ${invoice.bank_name || 'Bank Account'} ending in ${invoice.account_last4 || '••••'}`
       : 'payment method on file';
 
+  // Check payable based on primary brand
+  const checkPayableTo = primaryBrand === 'Lake Norman Woman' ? 'Lake Norman Woman' : 'WSIC';
+
   const content = `
     <div class="header" style="background-color: #1e3a8a; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">📄 Invoice</h1>
-      <p style="color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px;">Invoice #${invoice.invoice_number}</p>
+      <!-- Brand Logos -->
+      <div style="margin-bottom: 20px;">
+        <img src="https://myadvertisingreport.com/wsic-logo-white.png" alt="WSIC" style="height: 40px; margin: 0 10px;" onerror="this.style.display='none'" />
+        <img src="https://myadvertisingreport.com/lkn-logo-white.png" alt="Lake Norman Woman" style="height: 40px; margin: 0 10px;" onerror="this.style.display='none'" />
+        <img src="https://myadvertisingreport.com/lwp-logo-white.png" alt="LiveWorkPlay" style="height: 40px; margin: 0 10px;" onerror="this.style.display='none'" />
+      </div>
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">📄 Your Invoice is Ready</h1>
+      <p style="color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px;">${invoiceMonth}</p>
     </div>
     <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
-      <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
-      <p style="color: #374151;">Please find your invoice below for advertising services with <strong>WSIC Media Group</strong>.</p>
+      <p style="color: #374151; font-size: 16px;">Hi ${contact.first_name || 'there'},</p>
+      <p style="color: #374151;">Thank you for your continued partnership! Please find your invoice details below.</p>
       
-      <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
-        <tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Invoice Number</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">${invoice.invoice_number}</td></tr>
-        <tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Business</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${invoice.client_name}</td></tr>
-        ${billingPeriod ? `<tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Billing Period</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${billingPeriod}</td></tr>` : ''}
-        <tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Issue Date</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${new Date(invoice.issue_date || invoice.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
-        <tr><td style="color: #dc2626; padding: 12px 0; font-weight: 600;">Due Date</td><td style="color: #dc2626; padding: 12px 0; text-align: right; font-weight: 600;">${dueDate}</td></tr>
+      <table style="width: 100%; border-collapse: collapse; margin: 24px 0; background-color: #f8fafc; border-radius: 8px;">
+        <tr><td style="color: #6b7280; padding: 16px; border-bottom: 1px solid #e5e7eb;">Invoice Number</td><td style="color: #1f2937; padding: 16px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">${invoice.invoice_number}</td></tr>
+        <tr><td style="color: #6b7280; padding: 16px; border-bottom: 1px solid #e5e7eb;">Business</td><td style="color: #1f2937; padding: 16px; border-bottom: 1px solid #e5e7eb; text-align: right;">${invoice.client_name}</td></tr>
+        ${billingPeriod ? `<tr><td style="color: #6b7280; padding: 16px; border-bottom: 1px solid #e5e7eb;">Service Period</td><td style="color: #1f2937; padding: 16px; border-bottom: 1px solid #e5e7eb; text-align: right;">${billingPeriod}</td></tr>` : ''}
+        <tr><td style="color: #6b7280; padding: 16px; border-bottom: 1px solid #e5e7eb;">Issue Date</td><td style="color: #1f2937; padding: 16px; border-bottom: 1px solid #e5e7eb; text-align: right;">${new Date(invoice.issue_date || invoice.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
+        <tr><td style="color: #dc2626; padding: 16px; font-weight: 600;">Due Date</td><td style="color: #dc2626; padding: 16px; text-align: right; font-weight: 600;">${dueDate}</td></tr>
       </table>
       
-      <h3 style="color: #1e293b; margin: 24px 0 12px 0; font-size: 16px;">Invoice Details</h3>
+      <h3 style="color: #1e293b; margin: 24px 0 12px 0; font-size: 16px;">Services</h3>
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
         <thead><tr style="background-color: #f8fafc;">
           <th style="padding: 12px; text-align: left; color: #64748b; font-size: 13px;">Description</th>
@@ -903,29 +939,30 @@ async function sendInvoiceToClient({ invoice, contact }) {
       </table>
       
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${invoice.stripe_invoice_url || `${BASE_URL}/pay/${invoice.id}`}" style="display: inline-block; padding: 16px 40px; background-color: #059669; color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 18px;">💳 Pay Invoice Now</a>
+        <a href="${invoice.stripe_invoice_url || `${BASE_URL}/pay/${invoice.id}`}" style="display: inline-block; padding: 18px 48px; background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: #ffffff !important; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 18px; box-shadow: 0 4px 14px rgba(5, 150, 105, 0.4);">💳 Pay Invoice Now</a>
       </div>
       
-      <!-- Auto-Charge Warning -->
+      <!-- Auto-Charge Notice -->
       <div style="background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 12px; padding: 20px; margin: 24px 0;">
-        <h4 style="color: #92400e; margin: 0 0 8px 0; font-size: 14px;">⚠️ Auto-Payment Notice</h4>
+        <h4 style="color: #92400e; margin: 0 0 8px 0; font-size: 14px;">⚠️ Automatic Payment Notice</h4>
         <p style="color: #92400e; margin: 0; font-size: 14px; line-height: 1.5;">
-          If this invoice is not paid by <strong>${autoChargeDateStr}</strong> (30 days after due date), 
-          your <strong>${paymentMethodDisplay}</strong> will be automatically charged.
+          If this invoice is not paid by <strong>${autoChargeDateStr}</strong>, 
+          your ${paymentMethodDisplay} will be automatically charged.
         </p>
       </div>
       
-      <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin-top: 24px;">
+      <div style="background-color: #f8fafc; border-radius: 12px; padding: 20px; margin-top: 24px;">
         <p style="color: #64748b; font-size: 14px; margin: 0;">
           <strong>Payment Options:</strong><br>
-          • Click the button above to pay by credit card or ACH<br>
-          • Mail a check payable to "Real Talk Studios, LLC"
+          • <strong>Online:</strong> Click the green button above to pay securely by card or bank transfer<br>
+          • <strong>Check:</strong> Make payable to "<strong>${checkPayableTo}</strong>" and mail to:<br>
+          &nbsp;&nbsp;&nbsp;PO Box 2071, Cornelius, NC 28031
         </p>
       </div>
     </div>
     <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">
-      Thank you for your business!<br>
-      <span style="font-size: 12px;">Questions? Reply to this email or call (704) 868-7825</span>
+      <p style="margin: 0 0 8px 0;">Thank you for being a valued partner!</p>
+      <p style="margin: 0; font-size: 12px;">Questions? Reply to this email or call (704) 868-7825</p>
     </div>
   `;
 
@@ -933,7 +970,7 @@ async function sendInvoiceToClient({ invoice, contact }) {
     to: contact.email,
     from: FROM_ADDRESSES.billing,
     subject,
-    htmlBody: emailTemplate({ title: subject, preheader: `Invoice ${invoice.invoice_number} for $${parseFloat(invoice.total).toFixed(2)} is due ${dueDate}`, content }),
+    htmlBody: emailTemplate({ title: subject, preheader: `Your ${invoiceMonth} invoice for $${parseFloat(invoice.total).toFixed(2)} is ready`, content }),
     tag: 'invoice',
     metadata: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, clientId: invoice.client_id }
   });
