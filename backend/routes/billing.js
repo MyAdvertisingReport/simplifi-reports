@@ -186,15 +186,12 @@ router.get('/invoices/:id', async (req, res) => {
         i.*,
         c.business_name as client_name,
         c.slug as client_slug,
-        c.address_street, c.address_city, c.address_state, c.address_zip,
+        c.contact_email, c.contact_phone,
         o.order_number, o.term_months, o.contract_start_date, o.contract_end_date,
-        u.name as created_by_name,
-        ua.name as approved_by_name
+        o.billing_preference as order_billing_preference
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       LEFT JOIN orders o ON i.order_id = o.id
-      LEFT JOIN users u ON i.created_by = u.id
-      LEFT JOIN users ua ON i.approved_by = ua.id
       WHERE i.id = $1
     `;
 

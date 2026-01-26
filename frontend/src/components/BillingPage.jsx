@@ -534,10 +534,14 @@ export default function BillingPage() {
                               <div style={styles.detailSection}>
                                 <div style={styles.detailTitle}><Building2 size={14} style={{ display: 'inline', marginRight: '6px' }} />Client</div>
                                 <div style={{ fontWeight: '600', marginBottom: '8px' }}>{details.client_name}</div>
-                                {details.address_street && (
-                                  <div style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
-                                    {details.address_street}<br />
-                                    {details.address_city}, {details.address_state} {details.address_zip}
+                                {details.contact_email && (
+                                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
+                                    {details.contact_email}
+                                  </div>
+                                )}
+                                {details.contact_phone && (
+                                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
+                                    {details.contact_phone}
                                   </div>
                                 )}
                               </div>
