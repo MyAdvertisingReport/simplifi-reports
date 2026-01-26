@@ -35,6 +35,14 @@ export default function ChangeOrderUploadForm() {
   const [newMonthlyTotal, setNewMonthlyTotal] = useState('');
   const [managementApproved, setManagementApproved] = useState(false);
 
+  // Contract term/renewal fields
+  const [updateContractTerm, setUpdateContractTerm] = useState(false);
+  const [newTermMonths, setNewTermMonths] = useState('');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
+  const [isCustomTerm, setIsCustomTerm] = useState(false);
+  const [customTerm, setCustomTerm] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [savedOrder, setSavedOrder] = useState(null);
@@ -61,11 +69,29 @@ export default function ChangeOrderUploadForm() {
         setSelectedOrder(order);
         setEffectiveDate(new Date().toISOString().split('T')[0]);
         setNewMonthlyTotal(order.monthly_total?.toString() || '');
+        // Pre-populate contract dates
+        if (order.contract_start_date) setNewStartDate(order.contract_start_date.split('T')[0]);
+        if (order.term_months) setNewTermMonths(order.term_months.toString());
       }
     } catch (error) {
       console.error('Error:', error);
     }
   };
+
+  // Calculate end date when start date or term changes
+  const calculatedEndDate = useMemo(() => {
+    if (!newStartDate || !updateContractTerm) return newEndDate;
+    const months = isCustomTerm ? (parseInt(customTerm) || 0) : parseInt(newTermMonths);
+    if (!months) return '';
+    const start = new Date(newStartDate);
+    start.setMonth(start.getMonth() + months);
+    start.setDate(start.getDate() - 1);
+    return start.toISOString().split('T')[0];
+  }, [newStartDate, newTermMonths, customTerm, isCustomTerm, updateContractTerm]);
+
+  useEffect(() => {
+    if (updateContractTerm && calculatedEndDate) setNewEndDate(calculatedEndDate);
+  }, [calculatedEndDate, updateContractTerm]);
 
   const filteredOrders = useMemo(() => {
     if (!orderSearch) return orders.slice(0, 10);
@@ -278,9 +304,62 @@ export default function ChangeOrderUploadForm() {
                   <input type="number" value={newMonthlyTotal} onChange={(e) => setNewMonthlyTotal(e.target.value)} placeholder="0.00" step="0.01" style={styles.input} />
                 </div>
               </div>
+
+              {/* Contract Term Update / Renewal Section */}
+              <div style={styles.renewalSection}>
+                <label style={styles.renewalToggle}>
+                  <input type="checkbox" checked={updateContractTerm} onChange={(e) => setUpdateContractTerm(e.target.checked)} style={{ width: '18px', height: '18px', marginRight: '10px' }} />
+                  <div>
+                    <strong style={{ color: '#1e293b' }}>Update Contract Term / Renew Contract</strong>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#6b7280' }}>Check this to extend or modify contract dates</p>
+                  </div>
+                </label>
+                {updateContractTerm && (
+                  <div style={styles.renewalFields}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>New Contract Term *</label>
+                      <select value={isCustomTerm ? 'custom' : newTermMonths} onChange={(e) => {
+                        if (e.target.value === 'custom') { setIsCustomTerm(true); setNewTermMonths(''); }
+                        else { setIsCustomTerm(false); setNewTermMonths(e.target.value); setCustomTerm(''); }
+                      }} style={styles.select}>
+                        <option value="">Select term...</option>
+                        <option value="1">1 Month</option>
+                        <option value="3">3 Months</option>
+                        <option value="6">6 Months</option>
+                        <option value="12">12 Months</option>
+                        <option value="24">24 Months</option>
+                        <option value="36">36 Months</option>
+                        <option value="custom">Custom...</option>
+                      </select>
+                    </div>
+                    {isCustomTerm && (
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Custom Term (months)</label>
+                        <input type="number" value={customTerm} onChange={(e) => setCustomTerm(e.target.value)} placeholder="Number of months" style={styles.input} min="1" />
+                      </div>
+                    )}
+                    <div style={styles.formRow}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>New Start Date *</label>
+                        <input type="date" value={newStartDate} onChange={(e) => setNewStartDate(e.target.value)} style={styles.input} />
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>New End Date</label>
+                        <input type="date" value={newEndDate} readOnly style={{ ...styles.input, backgroundColor: '#f3f4f6' }} />
+                      </div>
+                    </div>
+                    <div style={styles.currentTermInfo}>
+                      <span>Current: {selectedOrder.term_months} months</span>
+                      <span>•</span>
+                      <span>{selectedOrder.contract_start_date?.split('T')[0]} to {selectedOrder.contract_end_date?.split('T')[0]}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div style={styles.formGroup}>
                 <label style={styles.label}>Change Notes</label>
-                <textarea value={changeNotes} onChange={(e) => setChangeNotes(e.target.value)} placeholder="Describe what changed..." style={styles.textarea} rows={3} />
+                <textarea value={changeNotes} onChange={(e) => setChangeNotes(e.target.value)} placeholder="Describe what changed (e.g., renewal, adding services, price adjustment)..." style={styles.textarea} rows={3} />
               </div>
               <div style={styles.approvalBox}>
                 <label style={styles.approvalLabel}>
@@ -355,8 +434,13 @@ const styles = {
   formRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' },
   formGroup: { marginBottom: '16px' },
   label: { display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '6px' },
-  input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
-  textarea: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical' },
+  input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' },
+  select: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', backgroundColor: 'white' },
+  textarea: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box' },
+  renewalSection: { marginBottom: '20px', padding: '16px', background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px' },
+  renewalToggle: { display: 'flex', alignItems: 'flex-start', cursor: 'pointer' },
+  renewalFields: { marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #fef08a' },
+  currentTermInfo: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#6b7280', marginTop: '8px', padding: '8px 12px', background: '#f9fafb', borderRadius: '6px' },
   approvalBox: { padding: '16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '8px' },
   approvalLabel: { display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer', fontSize: '14px', color: '#92400e' },
   checkbox: { marginTop: '4px', width: '18px', height: '18px' },

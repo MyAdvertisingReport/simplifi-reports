@@ -42,6 +42,14 @@ export default function ChangeOrderForm() {
   const [changeNotes, setChangeNotes] = useState('');
   const [managementApproved, setManagementApproved] = useState(false);
 
+  // Contract term/renewal fields
+  const [updateContractTerm, setUpdateContractTerm] = useState(false);
+  const [newTermMonths, setNewTermMonths] = useState('');
+  const [newStartDate, setNewStartDate] = useState('');
+  const [newEndDate, setNewEndDate] = useState('');
+  const [isCustomTerm, setIsCustomTerm] = useState(false);
+  const [customTerm, setCustomTerm] = useState('');
+
   const [showProductModal, setShowProductModal] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -92,11 +100,36 @@ export default function ChangeOrderForm() {
           originalPrice: parseFloat(item.unit_price),
         })) || []);
         setEffectiveDate(new Date().toISOString().split('T')[0]);
+        // Pre-populate contract dates from original order
+        if (order.contract_start_date) {
+          setNewStartDate(order.contract_start_date.split('T')[0]);
+        }
+        if (order.term_months) {
+          setNewTermMonths(order.term_months.toString());
+        }
       }
     } catch (error) {
       console.error('Error loading order:', error);
     }
   };
+
+  // Calculate end date when start date or term changes
+  const calculatedEndDate = useMemo(() => {
+    if (!newStartDate || !updateContractTerm) return newEndDate;
+    const months = isCustomTerm ? (parseInt(customTerm) || 0) : parseInt(newTermMonths);
+    if (!months) return '';
+    const start = new Date(newStartDate);
+    start.setMonth(start.getMonth() + months);
+    start.setDate(start.getDate() - 1);
+    return start.toISOString().split('T')[0];
+  }, [newStartDate, newTermMonths, customTerm, isCustomTerm, updateContractTerm]);
+
+  // Update newEndDate when calculated changes
+  useEffect(() => {
+    if (updateContractTerm && calculatedEndDate) {
+      setNewEndDate(calculatedEndDate);
+    }
+  }, [calculatedEndDate, updateContractTerm]);
 
   const filteredOrders = useMemo(() => {
     if (!orderSearch) return orders.slice(0, 10);
@@ -432,12 +465,104 @@ export default function ChangeOrderForm() {
                 />
               </div>
 
+              {/* Contract Term Update / Renewal Section */}
+              <div style={styles.renewalSection}>
+                <label style={styles.renewalToggle}>
+                  <input
+                    type="checkbox"
+                    checked={updateContractTerm}
+                    onChange={(e) => setUpdateContractTerm(e.target.checked)}
+                    style={{ width: '18px', height: '18px', marginRight: '10px' }}
+                  />
+                  <div>
+                    <strong style={{ color: '#1e293b' }}>Update Contract Term / Renew Contract</strong>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#6b7280' }}>
+                      Check this to extend or modify the contract dates
+                    </p>
+                  </div>
+                </label>
+
+                {updateContractTerm && (
+                  <div style={styles.renewalFields}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>New Contract Term *</label>
+                      <select
+                        value={isCustomTerm ? 'custom' : newTermMonths}
+                        onChange={(e) => {
+                          if (e.target.value === 'custom') {
+                            setIsCustomTerm(true);
+                            setNewTermMonths('');
+                          } else {
+                            setIsCustomTerm(false);
+                            setNewTermMonths(e.target.value);
+                            setCustomTerm('');
+                          }
+                        }}
+                        style={styles.select}
+                      >
+                        <option value="">Select term...</option>
+                        <option value="1">1 Month</option>
+                        <option value="3">3 Months</option>
+                        <option value="6">6 Months</option>
+                        <option value="12">12 Months</option>
+                        <option value="24">24 Months</option>
+                        <option value="36">36 Months</option>
+                        <option value="custom">Custom...</option>
+                      </select>
+                    </div>
+
+                    {isCustomTerm && (
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Custom Term (months)</label>
+                        <input
+                          type="number"
+                          value={customTerm}
+                          onChange={(e) => setCustomTerm(e.target.value)}
+                          placeholder="Number of months"
+                          style={styles.input}
+                          min="1"
+                        />
+                      </div>
+                    )}
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>New Start Date *</label>
+                        <input
+                          type="date"
+                          value={newStartDate}
+                          onChange={(e) => setNewStartDate(e.target.value)}
+                          style={styles.input}
+                        />
+                      </div>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>New End Date</label>
+                        <input
+                          type="date"
+                          value={newEndDate}
+                          readOnly
+                          style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                        />
+                      </div>
+                    </div>
+
+                    {selectedOrder && (
+                      <div style={styles.currentTermInfo}>
+                        <span>Current: {selectedOrder.term_months} months</span>
+                        <span>•</span>
+                        <span>{selectedOrder.contract_start_date?.split('T')[0]} to {selectedOrder.contract_end_date?.split('T')[0]}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div style={styles.formGroup}>
                 <label style={styles.label}>Reason for Change</label>
                 <textarea
                   value={changeNotes}
                   onChange={(e) => setChangeNotes(e.target.value)}
-                  placeholder="Describe the reason for this change order..."
+                  placeholder="Describe the reason for this change order (e.g., renewal, adding services, price adjustment)..."
                   style={styles.textarea}
                   rows={3}
                 />
@@ -656,8 +781,13 @@ const styles = {
   addMoreButton: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px', background: 'none', border: '2px dashed #d1d5db', borderRadius: '8px', color: '#6b7280', fontSize: '14px', cursor: 'pointer', marginTop: '12px' },
   formGroup: { marginBottom: '16px' },
   label: { display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '6px' },
-  input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
-  textarea: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical' },
+  input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' },
+  select: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box', backgroundColor: 'white' },
+  textarea: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box' },
+  renewalSection: { marginBottom: '20px', padding: '16px', background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px' },
+  renewalToggle: { display: 'flex', alignItems: 'flex-start', cursor: 'pointer' },
+  renewalFields: { marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #fef08a' },
+  currentTermInfo: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#6b7280', marginTop: '8px', padding: '8px 12px', background: '#f9fafb', borderRadius: '6px' },
   approvalBox: { marginTop: '20px', padding: '16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '8px' },
   approvalLabel: { display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer', fontSize: '14px', color: '#92400e' },
   approvalCheckbox: { marginTop: '4px', width: '18px', height: '18px', cursor: 'pointer' },
