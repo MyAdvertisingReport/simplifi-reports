@@ -135,7 +135,7 @@ router.get('/invoices', async (req, res) => {
         c.business_name as client_name,
         c.slug as client_slug,
         o.order_number,
-        o.sales_rep_name,
+        o.sales_rep as sales_rep_name,
         CASE 
           WHEN i.status = 'sent' AND i.due_date::date < CURRENT_DATE 
           THEN (CURRENT_DATE - i.due_date::date)
