@@ -2154,6 +2154,27 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
     const customerEmail = signer_email || `client-${order.client_id}@placeholder.local`;
     let customerId = order.existing_stripe_id;
     
+    if (customerId) {
+      // Verify customer still exists in Stripe
+      console.log('[SETUP-INTENT] Verifying existing customer:', customerId);
+      try {
+        await stripe.customers.retrieve(customerId);
+        console.log('[SETUP-INTENT] Customer verified');
+      } catch (verifyError) {
+        if (verifyError.code === 'resource_missing') {
+          console.log('[SETUP-INTENT] Customer not found in Stripe, will create new one');
+          customerId = null; // Reset so we create a new one
+          // Clear the invalid customer ID from the database
+          await adminPool.query(
+            `UPDATE advertising_clients SET stripe_customer_id = NULL WHERE id = $1`,
+            [order.client_id]
+          );
+        } else {
+          throw verifyError;
+        }
+      }
+    }
+    
     if (!customerId) {
       console.log('[SETUP-INTENT] Creating new Stripe customer for:', customerEmail);
       const customer = await stripe.customers.create({
