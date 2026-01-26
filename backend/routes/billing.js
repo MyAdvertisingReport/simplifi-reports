@@ -473,15 +473,15 @@ router.put('/invoices/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Don't set approved_by to avoid FK constraint issues with users table
     const result = await pool.query(`
       UPDATE invoices SET
         status = 'approved',
-        approved_by = $1,
         approved_at = NOW(),
         updated_at = NOW()
-      WHERE id = $2 AND status = 'draft'
+      WHERE id = $1 AND status = 'draft'
       RETURNING *
-    `, [req.user?.id, id]);
+    `, [id]);
 
     if (result.rows.length === 0) {
       return res.status(400).json({ error: 'Invoice not found or not in draft status' });
