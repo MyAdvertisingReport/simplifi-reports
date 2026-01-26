@@ -2108,7 +2108,7 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
 
     // Find order
     const orderResult = await adminPool.query(
-      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id, c.email as client_email
+      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id
        FROM orders o
        JOIN advertising_clients c ON o.client_id = c.id
        WHERE o.signing_token = $1 AND o.signing_token_expires_at > NOW()`,
@@ -2150,8 +2150,8 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
     
     const stripe = new Stripe(stripeSecretKey);
 
-    // Get or create customer - use provided email, fall back to client email
-    const customerEmail = signer_email || order.client_email || `client-${order.client_id}@placeholder.local`;
+    // Get or create customer - use provided email or generate placeholder
+    const customerEmail = signer_email || `client-${order.client_id}@placeholder.local`;
     let customerId = order.existing_stripe_id;
     
     if (!customerId) {
