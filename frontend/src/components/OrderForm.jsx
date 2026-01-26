@@ -1637,9 +1637,8 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
 
   // Broadcast subcategories
   const broadcastSubcategories = {
-    commercials: { icon: '🎵', name: 'Commercials', description: 'Radio spot packages' },
-    'show-sponsor': { icon: '🌟', name: 'Show Sponsor', description: 'Title & supporting sponsorships' },
-    'community-calendar': { icon: '📅', name: 'Community Calendar', description: 'Event announcements' }
+    commercials: { icon: '🎵', name: 'Commercials', description: 'Radio spots & announcements' },
+    'show-sponsor': { icon: '🌟', name: 'Show Sponsor', description: 'Title & supporting sponsorships' }
   };
 
   // Map entity codes to brand keys
@@ -1680,13 +1679,7 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
     if (name.includes('presenting sponsor') || name.includes('supporting sponsor') || name.includes('friend of the show')) {
       return 'show-sponsor';
     }
-    if (name.includes('community calendar') || name.includes('calendar')) {
-      return 'community-calendar';
-    }
-    // Default to commercials for radio packages
-    if (name.includes('radio') || name.includes('package') || name.includes('premium') || name.includes('standard') || name.includes('starter') || name.includes('new advertiser') || name.includes('bookend')) {
-      return 'commercials';
-    }
+    // Everything else (Radio packages, Community Calendar, etc.) goes to Commercials
     return 'commercials';
   };
 
