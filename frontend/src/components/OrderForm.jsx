@@ -1639,6 +1639,7 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
   const broadcastSubcategories = {
     commercials: { icon: '🎵', name: 'Commercials', description: 'Radio spot packages' },
     'show-sponsor': { icon: '🌟', name: 'Show Sponsor', description: 'Title & supporting sponsorships' },
+    'host-show': { icon: '🎤', name: 'Host Your Own Show', description: 'Radio show hosting packages' },
     'community-calendar': { icon: '📅', name: 'Community Calendar', description: 'Event announcements' }
   };
 
@@ -1683,7 +1684,10 @@ function ProductSelectorModal({ products, entities, categories, onSelect, onClos
     if (name.includes('community calendar') || name.includes('calendar')) {
       return 'community-calendar';
     }
-    // Default to commercials for radio packages
+    if (name.includes('radio show host') || name.includes('premium radio show') || name.includes('sunday morning sermon')) {
+      return 'host-show';
+    }
+    // Default to commercials for radio packages, Bible Minute, etc.
     return 'commercials';
   };
 
