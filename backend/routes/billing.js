@@ -285,6 +285,7 @@ router.post('/invoices', async (req, res) => {
     }
 
     // Insert invoice
+    // Note: Not using created_by to avoid FK constraint issues
     const invoiceResult = await client.query(`
       INSERT INTO invoices (
         invoice_number, client_id, order_id, status,
@@ -292,14 +293,14 @@ router.post('/invoices', async (req, res) => {
         billing_period_start, billing_period_end,
         issue_date, due_date,
         billing_preference, stripe_entity_code, stripe_customer_id,
-        grace_period_ends_at, notes, created_by
+        grace_period_ends_at, notes
       ) VALUES (
         $1, $2, $3, 'draft',
         $4, $5, $6, $7,
         $8, $9,
         CURRENT_DATE, $10::date,
         $11, $12, $13,
-        $10::date + INTERVAL '30 days', $14, $15
+        $10::date + INTERVAL '30 days', $14
       )
       RETURNING *
     `, [
@@ -308,7 +309,7 @@ router.post('/invoices', async (req, res) => {
       billing_period_start, billing_period_end,
       due_date,
       billing_preference, stripe_entity_code, clientResult.rows[0]?.stripe_customer_id,
-      notes, req.user?.id
+      notes
     ]);
 
     const invoice = invoiceResult.rows[0];
@@ -971,6 +972,9 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
     const total = parseFloat(order.monthly_total) + processing_fee;
 
     // Create invoice
+    // Note: created_by may be null if user doesn't exist in users table
+    const createdBy = req.user?.id || null;
+    
     const invoiceResult = await client.query(`
       INSERT INTO invoices (
         invoice_number, client_id, order_id, status,
@@ -985,7 +989,7 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
         $7, $8,
         CURRENT_DATE, $9::date,
         $10, $11, $12,
-        $13, $9::date + INTERVAL '30 days', $14
+        $13, $9::date + INTERVAL '30 days', NULL
       )
       RETURNING *
     `, [
@@ -995,7 +999,7 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
       billing_period_end,
       dueDate.toISOString().split('T')[0],
       order.billing_preference, order.stripe_entity_code || 'wsic', order.stripe_customer_id,
-      order.stripe_payment_method_id, req.user?.id
+      order.stripe_payment_method_id
     ]);
 
     const invoice = invoiceResult.rows[0];
