@@ -8,6 +8,16 @@ const router = express.Router();
 const { Pool } = require('pg');
 const crypto = require('crypto');
 
+// Stripe service for payment processing
+let stripeService = null;
+try {
+  const stripeModule = require('../services/stripe-service');
+  stripeService = stripeModule.stripeService;
+  console.log('Stripe service loaded in order routes');
+} catch (err) {
+  console.log('Stripe service not available:', err.message);
+}
+
 // Database pool - will be set by the main server
 let pool = null;
 
@@ -2394,6 +2404,201 @@ router.post('/kill-upload', async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// ============================================================
+// STRIPE PAYMENT METHOD ENDPOINTS
+// For manually entering payment info from signed contracts
+// ============================================================
+
+// POST /api/orders/payment-method/card - Create card payment method
+router.post('/payment-method/card', async (req, res) => {
+  try {
+    if (!stripeService) {
+      return res.status(500).json({ error: 'Stripe service not configured' });
+    }
+
+    const {
+      entityCode,
+      clientId,
+      cardNumber,
+      expMonth,
+      expYear,
+      cvc,
+      zip,
+      clientEmail,
+      clientName,
+    } = req.body;
+
+    if (!entityCode || !cardNumber || !expMonth || !expYear || !cvc) {
+      return res.status(400).json({ error: 'Missing required card information' });
+    }
+
+    // Get or create Stripe customer
+    const customer = await stripeService.getOrCreateCustomer(entityCode, {
+      email: clientEmail,
+      businessName: clientName,
+      clientId: clientId,
+    });
+
+    // Create payment method using Stripe API directly
+    const stripe = stripeService.getClient(entityCode);
+    
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: 'card',
+      card: {
+        number: cardNumber.replace(/\s/g, ''),
+        exp_month: parseInt(expMonth),
+        exp_year: parseInt(expYear.length === 2 ? '20' + expYear : expYear),
+        cvc: cvc,
+      },
+      billing_details: {
+        name: clientName,
+        email: clientEmail,
+        address: {
+          postal_code: zip,
+        },
+      },
+    });
+
+    // Attach payment method to customer
+    await stripeService.attachPaymentMethod(entityCode, paymentMethod.id, customer.id);
+
+    // Set as default payment method
+    await stripeService.setDefaultPaymentMethod(entityCode, customer.id, paymentMethod.id);
+
+    // Update client record with Stripe customer ID
+    if (clientId) {
+      await pool.query(
+        `UPDATE advertising_clients 
+         SET stripe_customer_id = $1, 
+             payment_method = 'credit_card',
+             updated_at = NOW() 
+         WHERE id = $2`,
+        [customer.id, clientId]
+      );
+    }
+
+    console.log(`[STRIPE] Card payment method created for ${clientName}: ${paymentMethod.card.brand} ****${paymentMethod.card.last4}`);
+
+    res.json({
+      success: true,
+      customerId: customer.id,
+      paymentMethodId: paymentMethod.id,
+      card: {
+        brand: paymentMethod.card.brand,
+        last4: paymentMethod.card.last4,
+        expMonth: paymentMethod.card.exp_month,
+        expYear: paymentMethod.card.exp_year,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating card payment method:', error);
+    res.status(400).json({ 
+      error: error.message || 'Failed to create payment method',
+      code: error.code,
+    });
+  }
+});
+
+// POST /api/orders/payment-method/ach - Create ACH bank account payment method
+router.post('/payment-method/ach', async (req, res) => {
+  try {
+    if (!stripeService) {
+      return res.status(500).json({ error: 'Stripe service not configured' });
+    }
+
+    const {
+      entityCode,
+      clientId,
+      accountHolderName,
+      routingNumber,
+      accountNumber,
+      accountType,
+      clientEmail,
+      clientName,
+    } = req.body;
+
+    if (!entityCode || !accountHolderName || !routingNumber || !accountNumber) {
+      return res.status(400).json({ error: 'Missing required bank account information' });
+    }
+
+    // Get or create Stripe customer
+    const customer = await stripeService.getOrCreateCustomer(entityCode, {
+      email: clientEmail,
+      businessName: clientName,
+      clientId: clientId,
+    });
+
+    const stripe = stripeService.getClient(entityCode);
+    
+    // Use the modern PaymentMethod API with us_bank_account
+    // This creates a payment method that can be used for ACH Direct Debit
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: 'us_bank_account',
+      us_bank_account: {
+        account_holder_type: 'company',
+        account_number: accountNumber,
+        routing_number: routingNumber,
+        account_type: accountType || 'checking',
+      },
+      billing_details: {
+        name: accountHolderName,
+        email: clientEmail,
+      },
+    });
+
+    // Attach payment method to customer
+    await stripe.paymentMethods.attach(paymentMethod.id, {
+      customer: customer.id,
+    });
+
+    // Set as default payment method for invoices
+    await stripe.customers.update(customer.id, {
+      invoice_settings: {
+        default_payment_method: paymentMethod.id,
+      },
+    });
+
+    // Update client record with Stripe customer ID and payment method
+    if (clientId) {
+      await pool.query(
+        `UPDATE advertising_clients 
+         SET stripe_customer_id = $1, 
+             payment_method = 'ach',
+             stripe_payment_method_id = $2,
+             updated_at = NOW() 
+         WHERE id = $3`,
+        [customer.id, paymentMethod.id, clientId]
+      );
+    }
+
+    console.log(`[STRIPE] ACH payment method created for ${clientName}: ****${accountNumber.slice(-4)}`);
+
+    res.json({
+      success: true,
+      customerId: customer.id,
+      paymentMethodId: paymentMethod.id,
+      bankAccount: {
+        last4: paymentMethod.us_bank_account.last4,
+        bankName: paymentMethod.us_bank_account.bank_name,
+        accountType: paymentMethod.us_bank_account.account_type,
+      },
+    });
+  } catch (error) {
+    console.error('Error creating ACH payment method:', error);
+    res.status(400).json({ 
+      error: error.message || 'Failed to create bank account',
+      code: error.code,
+    });
+  }
+});
+
+// POST /api/orders/payment-method/verify-ach - Verify ACH with micro-deposits (legacy, kept for reference)
+router.post('/payment-method/verify-ach', async (req, res) => {
+  res.status(400).json({ 
+    error: 'Micro-deposit verification not required for this integration. Bank accounts are ready to use immediately.',
+  });
 });
 
 module.exports = router;

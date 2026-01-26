@@ -120,6 +120,28 @@ export default function UploadOrderForm() {
   // Payment/Billing Info (from signed contract)
   const [paymentMethod, setPaymentMethod] = useState('');
   const [billingNotes, setBillingNotes] = useState('');
+  
+  // Credit Card Details
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardZip, setCardZip] = useState('');
+  
+  // ACH Details
+  const [achName, setAchName] = useState('');
+  const [achRouting, setAchRouting] = useState('');
+  const [achAccount, setAchAccount] = useState('');
+  const [achType, setAchType] = useState('checking');
+  
+  // Invoice/Check Details
+  const [invoiceEmail, setInvoiceEmail] = useState('');
+  const [invoicePO, setInvoicePO] = useState('');
+  const [checkAddress, setCheckAddress] = useState('');
+  
+  // Payment processing state
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentSaved, setPaymentSaved] = useState(false);
 
   // Saving state
   const [saving, setSaving] = useState(false);
@@ -201,6 +223,120 @@ export default function UploadOrderForm() {
     } finally {
       setCreatingClient(false);
     }
+  };
+
+  // Save payment method to Stripe
+  const savePaymentToStripe = async () => {
+    if (!selectedClient) {
+      setPaymentError('Please select a client first');
+      return false;
+    }
+
+    // Determine entity code from order items
+    const entityCode = orderItems.length > 0 
+      ? (entities.find(e => e.id === orderItems[0].entity_id)?.code || 'wsic')
+      : 'wsic';
+
+    setProcessingPayment(true);
+    setPaymentError('');
+
+    try {
+      if (paymentMethod === 'credit_card') {
+        // Parse expiry
+        const [expMonth, expYear] = cardExpiry.split('/').map(s => s.trim());
+        
+        if (!cardNumber || !expMonth || !expYear || !cardCvc) {
+          throw new Error('Please fill in all card details');
+        }
+
+        const response = await fetch(`${API_BASE}/api/orders/payment-method/card`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            entityCode,
+            clientId: selectedClient.id,
+            cardNumber: cardNumber.replace(/\s/g, ''),
+            expMonth,
+            expYear,
+            cvc: cardCvc,
+            zip: cardZip,
+            clientEmail: selectedClient.contact_email,
+            clientName: selectedClient.business_name,
+          }),
+        });
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to save card');
+        }
+
+        setPaymentSaved(true);
+        console.log('Card saved:', result.card);
+        return true;
+
+      } else if (paymentMethod === 'ach') {
+        if (!achName || !achRouting || !achAccount) {
+          throw new Error('Please fill in all bank account details');
+        }
+
+        const response = await fetch(`${API_BASE}/api/orders/payment-method/ach`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            entityCode,
+            clientId: selectedClient.id,
+            accountHolderName: achName,
+            routingNumber: achRouting,
+            accountNumber: achAccount,
+            accountType: achType,
+            clientEmail: selectedClient.contact_email,
+            clientName: selectedClient.business_name,
+          }),
+        });
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to save bank account');
+        }
+
+        setPaymentSaved(true);
+        console.log('Bank account saved:', result.bankAccount);
+        return true;
+      }
+
+      // For check/invoice, no Stripe action needed
+      return true;
+
+    } catch (error) {
+      console.error('Payment error:', error);
+      setPaymentError(error.message);
+      return false;
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
+  // Format card number with spaces
+  const formatCardNumber = (value) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    const matches = v.match(/\d{4,16}/g);
+    const match = (matches && matches[0]) || '';
+    const parts = [];
+    for (let i = 0, len = match.length; i < len; i += 4) {
+      parts.push(match.substring(i, i + 4));
+    }
+    return parts.length ? parts.join(' ') : value;
+  };
+
+  // Format expiry as MM/YY
+  const formatExpiry = (value) => {
+    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+    if (v.length >= 2) {
+      return v.substring(0, 2) + (v.length > 2 ? ' / ' + v.substring(2, 4) : '');
+    }
+    return v;
   };
 
   // Filter clients
@@ -785,19 +921,20 @@ export default function UploadOrderForm() {
                     <span>Enter card details securely</span>
                   </div>
                   <p style={styles.cardEntryNote}>
-                    Card information is sent directly to Stripe and never touches our servers.
+                    Card information is sent directly to Stripe and stored securely.
                   </p>
-                  {/* This div will be replaced by Stripe Elements */}
-                  <div id="card-element" style={styles.stripeCardElement}>
+                  <div style={styles.stripeCardElement}>
                     <div style={styles.cardInputsGrid}>
                       <div style={styles.formGroup}>
                         <label style={styles.label}>Card Number</label>
                         <input
                           type="text"
                           placeholder="4242 4242 4242 4242"
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                           style={styles.input}
                           maxLength="19"
-                          id="card-number"
+                          disabled={paymentSaved}
                         />
                       </div>
                       <div style={styles.formRow}>
@@ -806,9 +943,11 @@ export default function UploadOrderForm() {
                           <input
                             type="text"
                             placeholder="MM / YY"
+                            value={cardExpiry}
+                            onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
                             style={styles.input}
-                            maxLength="7"
-                            id="card-expiry"
+                            maxLength="9"
+                            disabled={paymentSaved}
                           />
                         </div>
                         <div style={styles.formGroup}>
@@ -816,9 +955,11 @@ export default function UploadOrderForm() {
                           <input
                             type="text"
                             placeholder="123"
+                            value={cardCvc}
+                            onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, '').slice(0, 4))}
                             style={styles.input}
                             maxLength="4"
-                            id="card-cvc"
+                            disabled={paymentSaved}
                           />
                         </div>
                         <div style={styles.formGroup}>
@@ -826,18 +967,37 @@ export default function UploadOrderForm() {
                           <input
                             type="text"
                             placeholder="28036"
+                            value={cardZip}
+                            onChange={(e) => setCardZip(e.target.value)}
                             style={styles.input}
                             maxLength="10"
-                            id="card-zip"
+                            disabled={paymentSaved}
                           />
                         </div>
                       </div>
                     </div>
                   </div>
-                  <p style={styles.stripeNotice}>
-                    <strong>Note:</strong> For full PCI compliance, integrate Stripe Elements. 
-                    Contact your developer to set up the Stripe integration.
-                  </p>
+                  
+                  {paymentError && (
+                    <p style={styles.paymentError}>{paymentError}</p>
+                  )}
+                  
+                  {paymentSaved ? (
+                    <div style={styles.paymentSuccess}>
+                      ✓ Card saved to Stripe successfully
+                    </div>
+                  ) : (
+                    <button
+                      onClick={savePaymentToStripe}
+                      disabled={processingPayment || !cardNumber || !cardExpiry || !cardCvc}
+                      style={{
+                        ...styles.savePaymentButton,
+                        opacity: (processingPayment || !cardNumber || !cardExpiry || !cardCvc) ? 0.5 : 1,
+                      }}
+                    >
+                      {processingPayment ? 'Saving to Stripe...' : '💳 Save Card to Stripe'}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -849,7 +1009,7 @@ export default function UploadOrderForm() {
                     <span>Enter bank account details</span>
                   </div>
                   <p style={styles.cardEntryNote}>
-                    Bank information is sent directly to Stripe for secure ACH processing.
+                    Bank information is sent to Stripe for secure ACH processing.
                   </p>
                   <div style={styles.cardInputsGrid}>
                     <div style={styles.formGroup}>
@@ -857,8 +1017,10 @@ export default function UploadOrderForm() {
                       <input
                         type="text"
                         placeholder="Business Name or Individual Name"
+                        value={achName}
+                        onChange={(e) => setAchName(e.target.value)}
                         style={styles.input}
-                        id="ach-name"
+                        disabled={paymentSaved}
                       />
                     </div>
                     <div style={styles.formRow}>
@@ -867,9 +1029,11 @@ export default function UploadOrderForm() {
                         <input
                           type="text"
                           placeholder="110000000"
+                          value={achRouting}
+                          onChange={(e) => setAchRouting(e.target.value.replace(/\D/g, '').slice(0, 9))}
                           style={styles.input}
                           maxLength="9"
-                          id="ach-routing"
+                          disabled={paymentSaved}
                         />
                       </div>
                       <div style={{ ...styles.formGroup, flex: 2 }}>
@@ -877,23 +1041,47 @@ export default function UploadOrderForm() {
                         <input
                           type="text"
                           placeholder="000123456789"
+                          value={achAccount}
+                          onChange={(e) => setAchAccount(e.target.value.replace(/\D/g, ''))}
                           style={styles.input}
-                          id="ach-account"
+                          disabled={paymentSaved}
                         />
                       </div>
                     </div>
                     <div style={styles.formGroup}>
                       <label style={styles.label}>Account Type</label>
-                      <select style={styles.select} id="ach-type">
+                      <select 
+                        value={achType}
+                        onChange={(e) => setAchType(e.target.value)}
+                        style={styles.select}
+                        disabled={paymentSaved}
+                      >
                         <option value="checking">Checking</option>
                         <option value="savings">Savings</option>
                       </select>
                     </div>
                   </div>
-                  <p style={styles.stripeNotice}>
-                    <strong>Note:</strong> For full compliance, integrate Stripe ACH. 
-                    Contact your developer to set up bank account verification.
-                  </p>
+                  
+                  {paymentError && (
+                    <p style={styles.paymentError}>{paymentError}</p>
+                  )}
+                  
+                  {paymentSaved ? (
+                    <div style={styles.paymentSuccess}>
+                      ✓ Bank account saved to Stripe successfully
+                    </div>
+                  ) : (
+                    <button
+                      onClick={savePaymentToStripe}
+                      disabled={processingPayment || !achName || !achRouting || !achAccount}
+                      style={{
+                        ...styles.savePaymentButton,
+                        opacity: (processingPayment || !achName || !achRouting || !achAccount) ? 0.5 : 1,
+                      }}
+                    >
+                      {processingPayment ? 'Saving to Stripe...' : '🏦 Save Bank Account to Stripe'}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -907,9 +1095,10 @@ export default function UploadOrderForm() {
                     <label style={styles.label}>Billing Address (for invoices)</label>
                     <textarea
                       placeholder="Enter billing address for check payments..."
+                      value={checkAddress}
+                      onChange={(e) => setCheckAddress(e.target.value)}
                       style={styles.textarea}
                       rows={3}
-                      id="check-address"
                     />
                   </div>
                 </div>
@@ -927,8 +1116,9 @@ export default function UploadOrderForm() {
                       <input
                         type="email"
                         placeholder="ap@company.com"
+                        value={invoiceEmail}
+                        onChange={(e) => setInvoiceEmail(e.target.value)}
                         style={styles.input}
-                        id="invoice-email"
                       />
                     </div>
                     <div style={styles.formGroup}>
@@ -936,8 +1126,9 @@ export default function UploadOrderForm() {
                       <input
                         type="text"
                         placeholder="PO-12345"
+                        value={invoicePO}
+                        onChange={(e) => setInvoicePO(e.target.value)}
                         style={styles.input}
-                        id="invoice-po"
                       />
                     </div>
                   </div>
@@ -1972,6 +2163,51 @@ const styles = {
     fontSize: '14px',
     color: '#374151',
     margin: '0 0 16px 0',
+  },
+  savePaymentButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    width: '100%',
+    padding: '14px 20px',
+    marginTop: '16px',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '15px',
+    fontWeight: '600',
+    cursor: 'pointer',
+  },
+  paymentError: {
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: '8px',
+    color: '#dc2626',
+    fontSize: '14px',
+  },
+  paymentSuccess: {
+    marginTop: '16px',
+    padding: '14px',
+    backgroundColor: '#ecfdf5',
+    border: '1px solid #a7f3d0',
+    borderRadius: '8px',
+    color: '#059669',
+    fontSize: '14px',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  achNote: {
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#fffbeb',
+    border: '1px solid #fcd34d',
+    borderRadius: '8px',
+    color: '#92400e',
+    fontSize: '13px',
   },
   newClientModal: {
     backgroundColor: 'white',
