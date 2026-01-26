@@ -851,10 +851,22 @@ async function sendInvoiceToClient({ invoice, contact }) {
   `).join('') || '';
 
   const dueDate = new Date(invoice.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  
+  // Calculate auto-charge date (30 days after due date)
+  const autoChargeDate = new Date(invoice.due_date);
+  autoChargeDate.setDate(autoChargeDate.getDate() + 30);
+  const autoChargeDateStr = autoChargeDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   const billingPeriod = invoice.billing_period_start && invoice.billing_period_end
     ? `${new Date(invoice.billing_period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(invoice.billing_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
     : '';
+
+  // Backup payment method info
+  const paymentMethodDisplay = invoice.billing_preference === 'card' 
+    ? `Credit Card ending in ${invoice.card_last4 || '••••'}` 
+    : invoice.billing_preference === 'ach' 
+      ? `ACH - ${invoice.bank_name || 'Bank Account'} ending in ${invoice.account_last4 || '••••'}`
+      : 'payment method on file';
 
   const content = `
     <div class="header" style="background-color: #1e3a8a; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
@@ -890,13 +902,31 @@ async function sendInvoiceToClient({ invoice, contact }) {
         <tr style="border-top: 2px solid #1e3a8a;"><td style="padding: 16px 0; color: #1e293b; font-weight: 700; font-size: 18px;">Total Due</td><td style="padding: 16px 0; text-align: right; color: #1e3a8a; font-weight: 700; font-size: 24px;">$${parseFloat(invoice.total).toFixed(2)}</td></tr>
       </table>
       
-      ${invoice.stripe_invoice_url ? `<div style="text-align: center; margin: 32px 0;"><a href="${invoice.stripe_invoice_url}" style="display: inline-block; padding: 16px 40px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 18px;">Pay Invoice Online</a></div>` : ''}
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="${invoice.stripe_invoice_url || `${BASE_URL}/pay/${invoice.id}`}" style="display: inline-block; padding: 16px 40px; background-color: #059669; color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 18px;">💳 Pay Invoice Now</a>
+      </div>
+      
+      <!-- Auto-Charge Warning -->
+      <div style="background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 12px; padding: 20px; margin: 24px 0;">
+        <h4 style="color: #92400e; margin: 0 0 8px 0; font-size: 14px;">⚠️ Auto-Payment Notice</h4>
+        <p style="color: #92400e; margin: 0; font-size: 14px; line-height: 1.5;">
+          If this invoice is not paid by <strong>${autoChargeDateStr}</strong> (30 days after due date), 
+          your <strong>${paymentMethodDisplay}</strong> will be automatically charged.
+        </p>
+      </div>
       
       <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin-top: 24px;">
-        <p style="color: #64748b; font-size: 14px; margin: 0;"><strong>Payment Methods:</strong><br>• Credit Card or ACH via the link above (if available)<br>• Check payable to "Real Talk Studios, LLC"</p>
+        <p style="color: #64748b; font-size: 14px; margin: 0;">
+          <strong>Payment Options:</strong><br>
+          • Click the button above to pay by credit card or ACH<br>
+          • Mail a check payable to "Real Talk Studios, LLC"
+        </p>
       </div>
     </div>
-    <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">Thank you for your business!</div>
+    <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">
+      Thank you for your business!<br>
+      <span style="font-size: 12px;">Questions? Reply to this email or call (704) 868-7825</span>
+    </div>
   `;
 
   return sendEmail({
