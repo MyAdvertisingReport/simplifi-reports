@@ -85,6 +85,10 @@ export default function ClientSigningPage() {
   
   // ACH states  
   const [bankAccountName, setBankAccountName] = useState('');
+  const [bankRoutingNumber, setBankRoutingNumber] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountType, setBankAccountType] = useState('checking');
+  const [achProcessing, setAchProcessing] = useState(false);
   
   // Signer states
   const [signerName, setSignerName] = useState('');
@@ -305,14 +309,59 @@ export default function ClientSigningPage() {
       return;
     }
     
-    // For ACH (direct or as invoice backup), just proceed
+    // For ACH (direct or as invoice backup), validate and save bank details
     if (billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach')) {
-      if (!bankAccountName) {
+      if (!bankAccountName.trim()) {
         setPaymentError('Please enter the account holder name');
         return;
       }
-      setStep2Complete(true);
-      setCurrentStep(3);
+      if (!bankRoutingNumber || bankRoutingNumber.length !== 9) {
+        setPaymentError('Please enter a valid 9-digit routing number');
+        return;
+      }
+      if (!bankAccountNumber || bankAccountNumber.length < 4) {
+        setPaymentError('Please enter a valid account number');
+        return;
+      }
+      
+      // Save ACH to Stripe now
+      setAchProcessing(true);
+      setSubmitting(true);
+      try {
+        // Determine entity code from contract items
+        const entityCode = contract.items?.[0]?.entity_code || 'wsic';
+        
+        const response = await fetch(`${API_BASE}/api/orders/payment-method/ach`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entityCode,
+            clientId: contract.client_id,
+            accountHolderName: bankAccountName.trim(),
+            routingNumber: bankRoutingNumber,
+            accountNumber: bankAccountNumber,
+            accountType: bankAccountType,
+            clientEmail: signerEmail || contract.contact?.email,
+            clientName: contract.client_name,
+          }),
+        });
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to save bank account');
+        }
+
+        // Store the payment method ID for the final submission
+        setPaymentMethodId(result.paymentMethodId);
+        setStep2Complete(true);
+        setCurrentStep(3);
+      } catch (err) {
+        setPaymentError(err.message);
+      } finally {
+        setAchProcessing(false);
+        setSubmitting(false);
+      }
       return;
     }
     
@@ -820,13 +869,14 @@ export default function ClientSigningPage() {
             {/* ACH Form - for direct ACH or as invoice backup */}
             {(billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach')) && currentStep === 2 && (
               <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
-                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '16px' }}>
-                  {billingPreference === 'invoice' ? '🏦 Backup Bank Account' : '🏦 Bank Account'}
+                <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>
+                  {billingPreference === 'invoice' ? '🏦 Backup Bank Account' : '🏦 Bank Account Details'}
                 </div>
                 <p style={{ fontSize: '13px', color: '#64748b', marginTop: 0, marginBottom: '16px' }}>
-                  After signing, you'll receive a secure link via email to connect your bank account through Stripe.
+                  Enter your bank account information for ACH direct debit. Your information is securely stored with Stripe.
                 </p>
-                <div>
+                
+                <div style={{ marginBottom: '12px' }}>
                   <label style={styles.label}>Account Holder Name *</label>
                   <input 
                     type="text" 
@@ -835,6 +885,72 @@ export default function ClientSigningPage() {
                     placeholder="Business or Personal Name" 
                     style={styles.input} 
                   />
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                  <div>
+                    <label style={styles.label}>Routing Number *</label>
+                    <input 
+                      type="text" 
+                      value={bankRoutingNumber} 
+                      onChange={e => setBankRoutingNumber(e.target.value.replace(/\D/g, '').slice(0, 9))} 
+                      placeholder="9 digits" 
+                      style={styles.input}
+                      maxLength={9}
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Account Number *</label>
+                    <input 
+                      type="text" 
+                      value={bankAccountNumber} 
+                      onChange={e => setBankAccountNumber(e.target.value.replace(/\D/g, ''))} 
+                      placeholder="Account number" 
+                      style={styles.input}
+                    />
+                  </div>
+                </div>
+                
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={styles.label}>Account Type *</label>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setBankAccountType('checking')}
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: bankAccountType === 'checking' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                        background: bankAccountType === 'checking' ? '#eff6ff' : 'white',
+                        cursor: 'pointer',
+                        fontWeight: '500',
+                        color: '#1e293b'
+                      }}
+                    >
+                      Checking
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBankAccountType('savings')}
+                      style={{
+                        flex: 1,
+                        padding: '12px',
+                        borderRadius: '8px',
+                        border: bankAccountType === 'savings' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
+                        background: bankAccountType === 'savings' ? '#eff6ff' : 'white',
+                        cursor: 'pointer',
+                        fontWeight: '500',
+                        color: '#1e293b'
+                      }}
+                    >
+                      Savings
+                    </button>
+                  </div>
+                </div>
+                
+                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '8px', padding: '12px', fontSize: '13px', color: '#92400e' }}>
+                  <strong>Note:</strong> By providing your bank account details, you authorize us to debit your account for the agreed amounts according to the billing schedule.
                 </div>
               </div>
             )}
@@ -855,10 +971,10 @@ export default function ClientSigningPage() {
                 <button onClick={() => { setStep1Complete(false); setCurrentStep(1); }} style={{ ...styles.button, ...styles.secondaryButton }}>Back</button>
                 <button 
                   onClick={handleConfirmPayment} 
-                  disabled={submitting}
-                  style={{ ...styles.button, ...styles.primaryButton, opacity: submitting ? 0.6 : 1 }}
+                  disabled={submitting || achProcessing}
+                  style={{ ...styles.button, ...styles.primaryButton, opacity: (submitting || achProcessing) ? 0.6 : 1 }}
                 >
-                  {submitting ? <><Icons.Loader size={20} /> Processing...</> : <><Icons.Check size={20} /> Confirm Payment Info</>}
+                  {(submitting || achProcessing) ? <><Icons.Loader size={20} /> {achProcessing ? 'Saving Bank Info...' : 'Processing...'}</> : <><Icons.Check size={20} /> Confirm Payment Info</>}
                 </button>
               </div>
             )}
