@@ -2,7 +2,7 @@
 nixPkgs = ["nodejs_18", "python311", "python311Packages.pip"]
 
 [phases.install]
-cmds = ["npm install", "pip install reportlab"]
+cmds = ["npm install", "pip install reportlab --break-system-packages"]
 
 [start]
 cmd = "node server.js"
