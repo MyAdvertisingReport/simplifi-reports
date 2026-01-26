@@ -88,6 +88,36 @@ const Icons = {
       <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
     </svg>
   ),
+  FilePlus: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="12" x2="12" y1="18" y2="12"/><line x1="9" x2="15" y1="15" y2="15"/>
+    </svg>
+  ),
+  RefreshCw: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+    </svg>
+  ),
+  XCircle: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>
+    </svg>
+  ),
+  PenLine: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+    </svg>
+  ),
+  Upload: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/>
+    </svg>
+  ),
+  ArrowLeft: () => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>
+    </svg>
+  ),
 };
 
 // Status badge colors
@@ -129,6 +159,11 @@ export default function OrderList() {
   // Modal states
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+
+  // New Order Type Selection Modal
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
+  const [modalStep, setModalStep] = useState(1); // 1 = select type, 2 = select signature method
+  const [selectedOrderType, setSelectedOrderType] = useState(null); // 'new', 'change', 'kill'
 
   // Fetch data on mount
   useEffect(() => {
@@ -354,9 +389,9 @@ export default function OrderList() {
           <button onClick={fetchOrders} style={styles.refreshButton} title="Refresh">
             <Icons.Refresh />
           </button>
-          <a href="/orders/new" style={styles.newOrderButton}>
+          <button onClick={() => { setShowNewOrderModal(true); setModalStep(1); setSelectedOrderType(null); }} style={styles.newOrderButton}>
             <Icons.Plus /> New Order
-          </a>
+          </button>
         </div>
       </div>
 
@@ -653,6 +688,138 @@ export default function OrderList() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* New Order Type Selection Modal */}
+      {showNewOrderModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowNewOrderModal(false)}>
+          <div style={styles.newOrderModalContent} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                {modalStep === 2 && (
+                  <button 
+                    onClick={() => { setModalStep(1); setSelectedOrderType(null); }} 
+                    style={styles.backButtonSmall}
+                  >
+                    <Icons.ArrowLeft />
+                  </button>
+                )}
+                <h2 style={styles.modalTitle}>
+                  {modalStep === 1 ? 'Select Order Type' : 'Select Signature Method'}
+                </h2>
+              </div>
+              <button onClick={() => setShowNewOrderModal(false)} style={styles.closeButton}>
+                <Icons.X />
+              </button>
+            </div>
+
+            <div style={styles.newOrderModalBody}>
+              {modalStep === 1 ? (
+                <>
+                  <p style={styles.modalSubtext}>What type of order would you like to create?</p>
+                  <div style={styles.orderTypeGrid}>
+                    {/* New Order */}
+                    <button
+                      onClick={() => { setSelectedOrderType('new'); setModalStep(2); }}
+                      style={styles.orderTypeCard}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; e.currentTarget.style.backgroundColor = '#eff6ff'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = 'white'; }}
+                    >
+                      <div style={{ ...styles.orderTypeIcon, backgroundColor: '#dbeafe', color: '#2563eb' }}>
+                        <Icons.FilePlus />
+                      </div>
+                      <div style={styles.orderTypeInfo}>
+                        <span style={styles.orderTypeName}>New Order</span>
+                        <span style={styles.orderTypeDesc}>Create a new advertising contract</span>
+                      </div>
+                    </button>
+
+                    {/* Change Order */}
+                    <button
+                      onClick={() => { setSelectedOrderType('change'); setModalStep(2); }}
+                      style={styles.orderTypeCard}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.backgroundColor = '#fffbeb'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = 'white'; }}
+                    >
+                      <div style={{ ...styles.orderTypeIcon, backgroundColor: '#fef3c7', color: '#d97706' }}>
+                        <Icons.RefreshCw />
+                      </div>
+                      <div style={styles.orderTypeInfo}>
+                        <span style={styles.orderTypeName}>Change Order</span>
+                        <span style={styles.orderTypeDesc}>Modify an existing contract</span>
+                      </div>
+                    </button>
+
+                    {/* Kill Order */}
+                    <button
+                      onClick={() => { setSelectedOrderType('kill'); setModalStep(2); }}
+                      style={styles.orderTypeCard}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.backgroundColor = '#fef2f2'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = 'white'; }}
+                    >
+                      <div style={{ ...styles.orderTypeIcon, backgroundColor: '#fee2e2', color: '#dc2626' }}>
+                        <Icons.XCircle />
+                      </div>
+                      <div style={styles.orderTypeInfo}>
+                        <span style={styles.orderTypeName}>Kill Order</span>
+                        <span style={styles.orderTypeDesc}>Cancel an existing contract</span>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p style={styles.modalSubtext}>
+                    {selectedOrderType === 'new' && 'How will this contract be signed?'}
+                    {selectedOrderType === 'change' && 'How will this change order be signed?'}
+                    {selectedOrderType === 'kill' && 'How will this cancellation be signed?'}
+                  </p>
+                  <div style={styles.signatureMethodGrid}>
+                    {/* Electronic Signature */}
+                    <a
+                      href={
+                        selectedOrderType === 'new' ? '/orders/new' :
+                        selectedOrderType === 'change' ? '/orders/new/change' :
+                        '/orders/new/kill'
+                      }
+                      style={styles.signatureMethodCard}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.backgroundColor = '#ecfdf5'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = 'white'; }}
+                    >
+                      <div style={{ ...styles.signatureMethodIcon, backgroundColor: '#d1fae5', color: '#059669' }}>
+                        <Icons.PenLine />
+                      </div>
+                      <div style={styles.signatureMethodInfo}>
+                        <span style={styles.signatureMethodName}>For Electronic Signature</span>
+                        <span style={styles.signatureMethodDesc}>Client will sign digitally via email link</span>
+                      </div>
+                    </a>
+
+                    {/* Already Signed (Upload) */}
+                    <a
+                      href={
+                        selectedOrderType === 'new' ? '/orders/new/upload' :
+                        selectedOrderType === 'change' ? '/orders/new/change-upload' :
+                        '/orders/new/kill-upload'
+                      }
+                      style={styles.signatureMethodCard}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#8b5cf6'; e.currentTarget.style.backgroundColor = '#f5f3ff'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.backgroundColor = 'white'; }}
+                    >
+                      <div style={{ ...styles.signatureMethodIcon, backgroundColor: '#ede9fe', color: '#7c3aed' }}>
+                        <Icons.Upload />
+                      </div>
+                      <div style={styles.signatureMethodInfo}>
+                        <span style={styles.signatureMethodName}>Form Already Signed</span>
+                        <span style={styles.signatureMethodDesc}>Upload a pre-signed PDF document</span>
+                      </div>
+                    </a>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -1472,6 +1639,118 @@ const styles = {
     fontSize: '14px',
     fontWeight: '500',
     cursor: 'pointer',
+  },
+
+  // New Order Type Selection Modal Styles
+  newOrderModalContent: {
+    backgroundColor: 'white',
+    borderRadius: '16px',
+    width: '500px',
+    maxWidth: '95vw',
+    maxHeight: '90vh',
+    overflow: 'hidden',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+  },
+  newOrderModalBody: {
+    padding: '24px',
+  },
+  modalSubtext: {
+    fontSize: '14px',
+    color: '#64748b',
+    marginBottom: '20px',
+  },
+  orderTypeGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  orderTypeCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    padding: '16px 20px',
+    backgroundColor: 'white',
+    border: '2px solid #e2e8f0',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    textAlign: 'left',
+    width: '100%',
+  },
+  orderTypeIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '48px',
+    height: '48px',
+    borderRadius: '12px',
+    flexShrink: 0,
+  },
+  orderTypeInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  orderTypeName: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  orderTypeDesc: {
+    fontSize: '13px',
+    color: '#64748b',
+  },
+  signatureMethodGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  signatureMethodCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    padding: '16px 20px',
+    backgroundColor: 'white',
+    border: '2px solid #e2e8f0',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    textDecoration: 'none',
+  },
+  signatureMethodIcon: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '48px',
+    height: '48px',
+    borderRadius: '12px',
+    flexShrink: 0,
+  },
+  signatureMethodInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2px',
+  },
+  signatureMethodName: {
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1e293b',
+  },
+  signatureMethodDesc: {
+    fontSize: '13px',
+    color: '#64748b',
+  },
+  backButtonSmall: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '32px',
+    height: '32px',
+    backgroundColor: '#f1f5f9',
+    border: 'none',
+    borderRadius: '8px',
+    cursor: 'pointer',
+    color: '#64748b',
   },
 };
 
