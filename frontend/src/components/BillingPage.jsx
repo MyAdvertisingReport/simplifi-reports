@@ -175,7 +175,13 @@ export default function BillingPage() {
         throw new Error(err.error || 'Failed to send');
       }
       
-      alert(`Invoice ${invoice.invoice_number} approved and sent to client!`);
+      // Custom success message based on billing type
+      const isAutoBill = invoice.billing_preference === 'card' || invoice.billing_preference === 'ach';
+      const successMessage = isAutoBill 
+        ? 'The system is now processing the invoice and will notify the client after it is paid!'
+        : 'The invoice has been sent to the client for payment!';
+      
+      alert(`✅ ${successMessage}`);
       loadData();
     } catch (err) {
       alert(err.message);
@@ -450,7 +456,6 @@ export default function BillingPage() {
                         {isExpanded ? <ChevronDown size={18} color="#64748b" /> : <ChevronRight size={18} color="#64748b" />}
                         <div>
                           <div style={{ fontWeight: '600', color: '#1e293b' }}>{invoice.invoice_number}</div>
-                          {invoice.order_number && <div style={{ fontSize: '12px', color: '#64748b' }}>Order: {invoice.order_number}</div>}
                         </div>
                       </div>
                       <div style={{ fontWeight: '500' }}>{invoice.client_name}</div>
@@ -461,15 +466,23 @@ export default function BillingPage() {
                       </div>
                       <div>{formatDate(invoice.due_date)}</div>
                       <div style={{ display: 'flex', gap: '8px' }} onClick={e => e.stopPropagation()}>
-                        {/* Draft: Approve & Send */}
+                        {/* Draft: Edit & Approve & Send */}
                         {invoice.status === 'draft' && (
-                          <button
-                            onClick={() => handleApproveAndSend(invoice)}
-                            style={{ ...styles.button, ...styles.buttonSuccess, padding: '6px 12px', fontSize: '13px' }}
-                            disabled={isProcessing}
-                          >
-                            {isProcessing ? <Loader2 size={14} /> : <><Send size={14} /> Approve & Send</>}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => navigate(`/billing/edit/${invoice.id}`)}
+                              style={{ ...styles.button, ...styles.buttonSecondary, padding: '6px 12px', fontSize: '13px' }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleApproveAndSend(invoice)}
+                              style={{ ...styles.button, ...styles.buttonSuccess, padding: '6px 12px', fontSize: '13px' }}
+                              disabled={isProcessing}
+                            >
+                              {isProcessing ? <Loader2 size={14} /> : <><Send size={14} /> Approve & Send</>}
+                            </button>
+                          </>
                         )}
                         
                         {/* Approved: Just Send */}
@@ -542,11 +555,6 @@ export default function BillingPage() {
                               <div style={styles.detailSection}>
                                 <div style={styles.detailTitle}><Building2 size={14} style={{ display: 'inline', marginRight: '6px' }} />Client</div>
                                 <div style={{ fontWeight: '600', marginBottom: '8px' }}>{details.client_name}</div>
-                                {details.order_number && (
-                                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-                                    Order: {details.order_number}
-                                  </div>
-                                )}
                               </div>
 
                               {/* Invoice Info */}

@@ -10455,6 +10455,7 @@ function App() {
           <Route path="/admin/documents" element={<ProtectedRoute><AdminDocumentsPage /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
           <Route path="/billing/new" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
+          <Route path="/billing/edit/:id" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
           <Route path="/orders" element={<ProtectedRoute><OrderList /></ProtectedRoute>} />
           <Route path="/orders/new" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
           <Route path="/orders/new/select" element={<ProtectedRoute><OrderTypeSelector /></ProtectedRoute>} />

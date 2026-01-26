@@ -900,14 +900,16 @@ async function sendInvoiceToClient({ invoice, contact }) {
 
   const content = `
     <div class="header" style="background-color: #1e3a8a; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
-      <!-- Brand Logos -->
-      <div style="margin-bottom: 20px;">
-        <img src="https://myadvertisingreport.com/wsic-logo-white.png" alt="WSIC" style="height: 40px; margin: 0 10px;" onerror="this.style.display='none'" />
-        <img src="https://myadvertisingreport.com/lkn-logo-white.png" alt="Lake Norman Woman" style="height: 40px; margin: 0 10px;" onerror="this.style.display='none'" />
-        <img src="https://myadvertisingreport.com/lwp-logo-white.png" alt="LiveWorkPlay" style="height: 40px; margin: 0 10px;" onerror="this.style.display='none'" />
+      <!-- Brand Names -->
+      <div style="margin-bottom: 16px;">
+        <span style="color: #ffffff; font-weight: 600; font-size: 14px; margin: 0 12px; opacity: 0.9;">WSIC</span>
+        <span style="color: #ffffff; opacity: 0.5;">•</span>
+        <span style="color: #ffffff; font-weight: 600; font-size: 14px; margin: 0 12px; opacity: 0.9;">Lake Norman Woman</span>
+        <span style="color: #ffffff; opacity: 0.5;">•</span>
+        <span style="color: #ffffff; font-weight: 600; font-size: 14px; margin: 0 12px; opacity: 0.9;">LiveWorkPlay</span>
       </div>
-      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">📄 Your Invoice is Ready</h1>
-      <p style="color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px;">${invoiceMonth}</p>
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 26px; font-weight: 700;">Your Invoice is Ready</h1>
+      <p style="color: #e0e7ff !important; margin: 12px 0 0; font-size: 16px;">${invoiceMonth}</p>
     </div>
     <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
       <p style="color: #374151; font-size: 16px;">Hi ${contact.first_name || 'there'},</p>
@@ -939,7 +941,7 @@ async function sendInvoiceToClient({ invoice, contact }) {
       </table>
       
       <div style="text-align: center; margin: 32px 0;">
-        <a href="${invoice.stripe_invoice_url || `${BASE_URL}/pay/${invoice.id}`}" style="display: inline-block; padding: 18px 48px; background: linear-gradient(135deg, #059669 0%, #10b981 100%); color: #ffffff !important; text-decoration: none; border-radius: 12px; font-weight: 600; font-size: 18px; box-shadow: 0 4px 14px rgba(5, 150, 105, 0.4);">💳 Pay Invoice Now</a>
+        <a href="${invoice.stripe_invoice_url || `${BASE_URL}/pay/${invoice.id}`}" style="display: inline-block; padding: 18px 48px; background-color: #059669; color: #ffffff !important; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 18px;">Pay Invoice Now</a>
       </div>
       
       <!-- Auto-Charge Notice -->
@@ -962,7 +964,7 @@ async function sendInvoiceToClient({ invoice, contact }) {
     </div>
     <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">
       <p style="margin: 0 0 8px 0;">Thank you for being a valued partner!</p>
-      <p style="margin: 0; font-size: 12px;">Questions? Reply to this email or call (704) 868-7825</p>
+      <p style="margin: 0; font-size: 12px;">Any questions about this invoice? Please reach out directly to your Sales Associate.</p>
     </div>
   `;
 

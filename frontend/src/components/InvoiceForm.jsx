@@ -1,14 +1,14 @@
 /**
  * InvoiceForm.jsx
- * Create new invoice or generate from existing order
+ * Create new invoice, generate from existing order, or edit existing invoice
  * Now includes product selector like OrderForm
  */
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { 
   FileText, ArrowLeft, Plus, Trash2, DollarSign, Calendar,
-  Building2, Search, CheckCircle, AlertCircle, X, User, Package
+  Building2, Search, CheckCircle, AlertCircle, X, User, Package, Edit
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -34,9 +34,11 @@ const formatCurrency = (amount) => {
 
 export default function InvoiceForm() {
   const navigate = useNavigate();
+  const { id: invoiceId } = useParams(); // For edit mode
   const [searchParams] = useSearchParams();
   const orderIdParam = searchParams.get('order');
   
+  const isEditMode = !!invoiceId;
   const [mode, setMode] = useState(orderIdParam ? 'from-order' : 'manual');
   const [clients, setClients] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -85,16 +87,55 @@ export default function InvoiceForm() {
 
   useEffect(() => {
     loadInitialData();
-    if (orderIdParam) loadOrderDetails(orderIdParam);
-  }, [orderIdParam]);
+    if (isEditMode) {
+      loadExistingInvoice(invoiceId);
+    } else if (orderIdParam) {
+      loadOrderDetails(orderIdParam);
+    }
+  }, [invoiceId, orderIdParam]);
 
   useEffect(() => {
-    if (selectedClient) loadClientOrders(selectedClient.id);
+    if (selectedClient && !isEditMode) loadClientOrders(selectedClient.id);
   }, [selectedClient]);
 
   useEffect(() => {
     setAddProcessingFee(billingPreference === 'card');
   }, [billingPreference]);
+
+  // Load existing invoice for edit mode
+  const loadExistingInvoice = async (id) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/billing/invoices/${id}`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Failed to load invoice');
+      const invoice = await res.json();
+      
+      // Populate form fields
+      setSelectedClient({ id: invoice.client_id, business_name: invoice.client_name });
+      setBillingPeriodStart(invoice.billing_period_start?.split('T')[0] || '');
+      setBillingPeriodEnd(invoice.billing_period_end?.split('T')[0] || '');
+      setDueDate(invoice.due_date?.split('T')[0] || '');
+      setBillingPreference(invoice.billing_preference || 'invoice');
+      setAddProcessingFee(parseFloat(invoice.processing_fee) > 0);
+      setNotes(invoice.notes || '');
+      setMode('manual'); // Edit mode always uses manual
+      
+      // Populate items
+      if (invoice.items?.length) {
+        setItems(invoice.items.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity || 1,
+          unit_price: parseFloat(item.unit_price) || 0,
+          product_id: item.product_id
+        })));
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadInitialData = async () => {
     setClientsLoading(true);
@@ -272,8 +313,13 @@ export default function InvoiceForm() {
     if (items.length === 0) return setError('Add at least one line item');
     setSubmitting(true); setError(null);
     try {
-      const res = await fetch(`${API_BASE}/api/billing/invoices`, {
-        method: 'POST', headers: getAuthHeaders(),
+      const url = isEditMode 
+        ? `${API_BASE}/api/billing/invoices/${invoiceId}`
+        : `${API_BASE}/api/billing/invoices`;
+      
+      const res = await fetch(url, {
+        method: isEditMode ? 'PUT' : 'POST', 
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           client_id: selectedClient.id, order_id: selectedOrder?.id,
           billing_period_start: billingPeriodStart || null, billing_period_end: billingPeriodEnd || null,
@@ -283,7 +329,7 @@ export default function InvoiceForm() {
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
       const inv = await res.json();
-      setSuccess(`Invoice ${inv.invoice_number} created!`);
+      setSuccess(isEditMode ? 'Invoice updated!' : `Invoice ${inv.invoice_number} created!`);
       setTimeout(() => navigate('/billing'), 1500);
     } catch (err) { setError(err.message); }
     finally { setSubmitting(false); }
@@ -335,13 +381,13 @@ export default function InvoiceForm() {
     <div style={styles.container}>
       <div style={{ marginBottom: '24px' }}>
         <button onClick={() => navigate('/billing')} style={styles.backButton}><ArrowLeft size={20} /> Back to Billing</button>
-        <h1 style={styles.title}>Create Invoice</h1>
+        <h1 style={styles.title}>{isEditMode ? 'Edit Invoice' : 'Create Invoice'}</h1>
       </div>
 
       {error && <div style={{ ...styles.alert, ...styles.alertError }}><AlertCircle size={20} />{error}</div>}
       {success && <div style={{ ...styles.alert, ...styles.alertSuccess }}><CheckCircle size={20} />{success}</div>}
 
-      {!orderIdParam && (
+      {!orderIdParam && !isEditMode && (
         <div style={styles.modeToggle}>
           <button style={{ ...styles.modeButton, ...(mode === 'from-order' ? styles.modeButtonActive : {}) }} onClick={() => setMode('from-order')}>
             <FileText size={20} style={{ marginBottom: '8px' }} />
@@ -373,7 +419,9 @@ export default function InvoiceForm() {
           {selectedClient ? (
             <div style={{ ...styles.clientCard, ...styles.clientCardSelected }}>
               <div style={{ fontWeight: '600' }}>{selectedClient.business_name}</div>
-              <button type="button" onClick={() => { setSelectedClient(null); setSelectedOrder(null); setItems([]); }} style={{ fontSize: '13px', color: '#1e3a8a', background: 'none', border: 'none', cursor: 'pointer', marginTop: '4px' }}>Change</button>
+              {!isEditMode && (
+                <button type="button" onClick={() => { setSelectedClient(null); setSelectedOrder(null); setItems([]); }} style={{ fontSize: '13px', color: '#1e3a8a', background: 'none', border: 'none', cursor: 'pointer', marginTop: '4px' }}>Change</button>
+              )}
             </div>
           ) : (
             <>
@@ -588,10 +636,12 @@ export default function InvoiceForm() {
         {/* Actions */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button type="button" onClick={() => navigate('/billing')} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
-          {mode === 'from-order' ? (
+          {mode === 'from-order' && !isEditMode ? (
             <button type="button" onClick={handleGenerateFromOrder} style={{ ...styles.button, ...styles.buttonPrimary }} disabled={submitting || !selectedOrder}>{submitting ? <Loader2 size={16} /> : <FileText size={16} />} Generate Invoice</button>
           ) : (
-            <button type="submit" style={{ ...styles.button, ...styles.buttonPrimary }} disabled={submitting || !selectedClient || items.length === 0}>{submitting ? <Loader2 size={16} /> : <CheckCircle size={16} />} Create Invoice</button>
+            <button type="submit" style={{ ...styles.button, ...styles.buttonPrimary }} disabled={submitting || !selectedClient || items.length === 0}>
+              {submitting ? <Loader2 size={16} /> : <CheckCircle size={16} />} {isEditMode ? 'Save Changes' : 'Create Invoice'}
+            </button>
           )}
         </div>
       </form>
