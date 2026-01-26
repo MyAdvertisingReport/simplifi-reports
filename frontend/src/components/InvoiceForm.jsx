@@ -1,13 +1,14 @@
 /**
  * InvoiceForm.jsx
  * Create new invoice or generate from existing order
+ * Now includes product selector like OrderForm
  */
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   FileText, ArrowLeft, Plus, Trash2, DollarSign, Calendar,
-  Building2, Search, CheckCircle, AlertCircle, X, User
+  Building2, Search, CheckCircle, AlertCircle, X, User, Package
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -26,6 +27,11 @@ const Loader2 = ({ size = 24 }) => (
   </svg>
 );
 
+// Format currency helper
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
+};
+
 export default function InvoiceForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -34,10 +40,16 @@ export default function InvoiceForm() {
   const [mode, setMode] = useState(orderIdParam ? 'from-order' : 'manual');
   const [clients, setClients] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [entities, setEntities] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [clientSearch, setClientSearch] = useState('');
   const [clientsLoading, setClientsLoading] = useState(true);
+  
+  // Product Modal
+  const [showProductModal, setShowProductModal] = useState(false);
   
   // New Client Modal
   const [showNewClientModal, setShowNewClientModal] = useState(false);
@@ -64,7 +76,7 @@ export default function InvoiceForm() {
   const [billingPreference, setBillingPreference] = useState('invoice');
   const [addProcessingFee, setAddProcessingFee] = useState(false);
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState([{ description: '', quantity: 1, unit_price: '' }]);
+  const [items, setItems] = useState([]);
   
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -72,7 +84,7 @@ export default function InvoiceForm() {
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
-    loadClients();
+    loadInitialData();
     if (orderIdParam) loadOrderDetails(orderIdParam);
   }, [orderIdParam]);
 
@@ -84,22 +96,23 @@ export default function InvoiceForm() {
     setAddProcessingFee(billingPreference === 'card');
   }, [billingPreference]);
 
-  const loadClients = async () => {
+  const loadInitialData = async () => {
     setClientsLoading(true);
     try {
-      // Use the same endpoint as OrderForm
-      const res = await fetch(`${API_BASE}/api/orders/clients?limit=100`, { headers: getAuthHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        console.log('Loaded clients:', data);
-        setClients(Array.isArray(data) ? data : []);
-      } else {
-        console.error('Failed to load clients:', res.status);
-        setClients([]);
-      }
+      const headers = getAuthHeaders();
+      const [clientsRes, productsRes, entitiesRes, categoriesRes] = await Promise.all([
+        fetch(`${API_BASE}/api/orders/clients?limit=100`, { headers }),
+        fetch(`${API_BASE}/api/orders/products/list`, { headers }),
+        fetch(`${API_BASE}/api/orders/entities/list`, { headers }),
+        fetch(`${API_BASE}/api/orders/categories/list`, { headers })
+      ]);
+      
+      if (clientsRes.ok) setClients(await clientsRes.json());
+      if (productsRes.ok) setProducts(await productsRes.json());
+      if (entitiesRes.ok) setEntities(await entitiesRes.json());
+      if (categoriesRes.ok) setCategories(await categoriesRes.json());
     } catch (err) { 
-      console.error('Error loading clients:', err); 
-      setClients([]);
+      console.error('Error loading data:', err); 
     } finally {
       setClientsLoading(false);
     }
@@ -118,7 +131,6 @@ export default function InvoiceForm() {
   // Handle order selection - fetch full order details
   const handleSelectOrder = async (order) => {
     try {
-      // Fetch full order details including items
       const res = await fetch(`${API_BASE}/api/orders/${order.id}`, { headers: getAuthHeaders() });
       if (!res.ok) throw new Error('Failed to load order details');
       const fullOrder = await res.json();
@@ -133,7 +145,8 @@ export default function InvoiceForm() {
           quantity: item.quantity || 1,
           unit_price: parseFloat(item.adjusted_price || item.unit_price || 0),
           order_item_id: item.id,
-          product_id: item.product_id
+          product_id: item.product_id,
+          entity_name: item.entity_name
         })));
       }
       
@@ -161,9 +174,10 @@ export default function InvoiceForm() {
         setItems(order.items.map(item => ({
           description: item.product_name || 'Advertising Service',
           quantity: item.quantity || 1,
-          unit_price: item.adjusted_price || item.unit_price || 0,
+          unit_price: parseFloat(item.adjusted_price || item.unit_price || 0),
           order_item_id: item.id,
-          product_id: item.product_id
+          product_id: item.product_id,
+          entity_name: item.entity_name
         })));
       }
       const now = new Date();
@@ -183,7 +197,6 @@ export default function InvoiceForm() {
     setError(null);
     
     try {
-      // Use the same endpoint as OrderForm
       const res = await fetch(`${API_BASE}/api/orders/clients`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -217,12 +230,24 @@ export default function InvoiceForm() {
     }
   };
 
+  // Add product to invoice items
+  const addProductToInvoice = (product) => {
+    const entity = entities.find(e => e.id === product.entity_id);
+    setItems([...items, {
+      description: product.name,
+      quantity: 1,
+      unit_price: parseFloat(product.default_rate) || 0,
+      product_id: product.id,
+      entity_name: entity?.name || product.entity_name
+    }]);
+    setShowProductModal(false);
+  };
+
   const subtotal = items.reduce((sum, i) => sum + (parseFloat(i.unit_price || 0) * (parseInt(i.quantity) || 1)), 0);
   const processingFee = addProcessingFee ? Math.round(subtotal * 0.035 * 100) / 100 : 0;
   const total = subtotal + processingFee;
 
-  const addItem = () => setItems([...items, { description: '', quantity: 1, unit_price: '' }]);
-  const removeItem = (i) => items.length > 1 && setItems(items.filter((_, idx) => idx !== i));
+  const removeItem = (i) => setItems(items.filter((_, idx) => idx !== i));
   const updateItem = (i, field, value) => { const u = [...items]; u[i][field] = value; setItems(u); };
 
   const handleGenerateFromOrder = async () => {
@@ -244,7 +269,7 @@ export default function InvoiceForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedClient) return setError('Please select a client');
-    if (items.every(i => !i.description || !i.unit_price)) return setError('Add at least one line item');
+    if (items.length === 0) return setError('Add at least one line item');
     setSubmitting(true); setError(null);
     try {
       const res = await fetch(`${API_BASE}/api/billing/invoices`, {
@@ -253,7 +278,7 @@ export default function InvoiceForm() {
           client_id: selectedClient.id, order_id: selectedOrder?.id,
           billing_period_start: billingPeriodStart || null, billing_period_end: billingPeriodEnd || null,
           due_date: dueDate, billing_preference: billingPreference, add_processing_fee: addProcessingFee, notes,
-          items: items.filter(i => i.description && i.unit_price).map(i => ({ ...i, unit_price: parseFloat(i.unit_price) }))
+          items: items.map(i => ({ ...i, unit_price: parseFloat(i.unit_price) }))
         })
       });
       if (!res.ok) throw new Error((await res.json()).error || 'Failed');
@@ -278,7 +303,6 @@ export default function InvoiceForm() {
     input: { width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' },
     select: { width: '100%', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', outline: 'none', cursor: 'pointer', background: 'white' },
     grid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' },
-    itemRow: { display: 'grid', gridTemplateColumns: '1fr 80px 100px 40px', gap: '12px', alignItems: 'end', marginBottom: '12px' },
     button: { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: '500', cursor: 'pointer', border: 'none' },
     buttonPrimary: { background: '#1e3a8a', color: 'white' },
     buttonSecondary: { background: '#f1f5f9', color: '#374151' },
@@ -296,6 +320,13 @@ export default function InvoiceForm() {
     modalHeader: { padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
     modalBody: { padding: '24px' },
     modalFooter: { padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' },
+    productItem: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', border: '1px solid #e2e8f0', borderRadius: '10px', marginBottom: '10px', background: '#f8fafc' },
+    productInfo: { flex: 1 },
+    productName: { fontWeight: '600', color: '#1e293b', fontSize: '14px' },
+    productEntity: { fontSize: '12px', color: '#64748b', marginTop: '2px' },
+    productPrice: { fontWeight: '700', color: '#1e3a8a', fontSize: '16px', textAlign: 'right' },
+    removeBtn: { padding: '6px', background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: '6px', cursor: 'pointer', marginLeft: '12px' },
+    addProductBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '16px', border: '2px dashed #cbd5e1', borderRadius: '10px', background: 'transparent', color: '#64748b', cursor: 'pointer', width: '100%', fontSize: '14px', fontWeight: '500' },
   };
 
   if (loading) return <div style={styles.container}><div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}><Loader2 size={32} /></div></div>;
@@ -342,7 +373,7 @@ export default function InvoiceForm() {
           {selectedClient ? (
             <div style={{ ...styles.clientCard, ...styles.clientCardSelected }}>
               <div style={{ fontWeight: '600' }}>{selectedClient.business_name}</div>
-              <button type="button" onClick={() => { setSelectedClient(null); setSelectedOrder(null); }} style={{ fontSize: '13px', color: '#1e3a8a', background: 'none', border: 'none', cursor: 'pointer', marginTop: '4px' }}>Change</button>
+              <button type="button" onClick={() => { setSelectedClient(null); setSelectedOrder(null); setItems([]); }} style={{ fontSize: '13px', color: '#1e3a8a', background: 'none', border: 'none', cursor: 'pointer', marginTop: '4px' }}>Change</button>
             </div>
           ) : (
             <>
@@ -465,30 +496,10 @@ export default function InvoiceForm() {
                 <div style={{ fontWeight: '500', color: '#1e293b' }}>${parseFloat(selectedOrder.contract_total || 0).toLocaleString()}</div>
               </div>
             </div>
-
-            {selectedOrder.items?.length > 0 && (
-              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Products ({selectedOrder.items.length})</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {selectedOrder.items.map((item, idx) => (
-                    <span key={idx} style={{ 
-                      padding: '4px 10px', 
-                      background: '#e0e7ff', 
-                      color: '#3730a3', 
-                      borderRadius: '6px', 
-                      fontSize: '12px',
-                      fontWeight: '500'
-                    }}>
-                      {item.product_name} - ${parseFloat(item.adjusted_price || item.unit_price || 0).toLocaleString()}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
             
             <button 
               type="button" 
-              onClick={() => { setSelectedOrder(null); setItems([{ description: '', quantity: 1, unit_price: '' }]); }}
+              onClick={() => { setSelectedOrder(null); setItems([]); }}
               style={{ marginTop: '12px', fontSize: '13px', color: '#1e3a8a', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
             >
               Change Order
@@ -507,22 +518,64 @@ export default function InvoiceForm() {
           </div>
         </div>
 
-        {/* Line Items */}
+        {/* Line Items - Product Based */}
         <div style={styles.card}>
-          <h3 style={styles.sectionTitle}><DollarSign size={20} /> Line Items</h3>
-          {items.map((item, i) => (
-            <div key={i} style={styles.itemRow}>
-              <input type="text" placeholder="Description" value={item.description} onChange={(e) => updateItem(i, 'description', e.target.value)} style={styles.input} />
-              <input type="number" min="1" value={item.quantity} onChange={(e) => updateItem(i, 'quantity', e.target.value)} style={styles.input} />
-              <input type="number" step="0.01" placeholder="0.00" value={item.unit_price} onChange={(e) => updateItem(i, 'unit_price', e.target.value)} style={styles.input} />
-              <button type="button" onClick={() => removeItem(i)} style={{ padding: '8px', background: '#fef2f2', color: '#dc2626', border: 'none', borderRadius: '8px', cursor: 'pointer' }} disabled={items.length <= 1}><Trash2 size={16} /></button>
+          <h3 style={styles.sectionTitle}><Package size={20} /> Products & Services</h3>
+          
+          {items.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>
+              <Package size={40} style={{ marginBottom: '12px', opacity: 0.5 }} />
+              <p style={{ margin: '0 0 16px 0' }}>No products added yet</p>
             </div>
-          ))}
-          <button type="button" onClick={addItem} style={{ ...styles.button, ...styles.buttonSecondary, marginTop: '8px' }}><Plus size={16} /> Add Item</button>
+          ) : (
+            <div style={{ marginBottom: '16px' }}>
+              {items.map((item, i) => (
+                <div key={i} style={styles.productItem}>
+                  <div style={styles.productInfo}>
+                    <div style={styles.productName}>{item.description}</div>
+                    {item.entity_name && <div style={styles.productEntity}>{item.entity_name}</div>}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) => updateItem(i, 'quantity', parseInt(e.target.value) || 1)}
+                      style={{ ...styles.input, width: '60px', textAlign: 'center' }}
+                    />
+                    <span style={{ color: '#64748b' }}>×</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={item.unit_price}
+                      onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
+                      style={{ ...styles.input, width: '100px', textAlign: 'right' }}
+                    />
+                    <div style={styles.productPrice}>
+                      {formatCurrency((parseFloat(item.unit_price) || 0) * (parseInt(item.quantity) || 1))}
+                    </div>
+                    <button type="button" onClick={() => removeItem(i)} style={styles.removeBtn}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          <button 
+            type="button" 
+            onClick={() => setShowProductModal(true)} 
+            style={styles.addProductBtn}
+          >
+            <Plus size={18} /> Add Product from Catalog
+          </button>
+          
+          {/* Totals */}
           <div style={{ borderTop: '2px solid #e2e8f0', paddingTop: '16px', marginTop: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-            {addProcessingFee && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}><span>Processing Fee (3.5%)</span><span>${processingFee.toFixed(2)}</span></div>}
-            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontWeight: '700', fontSize: '18px', borderTop: '1px solid #e2e8f0' }}><span>Total</span><span style={{ color: '#1e3a8a' }}>${total.toFixed(2)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+            {addProcessingFee && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}><span>Processing Fee (3.5%)</span><span>{formatCurrency(processingFee)}</span></div>}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontWeight: '700', fontSize: '18px', borderTop: '1px solid #e2e8f0' }}><span>Total</span><span style={{ color: '#1e3a8a' }}>{formatCurrency(total)}</span></div>
           </div>
         </div>
 
@@ -536,12 +589,23 @@ export default function InvoiceForm() {
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button type="button" onClick={() => navigate('/billing')} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           {mode === 'from-order' ? (
-            <button type="button" onClick={handleGenerateFromOrder} style={{ ...styles.button, ...styles.buttonPrimary }} disabled={submitting || !selectedOrder}>{submitting ? <Loader2 size={16} /> : <FileText size={16} />} Generate</button>
+            <button type="button" onClick={handleGenerateFromOrder} style={{ ...styles.button, ...styles.buttonPrimary }} disabled={submitting || !selectedOrder}>{submitting ? <Loader2 size={16} /> : <FileText size={16} />} Generate Invoice</button>
           ) : (
-            <button type="submit" style={{ ...styles.button, ...styles.buttonPrimary }} disabled={submitting || !selectedClient}>{submitting ? <Loader2 size={16} /> : <CheckCircle size={16} />} Create</button>
+            <button type="submit" style={{ ...styles.button, ...styles.buttonPrimary }} disabled={submitting || !selectedClient || items.length === 0}>{submitting ? <Loader2 size={16} /> : <CheckCircle size={16} />} Create Invoice</button>
           )}
         </div>
       </form>
+
+      {/* Product Selector Modal */}
+      {showProductModal && (
+        <ProductSelectorModal
+          products={products}
+          entities={entities}
+          categories={categories}
+          onSelect={addProductToInvoice}
+          onClose={() => setShowProductModal(false)}
+        />
+      )}
 
       {/* New Client Modal */}
       {showNewClientModal && (
@@ -606,6 +670,215 @@ export default function InvoiceForm() {
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+
+// ============================================
+// Product Selector Modal (Simplified Version)
+// ============================================
+function ProductSelectorModal({ products, entities, categories, onSelect, onClose }) {
+  const [step, setStep] = useState(1);
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [selectedMedium, setSelectedMedium] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const brandConfig = {
+    wsic: { name: 'WSIC Radio', icon: '📻', color: '#3b82f6', bgColor: '#eff6ff', description: 'Radio, Podcast & Events' },
+    lkn: { name: 'Lake Norman Woman', icon: '📰', color: '#ec4899', bgColor: '#fdf2f8', description: 'Print & Digital Advertising' },
+    lwp: { name: 'LiveWorkPlay LKN', icon: '🌟', color: '#10b981', bgColor: '#ecfdf5', description: 'Combined audience reach' }
+  };
+
+  const mediumConfig = {
+    broadcast: { icon: '📻', name: 'Broadcast', description: 'Radio commercials & sponsorships' },
+    podcast: { icon: '🎙️', name: 'Podcast', description: 'Podcast ads & studio services' },
+    'web-social': { icon: '🌐', name: 'Web & Social', description: 'Newsletters, websites & social' },
+    events: { icon: '📅', name: 'Events', description: 'Sponsorships & live remotes' },
+    programmatic: { icon: '💻', name: 'Programmatic Digital', description: 'Display, OTT/CTV & Meta ads' },
+    print: { icon: '📰', name: 'Print', description: 'Magazine ads & editorials' }
+  };
+
+  const entityToBrand = {};
+  entities.forEach(e => {
+    if (e.code === 'wsic') entityToBrand[e.id] = 'wsic';
+    if (e.code === 'lkn') entityToBrand[e.id] = 'lkn';
+    if (e.code === 'lwp') entityToBrand[e.id] = 'lwp';
+  });
+
+  const getMediumsForBrand = (brandCode) => {
+    if (brandCode === 'wsic') return ['broadcast', 'podcast', 'events', 'web-social'];
+    if (brandCode === 'lkn') return ['programmatic', 'print', 'web-social'];
+    if (brandCode === 'lwp') return ['web-social'];
+    return [];
+  };
+
+  const categoryToMedium = (categoryName) => {
+    const name = (categoryName || '').toLowerCase();
+    if (name.includes('broadcast')) return 'broadcast';
+    if (name.includes('podcast')) return 'podcast';
+    if (name.includes('web') || name.includes('social')) return 'web-social';
+    if (name.includes('event')) return 'events';
+    if (name.includes('programmatic') || name.includes('digital')) return 'programmatic';
+    if (name.includes('print')) return 'print';
+    return null;
+  };
+
+  const getFilteredProducts = () => {
+    if (!selectedBrand || !selectedMedium) return [];
+    return products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productMedium = categoryToMedium(p.category_name);
+      const matchesBrand = productBrand === selectedBrand;
+      const matchesMedium = productMedium === selectedMedium;
+      const matchesSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesBrand && matchesMedium && matchesSearch;
+    });
+  };
+
+  const getProductCount = (brandCode, mediumCode) => {
+    return products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productMedium = categoryToMedium(p.category_name);
+      return productBrand === brandCode && productMedium === mediumCode;
+    }).length;
+  };
+
+  const handleBrandSelect = (brandCode) => {
+    setSelectedBrand(brandCode);
+    const mediums = getMediumsForBrand(brandCode);
+    if (mediums.length === 1) {
+      setSelectedMedium(mediums[0]);
+      setStep(3);
+    } else {
+      setStep(2);
+    }
+  };
+
+  const handleMediumSelect = (mediumCode) => {
+    setSelectedMedium(mediumCode);
+    setStep(3);
+  };
+
+  const handleBack = () => {
+    if (step === 3) {
+      const mediums = getMediumsForBrand(selectedBrand);
+      if (mediums.length === 1) {
+        setSelectedBrand(null);
+        setSelectedMedium(null);
+        setStep(1);
+      } else {
+        setSelectedMedium(null);
+        setStep(2);
+      }
+    } else if (step === 2) {
+      setSelectedBrand(null);
+      setStep(1);
+    }
+    setSearchQuery('');
+  };
+
+  const filteredProducts = getFilteredProducts();
+  const availableMediums = selectedBrand ? getMediumsForBrand(selectedBrand) : [];
+
+  const modalStyles = {
+    overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 },
+    modal: { backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '500px', maxHeight: '80vh', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)', display: 'flex', flexDirection: 'column' },
+    header: { display: 'flex', alignItems: 'center', padding: '20px', borderBottom: '1px solid #e2e8f0', gap: '12px' },
+    backBtn: { padding: '8px 12px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '500', color: '#64748b', cursor: 'pointer' },
+    title: { flex: 1, fontSize: '18px', fontWeight: '600', color: '#1e293b', margin: 0 },
+    closeBtn: { padding: '8px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', color: '#64748b', cursor: 'pointer' },
+    content: { padding: '16px', overflowY: 'auto', flex: 1 },
+    optionCard: { display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', backgroundColor: '#f8fafc', border: 'none', borderLeft: '4px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', textAlign: 'left', width: '100%', marginBottom: '12px' },
+    optionIcon: { fontSize: '28px' },
+    optionContent: { flex: 1 },
+    optionName: { fontWeight: '600', color: '#1e293b', fontSize: '15px' },
+    optionDesc: { fontSize: '13px', color: '#64748b', marginTop: '2px' },
+    productCard: { display: 'flex', alignItems: 'center', padding: '16px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', cursor: 'pointer', marginBottom: '10px' },
+    productInfo: { flex: 1 },
+    productName: { fontWeight: '600', color: '#1e293b', fontSize: '14px' },
+    productDesc: { fontSize: '12px', color: '#64748b', marginTop: '2px' },
+    productPrice: { fontWeight: '700', color: '#1e3a8a', fontSize: '16px' },
+    productRate: { fontSize: '11px', color: '#64748b' },
+    searchInput: { width: '100%', padding: '12px 16px', border: '1px solid #e2e8f0', borderRadius: '10px', fontSize: '14px', marginBottom: '16px', outline: 'none' },
+  };
+
+  return (
+    <div style={modalStyles.overlay} onClick={onClose}>
+      <div style={modalStyles.modal} onClick={e => e.stopPropagation()}>
+        <div style={modalStyles.header}>
+          {step > 1 && <button onClick={handleBack} style={modalStyles.backBtn}>← Back</button>}
+          <h2 style={modalStyles.title}>
+            {step === 1 && 'Select Brand'}
+            {step === 2 && `${brandConfig[selectedBrand]?.icon} ${brandConfig[selectedBrand]?.name}`}
+            {step === 3 && `${mediumConfig[selectedMedium]?.icon} ${mediumConfig[selectedMedium]?.name}`}
+          </h2>
+          <button onClick={onClose} style={modalStyles.closeBtn}><X size={20} /></button>
+        </div>
+
+        <div style={modalStyles.content}>
+          {/* Step 1: Select Brand */}
+          {step === 1 && Object.entries(brandConfig).map(([code, config]) => (
+            <button
+              key={code}
+              onClick={() => handleBrandSelect(code)}
+              style={{ ...modalStyles.optionCard, borderLeftColor: config.color, backgroundColor: config.bgColor }}
+            >
+              <span style={modalStyles.optionIcon}>{config.icon}</span>
+              <div style={modalStyles.optionContent}>
+                <div style={modalStyles.optionName}>{config.name}</div>
+                <div style={modalStyles.optionDesc}>{config.description}</div>
+              </div>
+              <span style={{ color: '#94a3b8' }}>→</span>
+            </button>
+          ))}
+
+          {/* Step 2: Select Medium */}
+          {step === 2 && availableMediums.map(mediumCode => {
+            const config = mediumConfig[mediumCode];
+            const count = getProductCount(selectedBrand, mediumCode);
+            return (
+              <button key={mediumCode} onClick={() => handleMediumSelect(mediumCode)} style={modalStyles.optionCard}>
+                <span style={modalStyles.optionIcon}>{config.icon}</span>
+                <div style={modalStyles.optionContent}>
+                  <div style={modalStyles.optionName}>{config.name}</div>
+                  <div style={modalStyles.optionDesc}>{config.description}</div>
+                </div>
+                <span style={{ background: '#e2e8f0', padding: '4px 10px', borderRadius: '12px', fontSize: '13px', fontWeight: '600', color: '#475569' }}>{count}</span>
+              </button>
+            );
+          })}
+
+          {/* Step 3: Select Product */}
+          {step === 3 && (
+            <>
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={modalStyles.searchInput}
+              />
+              {filteredProducts.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>No products found</div>
+              ) : (
+                filteredProducts.map(product => (
+                  <div key={product.id} onClick={() => onSelect(product)} style={modalStyles.productCard}>
+                    <div style={modalStyles.productInfo}>
+                      <div style={modalStyles.productName}>{product.name}</div>
+                      {product.description && <div style={modalStyles.productDesc}>{product.description}</div>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={modalStyles.productPrice}>${parseFloat(product.default_rate).toLocaleString()}</div>
+                      <div style={modalStyles.productRate}>{product.rate_type}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
