@@ -51,8 +51,6 @@ export default function ChangeOrderForm() {
   const [customTerm, setCustomTerm] = useState('');
 
   const [showProductModal, setShowProductModal] = useState(false);
-  const [selectedEntity, setSelectedEntity] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signature, setSignature] = useState('');
@@ -137,14 +135,6 @@ export default function ChangeOrderForm() {
       o.client_name?.toLowerCase().includes(orderSearch.toLowerCase())
     ).slice(0, 10);
   }, [orders, orderSearch]);
-
-  const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      if (selectedEntity && p.entity_id !== selectedEntity) return false;
-      if (selectedCategory && p.category_id !== selectedCategory) return false;
-      return true;
-    });
-  }, [products, selectedEntity, selectedCategory]);
 
   const changeSummary = useMemo(() => {
     if (!selectedOrder) return null;
@@ -670,40 +660,16 @@ export default function ChangeOrderForm() {
         </div>
       </div>
 
-      {/* Product Modal */}
+      {/* Product Modal - Brand → Category → Product Flow */}
       {showProductModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowProductModal(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h3 style={styles.modalTitle}>Add Product</h3>
-              <button onClick={() => setShowProductModal(false)} style={styles.modalClose}><Icons.X /></button>
-            </div>
-            <div style={styles.modalFilters}>
-              <select value={selectedEntity} onChange={(e) => setSelectedEntity(e.target.value)} style={styles.filterSelect}>
-                <option value="">All Brands</option>
-                {entities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
-              <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} style={styles.filterSelect}>
-                <option value="">All Categories</option>
-                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div style={styles.modalProductList}>
-              {filteredProducts.map((product) => (
-                <button key={product.id} onClick={() => addProductToOrder(product)} style={styles.modalProductItem}>
-                  <div style={styles.modalProductInfo}>
-                    <span style={styles.modalProductName}>{product.name}</span>
-                    <span style={styles.modalProductMeta}>{product.entity_name} • {product.category_name}</span>
-                  </div>
-                  <div style={styles.modalProductPrice}>
-                    <span>{formatCurrency(product.default_rate)}</span>
-                    <span style={styles.modalPriceType}>/mo</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        <ProductSelectorModal
+          products={products}
+          entities={entities}
+          categories={categories}
+          onSelect={addProductToOrder}
+          onClose={() => setShowProductModal(false)}
+          formatCurrency={formatCurrency}
+        />
       )}
 
       {/* Signature Modal */}
@@ -742,6 +708,319 @@ export default function ChangeOrderForm() {
     </div>
   );
 }
+
+// ============================================================
+// PRODUCT SELECTOR MODAL - Brand → Category → Subcategory → Product
+// ============================================================
+function ProductSelectorModal({ products, entities, categories, onSelect, onClose, formatCurrency }) {
+  const [step, setStep] = useState(1); // 1: Brand, 2: Category, 3: Subcategory (for Broadcast), 4: Products
+  const [selectedBrand, setSelectedBrand] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedSubcategory, setSelectedSubcategory] = useState(null);
+
+  // Brand configurations
+  const brandConfig = {
+    wsic: { name: 'WSIC Radio', icon: '📻', color: '#3b82f6', bgColor: '#eff6ff', description: 'Radio, Podcast & Events' },
+    lkn: { name: 'Lake Norman Woman', icon: '📰', color: '#ec4899', bgColor: '#fdf2f8', description: 'Print & Digital Advertising' },
+    lwp: { name: 'LiveWorkPlay LKN', icon: '🌟', color: '#10b981', bgColor: '#ecfdf5', description: 'Combined audience reach' }
+  };
+
+  // Category/Medium configurations
+  const categoryConfig = {
+    broadcast: { icon: '📻', name: 'Broadcast', description: 'Radio commercials & sponsorships', hasSubcategories: true },
+    podcast: { icon: '🎙️', name: 'Podcast', description: 'Podcast ads & studio services' },
+    'web-social': { icon: '🌐', name: 'Web & Social', description: 'Newsletters, websites & social' },
+    events: { icon: '📅', name: 'Events', description: 'Sponsorships & live remotes' },
+    programmatic: { icon: '💻', name: 'Programmatic Digital', description: 'Display, OTT/CTV & Meta ads' },
+    print: { icon: '📰', name: 'Print', description: 'Magazine ads & editorials' }
+  };
+
+  // Broadcast subcategories
+  const broadcastSubcategories = {
+    commercials: { icon: '🎵', name: 'Commercials', description: 'Radio spot packages' },
+    'show-sponsor': { icon: '🌟', name: 'Show Sponsor', description: 'Title & supporting sponsorships' },
+    'community-calendar': { icon: '📅', name: 'Community Calendar', description: 'Event announcements' }
+  };
+
+  // Map entity codes to brand keys
+  const entityToBrand = {};
+  entities.forEach(e => {
+    if (e.code === 'wsic') entityToBrand[e.id] = 'wsic';
+    if (e.code === 'lkn') entityToBrand[e.id] = 'lkn';
+    if (e.code === 'lwp') entityToBrand[e.id] = 'lwp';
+  });
+
+  // Get categories for a brand
+  const getCategoriesForBrand = (brandCode) => {
+    if (brandCode === 'wsic') return ['broadcast', 'podcast', 'events', 'web-social'];
+    if (brandCode === 'lkn') return ['programmatic', 'print', 'web-social'];
+    if (brandCode === 'lwp') return ['web-social'];
+    return [];
+  };
+
+  // Map product to subcategory (for Broadcast)
+  const getProductSubcategory = (product) => {
+    const name = (product.name || '').toLowerCase();
+    if (name.includes('presenting sponsor') || name.includes('supporting sponsor') || name.includes('friend of the show')) {
+      return 'show-sponsor';
+    }
+    if (name.includes('community calendar') || name.includes('calendar')) {
+      return 'community-calendar';
+    }
+    // Default to commercials for radio packages
+    if (name.includes('radio') || name.includes('package') || name.includes('premium') || name.includes('standard') || name.includes('starter') || name.includes('new advertiser') || name.includes('bookend')) {
+      return 'commercials';
+    }
+    return 'commercials';
+  };
+
+  // Map category name to key
+  const categoryToKey = (categoryName) => {
+    const name = (categoryName || '').toLowerCase();
+    if (name.includes('broadcast')) return 'broadcast';
+    if (name.includes('podcast')) return 'podcast';
+    if (name.includes('web') || name.includes('social')) return 'web-social';
+    if (name.includes('event')) return 'events';
+    if (name.includes('programmatic') || name.includes('digital')) return 'programmatic';
+    if (name.includes('print')) return 'print';
+    return null;
+  };
+
+  // Get filtered products
+  const getFilteredProducts = () => {
+    if (!selectedBrand) return [];
+    
+    let filtered = products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productCategory = categoryToKey(p.category_name);
+      return productBrand === selectedBrand && productCategory === selectedCategory;
+    });
+
+    // For Broadcast, filter by subcategory
+    if (selectedCategory === 'broadcast' && selectedSubcategory) {
+      filtered = filtered.filter(p => getProductSubcategory(p) === selectedSubcategory);
+    }
+
+    return filtered;
+  };
+
+  // Get product count
+  const getProductCount = (brandCode, categoryKey) => {
+    return products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productCategory = categoryToKey(p.category_name);
+      return productBrand === brandCode && productCategory === categoryKey;
+    }).length;
+  };
+
+  const getSubcategoryCount = (subcatKey) => {
+    return products.filter(p => {
+      const productBrand = entityToBrand[p.entity_id];
+      const productCategory = categoryToKey(p.category_name);
+      return productBrand === selectedBrand && productCategory === 'broadcast' && getProductSubcategory(p) === subcatKey;
+    }).length;
+  };
+
+  // Handlers
+  const handleBrandSelect = (brandCode) => {
+    setSelectedBrand(brandCode);
+    const cats = getCategoriesForBrand(brandCode);
+    if (cats.length === 1) {
+      setSelectedCategory(cats[0]);
+      setStep(categoryConfig[cats[0]]?.hasSubcategories ? 3 : 4);
+    } else {
+      setStep(2);
+    }
+  };
+
+  const handleCategorySelect = (categoryKey) => {
+    setSelectedCategory(categoryKey);
+    if (categoryConfig[categoryKey]?.hasSubcategories) {
+      setStep(3);
+    } else {
+      setStep(4);
+    }
+  };
+
+  const handleSubcategorySelect = (subcatKey) => {
+    setSelectedSubcategory(subcatKey);
+    setStep(4);
+  };
+
+  const handleBack = () => {
+    if (step === 4) {
+      if (selectedCategory === 'broadcast' && selectedSubcategory) {
+        setSelectedSubcategory(null);
+        setStep(3);
+      } else {
+        const cats = getCategoriesForBrand(selectedBrand);
+        if (cats.length === 1) {
+          setSelectedBrand(null);
+          setSelectedCategory(null);
+          setStep(1);
+        } else {
+          setSelectedCategory(null);
+          setStep(2);
+        }
+      }
+    } else if (step === 3) {
+      const cats = getCategoriesForBrand(selectedBrand);
+      if (cats.length === 1) {
+        setSelectedBrand(null);
+        setSelectedCategory(null);
+        setStep(1);
+      } else {
+        setSelectedCategory(null);
+        setStep(2);
+      }
+    } else if (step === 2) {
+      setSelectedBrand(null);
+      setStep(1);
+    }
+  };
+
+  const handleProductSelect = (product) => {
+    onSelect(product);
+    setStep(1);
+    setSelectedBrand(null);
+    setSelectedCategory(null);
+    setSelectedSubcategory(null);
+  };
+
+  const filteredProducts = getFilteredProducts();
+  const availableCategories = selectedBrand ? getCategoriesForBrand(selectedBrand) : [];
+
+  return (
+    <div style={psStyles.overlay} onClick={onClose}>
+      <div style={psStyles.modal} onClick={e => e.stopPropagation()}>
+        <div style={psStyles.header}>
+          {step > 1 && <button onClick={handleBack} style={psStyles.backButton}>← Back</button>}
+          <h2 style={psStyles.title}>
+            {step === 1 && 'Select Brand'}
+            {step === 2 && `${brandConfig[selectedBrand]?.icon} ${brandConfig[selectedBrand]?.name}`}
+            {step === 3 && `${categoryConfig[selectedCategory]?.icon} ${categoryConfig[selectedCategory]?.name}`}
+            {step === 4 && (selectedSubcategory ? `${broadcastSubcategories[selectedSubcategory]?.icon} ${broadcastSubcategories[selectedSubcategory]?.name}` : `${categoryConfig[selectedCategory]?.icon} ${categoryConfig[selectedCategory]?.name}`)}
+          </h2>
+          <button onClick={onClose} style={psStyles.closeButton}><Icons.X /></button>
+        </div>
+
+        {/* Step 1: Brand */}
+        {step === 1 && (
+          <div style={psStyles.optionsList}>
+            {Object.entries(brandConfig).map(([code, config]) => (
+              <button key={code} onClick={() => handleBrandSelect(code)}
+                style={{ ...psStyles.optionCard, borderLeftColor: config.color, backgroundColor: config.bgColor }}>
+                <span style={psStyles.optionIcon}>{config.icon}</span>
+                <div style={psStyles.optionContent}>
+                  <div style={psStyles.optionName}>{config.name}</div>
+                  <div style={psStyles.optionDesc}>{config.description}</div>
+                </div>
+                <span style={psStyles.optionArrow}>→</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Step 2: Category */}
+        {step === 2 && (
+          <div style={psStyles.optionsList}>
+            {availableCategories.map(catKey => {
+              const config = categoryConfig[catKey];
+              const count = getProductCount(selectedBrand, catKey);
+              return (
+                <button key={catKey} onClick={() => handleCategorySelect(catKey)} style={psStyles.optionCard}>
+                  <span style={psStyles.optionIcon}>{config.icon}</span>
+                  <div style={psStyles.optionContent}>
+                    <div style={psStyles.optionName}>{config.name}</div>
+                    <div style={psStyles.optionDesc}>{config.description}</div>
+                  </div>
+                  <div style={psStyles.optionMeta}>
+                    <span style={psStyles.productCount}>{count}</span>
+                    <span style={psStyles.optionArrow}>→</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Step 3: Subcategory (Broadcast only) */}
+        {step === 3 && selectedCategory === 'broadcast' && (
+          <div style={psStyles.optionsList}>
+            {Object.entries(broadcastSubcategories).map(([code, config]) => {
+              const count = getSubcategoryCount(code);
+              return (
+                <button key={code} onClick={() => handleSubcategorySelect(code)} style={psStyles.optionCard}>
+                  <span style={psStyles.optionIcon}>{config.icon}</span>
+                  <div style={psStyles.optionContent}>
+                    <div style={psStyles.optionName}>{config.name}</div>
+                    <div style={psStyles.optionDesc}>{config.description}</div>
+                  </div>
+                  <div style={psStyles.optionMeta}>
+                    <span style={psStyles.productCount}>{count}</span>
+                    <span style={psStyles.optionArrow}>→</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Step 4: Products */}
+        {step === 4 && (
+          <div style={psStyles.productsList}>
+            {filteredProducts.length === 0 ? (
+              <div style={psStyles.emptyState}>No products available in this category</div>
+            ) : (
+              filteredProducts.map(product => (
+                <button key={product.id} onClick={() => handleProductSelect(product)} style={psStyles.productCard}>
+                  <div style={psStyles.productInfo}>
+                    <div style={psStyles.productName}>{product.name}</div>
+                    {product.description && <div style={psStyles.productDesc}>{product.description}</div>}
+                  </div>
+                  <div style={psStyles.productPricing}>
+                    <div style={psStyles.productPrice}>{formatCurrency(product.default_rate)}</div>
+                    <div style={psStyles.productRate}>{product.rate_type || 'MONTHLY'}</div>
+                  </div>
+                  <span style={psStyles.addIcon}>+</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Product Selector Styles
+const psStyles = {
+  overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 1000 },
+  modal: { backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '500px', maxHeight: '80vh', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column' },
+  header: { display: 'flex', alignItems: 'center', padding: '20px', borderBottom: '1px solid #e2e8f0', gap: '12px' },
+  backButton: { padding: '8px 12px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '500', color: '#64748b', cursor: 'pointer' },
+  title: { flex: 1, fontSize: '18px', fontWeight: '600', color: '#1e293b', margin: 0 },
+  closeButton: { padding: '8px', backgroundColor: '#f1f5f9', border: 'none', borderRadius: '8px', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  optionsList: { padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto' },
+  optionCard: { display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', backgroundColor: '#f8fafc', border: 'none', borderLeft: '4px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', textAlign: 'left', width: '100%' },
+  optionIcon: { fontSize: '32px', lineHeight: 1 },
+  optionContent: { flex: 1 },
+  optionName: { fontSize: '17px', fontWeight: '600', color: '#1e293b', marginBottom: '4px' },
+  optionDesc: { fontSize: '13px', color: '#64748b' },
+  optionMeta: { display: 'flex', alignItems: 'center', gap: '8px' },
+  productCount: { padding: '4px 10px', backgroundColor: '#e2e8f0', borderRadius: '12px', fontSize: '13px', fontWeight: '600', color: '#64748b' },
+  optionArrow: { fontSize: '20px', color: '#94a3b8' },
+  productsList: { padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', flex: 1 },
+  productCard: { display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', cursor: 'pointer', textAlign: 'left', width: '100%' },
+  productInfo: { flex: 1, minWidth: 0 },
+  productName: { fontSize: '15px', fontWeight: '600', color: '#1e293b', marginBottom: '4px' },
+  productDesc: { fontSize: '13px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  productPricing: { textAlign: 'right', flexShrink: 0 },
+  productPrice: { fontSize: '16px', fontWeight: '700', color: '#1e293b' },
+  productRate: { fontSize: '11px', color: '#64748b', textTransform: 'uppercase' },
+  addIcon: { width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#3b82f6', color: 'white', borderRadius: '50%', fontSize: '20px', fontWeight: '600', flexShrink: 0 },
+  emptyState: { padding: '40px 20px', textAlign: 'center', color: '#64748b' }
+};
 
 const styles = {
   container: { maxWidth: '1400px', margin: '0 auto', padding: '24px' },
