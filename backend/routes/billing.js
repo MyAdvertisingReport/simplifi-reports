@@ -137,8 +137,8 @@ router.get('/invoices', async (req, res) => {
         o.order_number,
         u.name as created_by_name,
         CASE 
-          WHEN i.status = 'sent' AND i.due_date < CURRENT_DATE 
-          THEN EXTRACT(DAY FROM (CURRENT_DATE - i.due_date))::int
+          WHEN i.status = 'sent' AND i.due_date::date < CURRENT_DATE 
+          THEN EXTRACT(DAY FROM (CURRENT_DATE - i.due_date::date))::int
           ELSE 0
         END as days_overdue
       FROM invoices i
@@ -840,11 +840,11 @@ router.get('/stats', async (req, res) => {
 
     const agingQuery = `
       SELECT
-        COALESCE(SUM(balance_due) FILTER (WHERE due_date >= CURRENT_DATE), 0) as current,
-        COALESCE(SUM(balance_due) FILTER (WHERE due_date < CURRENT_DATE AND due_date >= CURRENT_DATE - INTERVAL '30 days'), 0) as days_1_30,
-        COALESCE(SUM(balance_due) FILTER (WHERE due_date < CURRENT_DATE - INTERVAL '30 days' AND due_date >= CURRENT_DATE - INTERVAL '60 days'), 0) as days_31_60,
-        COALESCE(SUM(balance_due) FILTER (WHERE due_date < CURRENT_DATE - INTERVAL '60 days' AND due_date >= CURRENT_DATE - INTERVAL '90 days'), 0) as days_61_90,
-        COALESCE(SUM(balance_due) FILTER (WHERE due_date < CURRENT_DATE - INTERVAL '90 days'), 0) as days_over_90
+        COALESCE(SUM(balance_due) FILTER (WHERE due_date::date >= CURRENT_DATE), 0) as current,
+        COALESCE(SUM(balance_due) FILTER (WHERE due_date::date < CURRENT_DATE AND due_date::date >= CURRENT_DATE - INTERVAL '30 days'), 0) as days_1_30,
+        COALESCE(SUM(balance_due) FILTER (WHERE due_date::date < CURRENT_DATE - INTERVAL '30 days' AND due_date::date >= CURRENT_DATE - INTERVAL '60 days'), 0) as days_31_60,
+        COALESCE(SUM(balance_due) FILTER (WHERE due_date::date < CURRENT_DATE - INTERVAL '60 days' AND due_date::date >= CURRENT_DATE - INTERVAL '90 days'), 0) as days_61_90,
+        COALESCE(SUM(balance_due) FILTER (WHERE due_date::date < CURRENT_DATE - INTERVAL '90 days'), 0) as days_over_90
       FROM invoices
       WHERE status = 'sent'
     `;
@@ -876,13 +876,13 @@ router.get('/aging-report', async (req, res) => {
         i.billing_preference, i.payment_method_id,
         c.id as client_id, c.business_name as client_name, c.slug as client_slug,
         CASE 
-          WHEN i.due_date >= CURRENT_DATE THEN 'current'
-          WHEN i.due_date >= CURRENT_DATE - INTERVAL '30 days' THEN '1-30'
-          WHEN i.due_date >= CURRENT_DATE - INTERVAL '60 days' THEN '31-60'
-          WHEN i.due_date >= CURRENT_DATE - INTERVAL '90 days' THEN '61-90'
+          WHEN i.due_date::date >= CURRENT_DATE THEN 'current'
+          WHEN i.due_date::date >= CURRENT_DATE - INTERVAL '30 days' THEN '1-30'
+          WHEN i.due_date::date >= CURRENT_DATE - INTERVAL '60 days' THEN '31-60'
+          WHEN i.due_date::date >= CURRENT_DATE - INTERVAL '90 days' THEN '61-90'
           ELSE 'over-90'
         END as aging_bucket,
-        EXTRACT(DAY FROM (CURRENT_DATE - i.due_date))::int as days_overdue
+        EXTRACT(DAY FROM (CURRENT_DATE - i.due_date::date))::int as days_overdue
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       WHERE i.status = 'sent' AND i.balance_due > 0

@@ -542,7 +542,7 @@ function Sidebar({ isOpen }) {
   const navigate = useNavigate();
   
   // Track which sections are expanded
-  const [expandedSections, setExpandedSections] = useState({ orders: true, settings: false });
+  const [expandedSections, setExpandedSections] = useState({ orders: true, billing: true, settings: false });
   
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -568,6 +568,12 @@ function Sidebar({ isOpen }) {
     { path: '/orders', icon: List, label: 'All Orders' },
     { path: '/orders/new/select', icon: FileText, label: 'New Order' },
     { path: '/admin/products', icon: Database, label: 'Products' },
+  ];
+  
+  // Billing section items
+  const billingItems = [
+    { path: '/billing', icon: List, label: 'All Invoices' },
+    { path: '/billing/new', icon: FileText, label: 'Create Invoice' },
   ];
   
   // Settings section items (admin only)
@@ -708,16 +714,45 @@ function Sidebar({ isOpen }) {
           )}
         </div>
         
-        {/* Billing - Standalone */}
-        <Link to="/billing" style={{
-          display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem',
-          marginTop: '0.5rem', marginBottom: '0.25rem', borderRadius: '0.5rem', textDecoration: 'none',
-          color: isBillingSection ? 'white' : '#9ca3af',
-          background: isBillingSection ? 'rgba(16,185,129,0.2)' : 'transparent'
-        }}>
-          <DollarSign size={20} style={{ color: isBillingSection ? '#10b981' : '#9ca3af' }} />
-          <span style={{ fontWeight: 600 }}>Billing</span>
-        </Link>
+        {/* Billing Section */}
+        <div style={{ marginTop: '0.5rem' }}>
+          <button
+            onClick={() => toggleSection('billing')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.75rem',
+              width: '100%',
+              border: 'none',
+              borderRadius: '0.5rem',
+              background: isBillingSection ? 'rgba(16,185,129,0.1)' : 'transparent',
+              cursor: 'pointer',
+              color: isBillingSection ? '#10b981' : '#9ca3af',
+            }}
+          >
+            <DollarSign size={20} />
+            <span style={{ fontWeight: 600, flex: 1, textAlign: 'left' }}>Billing</span>
+            {expandedSections.billing ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          
+          {/* Billing Sub-items */}
+          {expandedSections.billing && (
+            <div style={{ marginLeft: '0.5rem', borderLeft: '2px solid #374151', marginTop: '0.25rem' }}>
+              {billingItems.map(({ path, icon: Icon, label }) => (
+                <Link key={path} to={path} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.75rem',
+                  marginLeft: '0.75rem', marginBottom: '0.125rem', borderRadius: '0.375rem', textDecoration: 'none',
+                  color: location.pathname === path ? 'white' : '#9ca3af',
+                  background: location.pathname === path ? 'rgba(16,185,129,0.2)' : 'transparent',
+                  fontSize: '0.875rem'
+                }}>
+                  <Icon size={16} /><span style={{ fontWeight: 500 }}>{label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
         
         {/* Settings Section (Admin only) */}
         {user?.role === 'admin' && (
