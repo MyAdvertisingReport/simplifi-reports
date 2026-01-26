@@ -328,21 +328,16 @@ export default function ClientSigningPage() {
       setAchProcessing(true);
       setSubmitting(true);
       try {
-        // Determine entity code from contract items
-        const entityCode = contract.items?.[0]?.entity_code || 'wsic';
-        
-        const response = await fetch(`${API_BASE}/api/orders/payment-method/ach`, {
+        // Use token-based endpoint (no auth required for client signing)
+        const response = await fetch(`${API_BASE}/api/orders/sign/${token}/payment-method/ach`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            entityCode,
-            clientId: contract.client_id,
             accountHolderName: bankAccountName.trim(),
             routingNumber: bankRoutingNumber,
             accountNumber: bankAccountNumber,
             accountType: bankAccountType,
-            clientEmail: signerEmail || contract.contact?.email,
-            clientName: contract.client_name,
+            signerEmail: signerEmail || contract.contact?.email,
           }),
         });
 
@@ -385,6 +380,22 @@ export default function ClientSigningPage() {
       
       if (error) {
         throw new Error(error.message);
+      }
+      
+      // Save the card payment method to the order (via token-based endpoint)
+      const saveResponse = await fetch(`${API_BASE}/api/orders/sign/${token}/payment-method/card`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentMethodId: setupIntent.payment_method,
+          signerEmail: signerEmail,
+        }),
+      });
+      
+      if (!saveResponse.ok) {
+        const saveErr = await saveResponse.json();
+        console.warn('Failed to save card to order:', saveErr);
+        // Continue anyway - the SetupIntent was successful
       }
       
       setPaymentMethodId(setupIntent.payment_method);

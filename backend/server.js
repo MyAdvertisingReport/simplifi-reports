@@ -2181,6 +2181,272 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
   }
 });
 
+// POST /api/orders/sign/:token/payment-method/ach - Create ACH payment method during client signing (NO AUTH REQUIRED)
+app.post('/api/orders/sign/:token/payment-method/ach', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const {
+      accountHolderName,
+      routingNumber,
+      accountNumber,
+      accountType,
+      signerEmail,
+    } = req.body;
+
+    // Validate token and get order
+    const orderResult = await adminPool.query(
+      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1 AND o.signing_token_expires_at > NOW()`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired signing link' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (!accountHolderName || !routingNumber || !accountNumber) {
+      return res.status(400).json({ error: 'Missing required bank account information' });
+    }
+
+    // Get primary entity
+    const itemsResult = await adminPool.query(
+      `SELECT e.code as entity_code FROM order_items oi
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1 ORDER BY oi.line_total DESC LIMIT 1`,
+      [order.id]
+    );
+    const primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+
+    // Initialize Stripe
+    const Stripe = require('stripe');
+    const stripeSecretKey = process.env[`STRIPE_${primaryEntityCode.toUpperCase()}_SECRET_KEY`] || process.env.STRIPE_WSIC_SECRET_KEY;
+    
+    if (!stripeSecretKey) {
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+    
+    const stripe = new Stripe(stripeSecretKey);
+
+    // Get or create customer
+    let customerId = order.existing_stripe_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: signerEmail,
+        name: order.client_name,
+        metadata: { client_id: order.client_id }
+      });
+      customerId = customer.id;
+      
+      // Save to client
+      await adminPool.query(
+        `UPDATE advertising_clients SET stripe_customer_id = $1 WHERE id = $2`,
+        [customerId, order.client_id]
+      );
+    }
+
+    // Create ACH payment method
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: 'us_bank_account',
+      us_bank_account: {
+        account_holder_type: 'company',
+        account_number: accountNumber,
+        routing_number: routingNumber,
+        account_type: accountType || 'checking',
+      },
+      billing_details: {
+        name: accountHolderName,
+        email: signerEmail,
+      },
+    });
+
+    // Attach payment method to customer
+    await stripe.paymentMethods.attach(paymentMethod.id, {
+      customer: customerId,
+    });
+
+    // Set as default payment method
+    await stripe.customers.update(customerId, {
+      invoice_settings: {
+        default_payment_method: paymentMethod.id,
+      },
+    });
+
+    // Update order with payment info
+    await adminPool.query(
+      `UPDATE orders SET 
+        stripe_entity_code = $1, 
+        stripe_customer_id = $2, 
+        stripe_payment_method_id = $3,
+        billing_preference = 'ach'
+       WHERE id = $4`,
+      [primaryEntityCode, customerId, paymentMethod.id, order.id]
+    );
+
+    // Update client record
+    await adminPool.query(
+      `UPDATE advertising_clients 
+       SET stripe_customer_id = $1, 
+           payment_method = 'ach',
+           stripe_payment_method_id = $2,
+           updated_at = NOW() 
+       WHERE id = $3`,
+      [customerId, paymentMethod.id, order.client_id]
+    );
+
+    console.log(`[STRIPE] ACH payment method created for ${order.client_name} via signing: ****${accountNumber.slice(-4)}`);
+
+    res.json({
+      success: true,
+      customerId: customerId,
+      paymentMethodId: paymentMethod.id,
+      bankAccount: {
+        last4: paymentMethod.us_bank_account.last4,
+        bankName: paymentMethod.us_bank_account.bank_name,
+        accountType: paymentMethod.us_bank_account.account_type,
+      },
+    });
+
+  } catch (error) {
+    console.error('Error creating ACH payment method during signing:', error);
+    res.status(400).json({ 
+      error: error.message || 'Failed to create bank account',
+      code: error.code,
+    });
+  }
+});
+
+// POST /api/orders/sign/:token/payment-method/card - Save card payment method during client signing (NO AUTH REQUIRED)
+app.post('/api/orders/sign/:token/payment-method/card', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { paymentMethodId, signerEmail } = req.body;
+
+    // Validate token and get order
+    const orderResult = await adminPool.query(
+      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id
+       FROM orders o
+       JOIN advertising_clients c ON o.client_id = c.id
+       WHERE o.signing_token = $1 AND o.signing_token_expires_at > NOW()`,
+      [token]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invalid or expired signing link' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (!paymentMethodId) {
+      return res.status(400).json({ error: 'Missing payment method ID' });
+    }
+
+    // Get primary entity
+    const itemsResult = await adminPool.query(
+      `SELECT e.code as entity_code FROM order_items oi
+       LEFT JOIN entities e ON oi.entity_id = e.id
+       WHERE oi.order_id = $1 ORDER BY oi.line_total DESC LIMIT 1`,
+      [order.id]
+    );
+    const primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+
+    // Initialize Stripe
+    const Stripe = require('stripe');
+    const stripeSecretKey = process.env[`STRIPE_${primaryEntityCode.toUpperCase()}_SECRET_KEY`] || process.env.STRIPE_WSIC_SECRET_KEY;
+    
+    if (!stripeSecretKey) {
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+    
+    const stripe = new Stripe(stripeSecretKey);
+
+    // Get or create customer
+    let customerId = order.existing_stripe_id;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: signerEmail,
+        name: order.client_name,
+        metadata: { client_id: order.client_id }
+      });
+      customerId = customer.id;
+      
+      // Save to client
+      await adminPool.query(
+        `UPDATE advertising_clients SET stripe_customer_id = $1 WHERE id = $2`,
+        [customerId, order.client_id]
+      );
+    }
+
+    // Attach payment method to customer (if not already attached)
+    try {
+      await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId,
+      });
+    } catch (attachError) {
+      // Payment method might already be attached, continue
+      if (!attachError.message.includes('already been attached')) {
+        throw attachError;
+      }
+    }
+
+    // Set as default payment method
+    await stripe.customers.update(customerId, {
+      invoice_settings: {
+        default_payment_method: paymentMethodId,
+      },
+    });
+
+    // Update order with payment info
+    await adminPool.query(
+      `UPDATE orders SET 
+        stripe_entity_code = $1, 
+        stripe_customer_id = $2, 
+        stripe_payment_method_id = $3,
+        billing_preference = 'card'
+       WHERE id = $4`,
+      [primaryEntityCode, customerId, paymentMethodId, order.id]
+    );
+
+    // Update client record
+    await adminPool.query(
+      `UPDATE advertising_clients 
+       SET stripe_customer_id = $1, 
+           payment_method = 'card',
+           stripe_payment_method_id = $2,
+           updated_at = NOW() 
+       WHERE id = $3`,
+      [customerId, paymentMethodId, order.client_id]
+    );
+
+    // Get card details for response
+    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+    console.log(`[STRIPE] Card payment method saved for ${order.client_name} via signing: ****${paymentMethod.card?.last4}`);
+
+    res.json({
+      success: true,
+      customerId: customerId,
+      paymentMethodId: paymentMethodId,
+      card: {
+        last4: paymentMethod.card?.last4,
+        brand: paymentMethod.card?.brand,
+        expMonth: paymentMethod.card?.exp_month,
+        expYear: paymentMethod.card?.exp_year,
+      },
+    });
+
+  } catch (error) {
+    console.error('Error saving card payment method during signing:', error);
+    res.status(400).json({ 
+      error: error.message || 'Failed to save card',
+      code: error.code,
+    });
+  }
+});
+
 // POST /api/orders/sign/:token/payment-setup - Initialize payment (legacy)
 app.post('/api/orders/sign/:token/payment-setup', async (req, res) => {
   try {
