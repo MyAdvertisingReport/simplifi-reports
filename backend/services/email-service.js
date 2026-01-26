@@ -831,6 +831,166 @@ async function sendTestEmail(to) {
   });
 }
 
+// ============================================================
+// INVOICE EMAILS
+// ============================================================
+
+/**
+ * Send invoice to client
+ */
+async function sendInvoiceToClient({ invoice, contact }) {
+  const subject = `Invoice ${invoice.invoice_number} from WSIC Media Group`;
+  
+  const itemsHtml = invoice.items?.map(item => `
+    <tr>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; color: #374151;">${item.description}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center; color: #374151;">${item.quantity || 1}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; color: #374151;">$${parseFloat(item.unit_price).toFixed(2)}</td>
+      <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; color: #1f2937; font-weight: 500;">$${parseFloat(item.amount).toFixed(2)}</td>
+    </tr>
+  `).join('') || '';
+
+  const dueDate = new Date(invoice.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+  const billingPeriod = invoice.billing_period_start && invoice.billing_period_end
+    ? `${new Date(invoice.billing_period_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(invoice.billing_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : '';
+
+  const content = `
+    <div class="header" style="background-color: #1e3a8a; background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">📄 Invoice</h1>
+      <p style="color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px;">Invoice #${invoice.invoice_number}</p>
+    </div>
+    <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
+      <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
+      <p style="color: #374151;">Please find your invoice below for advertising services with <strong>WSIC Media Group</strong>.</p>
+      
+      <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+        <tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Invoice Number</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">${invoice.invoice_number}</td></tr>
+        <tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Business</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${invoice.client_name}</td></tr>
+        ${billingPeriod ? `<tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Billing Period</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${billingPeriod}</td></tr>` : ''}
+        <tr><td style="color: #6b7280; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">Issue Date</td><td style="color: #1f2937; padding: 12px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">${new Date(invoice.issue_date || invoice.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
+        <tr><td style="color: #dc2626; padding: 12px 0; font-weight: 600;">Due Date</td><td style="color: #dc2626; padding: 12px 0; text-align: right; font-weight: 600;">${dueDate}</td></tr>
+      </table>
+      
+      <h3 style="color: #1e293b; margin: 24px 0 12px 0; font-size: 16px;">Invoice Details</h3>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+        <thead><tr style="background-color: #f8fafc;">
+          <th style="padding: 12px; text-align: left; color: #64748b; font-size: 13px;">Description</th>
+          <th style="padding: 12px; text-align: center; color: #64748b; font-size: 13px;">Qty</th>
+          <th style="padding: 12px; text-align: right; color: #64748b; font-size: 13px;">Price</th>
+          <th style="padding: 12px; text-align: right; color: #64748b; font-size: 13px;">Amount</th>
+        </tr></thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+      
+      <table style="width: 100%; max-width: 300px; margin-left: auto; border-collapse: collapse;">
+        <tr><td style="padding: 8px 0; color: #6b7280;">Subtotal</td><td style="padding: 8px 0; text-align: right; color: #374151;">$${parseFloat(invoice.subtotal).toFixed(2)}</td></tr>
+        ${parseFloat(invoice.processing_fee) > 0 ? `<tr><td style="padding: 8px 0; color: #6b7280;">Processing Fee (3.5%)</td><td style="padding: 8px 0; text-align: right; color: #374151;">$${parseFloat(invoice.processing_fee).toFixed(2)}</td></tr>` : ''}
+        <tr style="border-top: 2px solid #1e3a8a;"><td style="padding: 16px 0; color: #1e293b; font-weight: 700; font-size: 18px;">Total Due</td><td style="padding: 16px 0; text-align: right; color: #1e3a8a; font-weight: 700; font-size: 24px;">$${parseFloat(invoice.total).toFixed(2)}</td></tr>
+      </table>
+      
+      ${invoice.stripe_invoice_url ? `<div style="text-align: center; margin: 32px 0;"><a href="${invoice.stripe_invoice_url}" style="display: inline-block; padding: 16px 40px; background-color: #1e3a8a; color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 18px;">Pay Invoice Online</a></div>` : ''}
+      
+      <div style="background-color: #f8fafc; border-radius: 8px; padding: 20px; margin-top: 24px;">
+        <p style="color: #64748b; font-size: 14px; margin: 0;"><strong>Payment Methods:</strong><br>• Credit Card or ACH via the link above (if available)<br>• Check payable to "Real Talk Studios, LLC"</p>
+      </div>
+    </div>
+    <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">Thank you for your business!</div>
+  `;
+
+  return sendEmail({
+    to: contact.email,
+    from: FROM_ADDRESSES.billing,
+    subject,
+    htmlBody: emailTemplate({ title: subject, preheader: `Invoice ${invoice.invoice_number} for $${parseFloat(invoice.total).toFixed(2)} is due ${dueDate}`, content }),
+    tag: 'invoice',
+    metadata: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, clientId: invoice.client_id }
+  });
+}
+
+/**
+ * Send payment reminder
+ */
+async function sendPaymentReminder({ invoice, contact, reminder_type = 'friendly' }) {
+  const daysOverdue = Math.max(0, Math.ceil((new Date() - new Date(invoice.due_date)) / (1000 * 60 * 60 * 24)));
+  
+  const urgencyConfig = {
+    friendly: { subject: `Reminder: Invoice ${invoice.invoice_number} Payment Due`, headerColor: '#1e3a8a', title: '📬 Payment Reminder', subtitle: 'Your invoice is due soon', message: "We wanted to send a friendly reminder that payment for your invoice is due.", urgency: false },
+    '15_day': { subject: `Action Required: Invoice ${invoice.invoice_number} is Past Due`, headerColor: '#f59e0b', title: '⚠️ Payment Past Due', subtitle: `${daysOverdue} days overdue`, message: "Your invoice is now past due. Please arrange payment at your earliest convenience.", urgency: true },
+    '25_day': { subject: `Urgent: Invoice ${invoice.invoice_number} - Immediate Action Required`, headerColor: '#ea580c', title: '🔔 Urgent Payment Notice', subtitle: `${daysOverdue} days overdue`, message: "Your invoice is significantly past due. To avoid service interruption, please submit payment immediately.", urgency: true },
+    '30_day': { subject: `Final Notice: Invoice ${invoice.invoice_number} - Payment Required Today`, headerColor: '#dc2626', title: '🚨 Final Payment Notice', subtitle: 'Backup payment method will be charged', message: "This is your final notice. If payment is not received today, we will charge your backup payment method on file.", urgency: true }
+  };
+
+  const config = urgencyConfig[reminder_type] || urgencyConfig.friendly;
+
+  const content = `
+    <div class="header" style="background-color: ${config.headerColor}; padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">${config.title}</h1>
+      <p style="color: #ffffff !important; opacity: 0.9; margin: 8px 0 0; font-size: 14px;">${config.subtitle}</p>
+    </div>
+    <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
+      <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
+      <p style="color: #374151;">${config.message}</p>
+      ${config.urgency ? `<div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 20px; margin: 24px 0;"><p style="color: #991b1b; margin: 0;"><strong>⏰ Time Sensitive</strong> - Please make payment immediately to avoid additional fees.</p></div>` : ''}
+      <table style="width: 100%; border-collapse: collapse; margin: 24px 0; background-color: #f8fafc; border-radius: 8px;">
+        <tr><td style="padding: 16px; color: #6b7280;">Invoice Number</td><td style="padding: 16px; text-align: right; color: #1f2937; font-weight: 600;">${invoice.invoice_number}</td></tr>
+        <tr><td style="padding: 16px; color: #6b7280; border-top: 1px solid #e5e7eb;">Amount Due</td><td style="padding: 16px; text-align: right; color: #dc2626; font-weight: 700; font-size: 20px; border-top: 1px solid #e5e7eb;">$${parseFloat(invoice.balance_due || invoice.total).toFixed(2)}</td></tr>
+        <tr><td style="padding: 16px; color: #6b7280; border-top: 1px solid #e5e7eb;">Due Date</td><td style="padding: 16px; text-align: right; color: ${daysOverdue > 0 ? '#dc2626' : '#1f2937'}; border-top: 1px solid #e5e7eb;">${new Date(invoice.due_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
+      </table>
+      ${invoice.stripe_invoice_url ? `<div style="text-align: center; margin: 32px 0;"><a href="${invoice.stripe_invoice_url}" style="display: inline-block; padding: 16px 40px; background-color: ${config.headerColor}; color: #ffffff !important; text-decoration: none; border-radius: 10px; font-weight: 600;">Pay Invoice Now</a></div>` : ''}
+    </div>
+    <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">Questions? Reply to this email or call us.</div>
+  `;
+
+  return sendEmail({
+    to: contact.email,
+    from: FROM_ADDRESSES.billing,
+    subject: config.subject,
+    htmlBody: emailTemplate({ title: config.subject, preheader: `Invoice ${invoice.invoice_number} - $${parseFloat(invoice.balance_due || invoice.total).toFixed(2)} due`, content }),
+    tag: 'payment-reminder',
+    metadata: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number, reminderType: reminder_type }
+  });
+}
+
+/**
+ * Send payment receipt/confirmation
+ */
+async function sendPaymentReceipt({ invoice, contact, payment }) {
+  const subject = `Payment Received - Invoice ${invoice.invoice_number}`;
+  
+  const content = `
+    <div class="header" style="background-color: #059669; background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">✓ Payment Received</h1>
+      <p style="color: #ffffff !important; opacity: 0.9; margin: 8px 0 0; font-size: 14px;">Thank you for your payment!</p>
+    </div>
+    <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
+      <p style="color: #374151;">Hi ${contact.first_name || 'there'},</p>
+      <p style="color: #374151;">We've received your payment for invoice <strong>${invoice.invoice_number}</strong>. Thank you!</p>
+      <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; margin: 24px 0; text-align: center;">
+        <p style="color: #166534; margin: 0 0 8px 0; font-size: 14px;">Amount Paid</p>
+        <p style="color: #166534; margin: 0; font-size: 32px; font-weight: 700;">$${parseFloat(payment.amount || invoice.total).toFixed(2)}</p>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+        <tr><td style="padding: 12px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">Invoice Number</td><td style="padding: 12px 0; text-align: right; color: #1f2937; border-bottom: 1px solid #e5e7eb;">${invoice.invoice_number}</td></tr>
+        <tr><td style="padding: 12px 0; color: #6b7280; border-bottom: 1px solid #e5e7eb;">Payment Date</td><td style="padding: 12px 0; text-align: right; color: #1f2937; border-bottom: 1px solid #e5e7eb;">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</td></tr>
+        ${payment.method ? `<tr><td style="padding: 12px 0; color: #6b7280;">Payment Method</td><td style="padding: 12px 0; text-align: right; color: #1f2937;">${payment.method}</td></tr>` : ''}
+      </table>
+      <p style="color: #6b7280; font-size: 14px;">This email serves as your receipt. Please keep it for your records.</p>
+    </div>
+    <div class="footer" style="padding: 24px 32px; background-color: #f9fafb; text-align: center; color: #6b7280; font-size: 13px;">Thank you for your business!</div>
+  `;
+
+  return sendEmail({
+    to: contact.email,
+    from: FROM_ADDRESSES.billing,
+    subject,
+    htmlBody: emailTemplate({ title: subject, preheader: `Payment of $${parseFloat(payment.amount || invoice.total).toFixed(2)} received`, content }),
+    tag: 'payment-receipt',
+    metadata: { invoiceId: invoice.id, invoiceNumber: invoice.invoice_number }
+  });
+}
+
 module.exports = {
   sendEmail,
   sendTestEmail,
@@ -842,5 +1002,8 @@ module.exports = {
   sendSignatureConfirmation,
   sendAchSetupEmail,
   sendContractSignedInternal,
+  sendInvoiceToClient,
+  sendPaymentReminder,
+  sendPaymentReceipt,
   FROM_ADDRESSES
 };

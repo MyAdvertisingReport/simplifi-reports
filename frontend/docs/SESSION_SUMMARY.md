@@ -1,193 +1,186 @@
-# Session Summary - January 24, 2026
+# Session Summary - January 26, 2026
 
 ## 🎯 Session Goal
-Redesign the client signing experience to a single-page 3-step flow with PCI-compliant payment collection via Stripe Elements.
+UI/UX improvements for order forms, add new products, fix client signing payment flow authentication issues.
 
 ## ✅ What We Accomplished
 
-### 1. Client Signing Page Complete Redesign
+### 1. Product Selector Improvements (New Order & Change Order)
 
-**Before:** Multi-step flow with page redirects, raw card number collection (PCI violation)
+**Added Broadcast Subcategories:**
+- Brand → Category → **Subcategory** → Product flow
+- WSIC Radio → Broadcast now shows:
+  - 🎵 **Commercials** - Radio spot packages (includes Bible Minute)
+  - 🌟 **Show Sponsor** - Title & supporting sponsorships
+  - 🎤 **Host Your Own Show** - Radio show hosting packages (NEW)
+  - 📅 **Community Calendar** - Event announcements
 
-**After:** Single-page 3-step experience:
+**Files Updated:**
+- `OrderForm.jsx` - Added subcategory step to ProductSelectorModal
+- `ChangeOrderForm.jsx` - Added same subcategory flow
 
-#### Step 1: Review Products Included
-- Product table with Name, Brand, Monthly, Setup Fee columns
-- Contract summary (Term, Start Date, Monthly Total, Setup Fees, Total Value)
-- **NEW:** Editable contact card with Name, Title, Email, Phone
-- "Edit" toggle to modify contact info before proceeding
+### 2. New Products Added
 
-#### Step 2: Payment Information
-- Three billing options (none pre-selected):
-  - 💳 Credit Card - Auto Pay (+3.5% fee)
-  - 🏦 ACH - Auto Pay (No fee)
-  - 📄 Invoice - Pay Manually (requires backup payment)
-- **Invoice backup selection:** User chooses Card or ACH as backup
-- Amount summary showing Monthly + First Month (with fees if applicable)
-- **Stripe Elements** card input (PCI compliant - card data never touches our server)
-- ACH: Collects account holder name, sends verification email after signing
+**Broadcast → Commercials:**
+- **Bible Minute** - $1,000/month - 10x :60 second Bible Minute spots
 
-#### Step 3: Sign Agreement
-- Name, Title, Email (pre-filled from Step 1)
-- Typed signature field
-- Terms agreement checkbox
-- Single "Sign & Complete" button
+**Broadcast → Host Your Own Show (NEW subcategory):**
+- **Premium Radio Show Host** - $2,500/month - Premium time slot, 30x :15sec promos, weekly social clip
+- **Radio Show Host** - $2,000/month - Time slot, 30x :15sec promos, weekly social clip
+- **Sunday Morning Sermon** - $1,500/month - 30 min Sunday Morning slot, 30x :15sec promos
 
-### 2. Stripe Payment Integration (PCI Compliant)
+### 3. Client Search Simplification
 
-**Problem:** Original implementation sent raw card numbers to backend - Stripe blocked this with warning message.
+**Change Order & Kill Order Forms:**
+- Removed order number from client search
+- Now searches by client name only
+- Cleaner dropdown display
+- Step 1 renamed to "Select Client"
 
-**Solution:** Implemented proper Stripe Elements flow:
+### 4. Client Signing Payment Flow Fixes
 
-```
-1. Frontend loads Stripe.js
-2. When Step 2 loads → POST /api/orders/sign/:token/setup-intent
-3. Backend creates Stripe Customer + SetupIntent
-4. Returns clientSecret + publishableKey
-5. Frontend mounts Stripe Card Element (secure iframe)
-6. User enters card → Stripe tokenizes client-side
-7. On confirm → stripe.confirmCardSetup() returns payment_method_id
-8. Final submit sends payment_method_id (not card data) to backend
-9. Backend attaches payment method to customer
-```
+**Problem:** Payment collection was failing with 500 errors
 
-**New Backend Endpoints:**
-- `POST /api/orders/sign/:token/setup-intent` - Creates SetupIntent, returns client secret
-- `POST /api/orders/sign/:token/complete` - Accepts signature + payment_method_id
+**Root Causes Fixed:**
+1. **Authentication required** - `/api/orders/payment-method/ach` was behind auth middleware
+2. **Non-existent column** - Query referenced `c.email` which doesn't exist in `advertising_clients`
+3. **Stale Stripe customer** - Customer ID in database didn't exist in Stripe (deleted or wrong account)
 
-### 3. Email System Improvements
+**Solutions Implemented:**
+- Created new token-based payment endpoints (no auth required):
+  - `POST /api/orders/sign/:token/payment-method/ach`
+  - `POST /api/orders/sign/:token/payment-method/card`
+- Fixed SQL query to remove non-existent email column
+- Added Stripe customer validation - recreates customer if not found in Stripe
+- Added detailed `[SETUP-INTENT]` logging for debugging
 
-#### Contract Email (sendContractToClient)
-- Added brand logos in header
-- Fixed background colors for Outlook (solid fallback before gradient)
-- Explicit white text colors with `!important`
+**Files Updated:**
+- `server.js` - New payment endpoints, customer validation, logging
+- `ClientSigningPage.jsx` - Updated to use token-based endpoints
 
-#### Confirmation Email (sendSignatureConfirmation)
-- Subject: "Welcome to the Family, [Business Name]! 🎉"
-- **NEW:** Product/pricing breakdown table
-- Shows Monthly Investment, Setup Fees, Contract Total
-- Warm, relational messaging (no order numbers)
-- Green header with brand logos
+### 5. Fillable PDF Templates Created
 
-#### ACH Setup Email (sendAchSetupEmail) - NEW
-- Subject: "[Business Name] - Complete Your Bank Account Setup"
-- Blue header with "📬 One More Step!"
-- Yellow warning box: "Action Required - Your package is not confirmed until you complete bank setup"
-- Green "Connect Bank Account" button
-- Only sent when ACH is selected
+Created three fillable PDF templates for offline client meetings:
 
-### 4. Success Page Variants
+**contract_template_fillable.pdf** (3 pages)
+- Page 1: Advertiser info, contract details, payment method (CC/ACH fields)
+- Page 2: Products table (8 rows), totals, terms & conditions
+- Page 3: Signatures
 
-**Card Payment (or Invoice with Card backup):**
-- Green header "🎉 You're All Set!"
-- "Welcome Aboard!" subtitle
-- Green checkmark icon
-- "What's Next" steps
+**change_order_template_fillable.pdf** (1 page)
+- Original order reference, contract renewal section
+- Summary of changes table, reason for change, signatures
 
-**ACH Payment (or Invoice with ACH backup):**
-- Blue header "📧 Almost There!"
-- "One more step to complete" subtitle
-- Mailbox icon
-- Yellow "Action Required" warning box
-- "After Bank Setup" steps
-
-### 5. Bug Fixes
-
-- **Stripe Element duplication error:** Fixed by tracking `cardMounted` state and proper cleanup
-- **Email white text on white background:** Added solid `background-color` before gradient for Outlook
-- **Scroll to top on step confirm:** Removed - stays at current position
-- **"Bank Account" label:** Changed to "ACH" for consistency
+**kill_order_template_fillable.pdf** (1 page)
+- Cancellation details, final settlement
+- Reason checkboxes, services being cancelled, signatures
 
 ---
 
-## 📁 Files Modified
+## 📁 Files Modified/Created
 
+### Frontend
 | File | Changes |
 |------|---------|
-| `ClientSigningPage.jsx` | Complete rewrite - 900+ lines, 3-step single-page flow |
-| `server.js` | Added setup-intent endpoint, updated complete endpoint for payment_method_id |
-| `email-service.js` | Fixed headers, added ACH email, added product breakdown, warm messaging |
-| `package.json` | Added `stripe` dependency |
+| `OrderForm.jsx` | Added Broadcast subcategories to ProductSelectorModal |
+| `ChangeOrderForm.jsx` | Added Broadcast subcategories, simplified client search |
+| `ChangeOrderUploadForm.jsx` | Simplified client search |
+| `ClientSigningPage.jsx` | Use token-based payment endpoints |
+
+### Backend
+| File | Changes |
+|------|---------|
+| `server.js` | Token-based ACH/card endpoints, customer validation, debug logging |
+| `migrations/add_broadcast_products.sql` | New products SQL |
+| `migrations/fix_premium_show_host_price.sql` | Price correction |
+
+### PDF Templates (New)
+- `contract_template_fillable.pdf`
+- `change_order_template_fillable.pdf`
+- `kill_order_template_fillable.pdf`
 
 ---
 
-## 🗄️ Database Fields Used
+## 🗄️ Database Changes
 
+**New Products Added:**
 ```sql
--- Payment fields on orders table
-billing_preference      -- 'card', 'ach', 'invoice'
-stripe_customer_id      -- Stripe customer ID
-stripe_entity_code      -- 'wsic', 'lkn', 'lwp'
-payment_method_id       -- Stripe payment method ID
-payment_type            -- 'card', 'ach'
-payment_status          -- 'authorized', 'ach_pending', 'invoice_pending'
+-- Broadcast → Commercials
+Bible Minute - $1,000/month
+
+-- Broadcast → Host Your Own Show (new subcategory)
+Premium Radio Show Host - $2,500/month
+Radio Show Host - $2,000/month
+Sunday Morning Sermon - $1,500/month
 ```
 
 ---
 
 ## 🔑 Key Technical Decisions
 
-### 1. Single Page vs Multi-Page
-**Decision:** Single page with collapsible steps
-**Reason:** Better UX, no page reloads, maintains state throughout
+### 1. Token-Based Payment Endpoints
+**Decision:** Create separate `/api/orders/sign/:token/payment-method/*` endpoints
+**Reason:** Client signing page has no authentication - needs token-based authorization
 
-### 2. Stripe Elements vs Custom Fields
-**Decision:** Stripe Elements (hosted iframe)
-**Reason:** PCI compliance - card data never touches our server
+### 2. Stripe Customer Validation
+**Decision:** Verify customer exists in Stripe before using, recreate if missing
+**Reason:** Customer IDs in database may be stale (deleted, wrong Stripe account/mode)
 
-### 3. SetupIntent vs PaymentIntent
-**Decision:** SetupIntent
-**Reason:** We're saving payment method for future charges, not charging immediately
-
-### 4. ACH Flow
-**Decision:** Collect name only, send verification email
-**Reason:** Direct bank account creation requires Stripe Financial Connections for security
-
-### 5. Email by Payment Type
-**Decision:** Different emails for Card vs ACH
-**Reason:** ACH requires action (bank verification), Card is complete immediately
+### 3. Broadcast Subcategories
+**Decision:** Add subcategory step for Broadcast only
+**Reason:** Broadcast has distinct product types (spots vs sponsorships vs show hosting)
 
 ---
 
-## ⚠️ Known Limitations / TODOs
+## ⚠️ Known Issues Resolved
 
-1. **ACH Verification Page:** Need to build `/ach-setup/:token` page for Stripe Financial Connections
-2. **Invoice with ACH Backup:** Same flow as direct ACH - needs bank verification
-3. **Stripe Webhooks:** Should add for payment status updates
-4. **PDF Generation:** Not yet implemented for signed contracts
-
----
-
-## 🧪 Testing Notes
-
-### Test Card Numbers (Stripe Test Mode)
-- Success: `4242 4242 4242 4242`
-- Decline: `4000 0000 0000 0002`
-- Requires Auth: `4000 0025 0000 3155`
-
-### Test Flow
-1. Create order → Submit → Auto-approve (or approve manually)
-2. Send to client → Opens signing page
-3. Step 1: Confirm products
-4. Step 2: Select payment method, enter card/select ACH
-5. Step 3: Sign and complete
-6. Verify correct email received based on payment type
+| Issue | Solution |
+|-------|----------|
+| 401 on ACH endpoint | Created token-based endpoint without auth |
+| 500 "column c.email does not exist" | Removed non-existent column from query |
+| 500 "No such customer" | Added customer validation, recreate if missing |
+| Premium Radio Show Host $25,000 | Fixed to $2,500 |
 
 ---
 
-## 📋 Next Session Priorities
+## 📋 Ready for Team Testing
 
-1. **Order Form Variants:**
-   - Upload Order (pre-signed PDF)
-   - Change Order (electronic + upload)
-   - Kill Order (electronic + upload)
+Created comprehensive test checklist covering:
+- 11 New Order scenarios (different brands, products, payment methods)
+- 4 Change Order (Electronic) scenarios
+- 1 Change Order (Upload) scenario
+- 2 Kill Order (Electronic) scenarios
+- 1 Kill Order (Upload) scenario
+- 2 Upload Order scenarios
 
-2. **Billing/Invoice System:**
-   - Invoice generation
-   - Approval queue
-   - Send and track payments
-   - Auto-charge after grace period
+---
 
-3. **ACH Verification:**
-   - Build Stripe Financial Connections page
-   - Handle verification webhooks
+## 🎯 Next Session Priorities
+
+### 1. Billing/Invoice Management System (Recommended Next)
+- Auto-generate invoices on billing cycle
+- Invoice approval queue for admin
+- Send invoices via email with Stripe payment link
+- Grace period tracking (30 days)
+- Auto-charge backup payment after grace period
+- Invoice statuses: draft → approved → sent → paid/overdue
+
+### 2. ACH Bank Verification Flow
+- Build `/ach-setup/:token` page
+- Stripe Financial Connections integration
+- Handle verification webhooks
+- Update payment_status on completion
+
+### 3. Contract PDF Generation
+- Auto-generate PDF contracts from signed orders
+- Include all order details, signatures, terms
+- Store in documents table
+
+---
+
+## 🔧 Environment Notes
+
+- Railway deployment working correctly
+- Stripe integration functional for card payments
+- ACH flow sends setup email (verification page still TODO)
+- All three entities (WSIC, LKN, LWP) have Stripe accounts configured

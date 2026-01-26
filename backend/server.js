@@ -20,6 +20,7 @@ const adminRoutes = require('./routes/admin');
 const orderRoutes = require('./routes/order');
 const emailRoutes = require('./routes/email');
 const documentRoutes = require('./routes/document');
+const billingRoutes = require('./routes/billing');
 const emailService = require('./services/email-service');
 
 // Initialize Express
@@ -118,6 +119,13 @@ const setupAdminRoutes = () => {
   
   orderRoutesReady = true;
   console.log('Order routes initialized');
+  
+  // Initialize billing routes
+  billingRoutes.initPool(process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL);
+  billingRoutes.initEmailService(emailService);
+  const { stripeService } = require('./services/stripe-service');
+  billingRoutes.initStripeService(stripeService);
+  console.log('Billing routes initialized');
 };
 
 // ============================================
@@ -2746,6 +2754,12 @@ app.use('/api/documents', authenticateToken, documentRoutes);
 // ============================================
 
 app.use('/api/email', authenticateToken, emailRoutes);
+
+// ============================================
+// BILLING ROUTES (Authenticated)
+// ============================================
+
+app.use('/api/billing', authenticateToken, billingRoutes);
 
 // ============================================
 // ERROR HANDLING

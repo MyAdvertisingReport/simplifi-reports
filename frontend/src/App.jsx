@@ -22,6 +22,8 @@ import ChangeOrderUploadForm from './components/ChangeOrderUploadForm';
 import KillOrderForm from './components/KillOrderForm';
 import KillOrderUploadForm from './components/KillOrderUploadForm';
 import AdminDocumentsPage from './components/AdminDocumentsPage';
+import BillingPage from './components/BillingPage';
+import InvoiceForm from './components/InvoiceForm';
 import { 
   ResponsiveContainer, 
   AreaChart as RechartsAreaChart, 
@@ -564,6 +566,7 @@ function Sidebar({ isOpen }) {
   const orderItems = [
     { path: '/orders', icon: List, label: 'All Orders' },
     { path: '/orders/new/select', icon: FileText, label: 'New Order' },
+    { path: '/billing', icon: DollarSign, label: 'Billing' },
     { path: '/admin/products', icon: Database, label: 'Products' },
   ];
   
@@ -573,7 +576,7 @@ function Sidebar({ isOpen }) {
   }
   
   // Check if current path is in order management section
-  const isOrderSection = location.pathname.startsWith('/orders') || location.pathname === '/admin/products';
+  const isOrderSection = location.pathname.startsWith('/orders') || location.pathname.startsWith('/billing') || location.pathname === '/admin/products';
 
   return (
     <aside style={{
@@ -10355,6 +10358,8 @@ function App() {
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
           <Route path="/admin/documents" element={<ProtectedRoute><AdminDocumentsPage /></ProtectedRoute>} />
+          <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
+          <Route path="/billing/new" element={<ProtectedRoute><InvoiceForm /></ProtectedRoute>} />
           <Route path="/orders" element={<ProtectedRoute><OrderList /></ProtectedRoute>} />
           <Route path="/orders/new" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
           <Route path="/orders/new/select" element={<ProtectedRoute><OrderTypeSelector /></ProtectedRoute>} />

@@ -1,9 +1,59 @@
 # WSIC Advertising Platform - Development Roadmap
-## Updated: January 24, 2026
+## Updated: January 26, 2026
 
 ---
 
-## 🎯 Current Sprint: Payment Integration & Order Variants
+## 🎯 Current Sprint: Order Variants Complete, Payment Flow Fixed
+
+### ✅ COMPLETED (January 26, 2026)
+
+#### Product Selector Improvements
+- [x] Broadcast subcategories: Commercials, Show Sponsor, Host Your Own Show, Community Calendar
+- [x] Brand → Category → Subcategory → Product flow in OrderForm
+- [x] Same flow added to ChangeOrderForm
+- [x] Client search simplified (name only) in Change/Kill order forms
+
+#### New Products Added
+- [x] Bible Minute - $1,000/month (Broadcast → Commercials)
+- [x] Premium Radio Show Host - $2,500/month (Broadcast → Host Your Own Show)
+- [x] Radio Show Host - $2,000/month (Broadcast → Host Your Own Show)
+- [x] Sunday Morning Sermon - $1,500/month (Broadcast → Host Your Own Show)
+
+#### Client Signing Payment Flow Fixes
+- [x] Token-based payment endpoints (no auth required)
+- [x] Fixed SQL query errors (non-existent columns)
+- [x] Stripe customer validation (recreate if missing)
+- [x] Detailed logging for debugging
+
+#### Fillable PDF Templates
+- [x] Contract template (3 pages with payment fields)
+- [x] Change order template (1 page)
+- [x] Kill order template (1 page)
+
+### ✅ COMPLETED (January 24-25, 2026)
+
+#### Order Variants System
+- [x] OrderTypeSelector - 3-column layout with 6 order types
+- [x] Upload Order form - Pre-signed PDF upload
+- [x] Change Order (Electronic) - E-signature flow
+- [x] Change Order (Upload) - Upload signed change order
+- [x] Kill Order (Electronic) - E-signature cancellation
+- [x] Kill Order (Upload) - Upload signed cancellation
+- [x] AdminDocumentsPage - View all uploaded documents
+- [x] Document upload/download API endpoints
+- [x] Database migrations for documents table
+
+#### Contract Term/Renewal Fields
+- [x] New/Renewal toggle on Change Order forms
+- [x] Contract term length selection (6/12/18/24 months)
+- [x] Auto-calculated end dates
+- [x] Start date picker
+
+#### Payment Collection During Upload
+- [x] Payment method selection in Upload forms
+- [x] Credit Card, ACH, Check, Invoice options
+- [x] Stripe integration for card/ACH collection
+- [x] Client creation modal in upload forms
 
 ### ✅ COMPLETED (January 24, 2026)
 
@@ -13,98 +63,30 @@
 - [x] Editable contact card in Step 1
 - [x] Three billing preferences (Card, ACH, Invoice)
 - [x] Invoice backup payment selection (Card or ACH)
-- [x] No pre-selection on payment options
-- [x] Proper amount calculations (monthly, setup fees, first month total)
-- [x] CC fee display (+3.5%) when applicable
+- [x] Proper amount calculations with CC fee display
 
 #### Stripe Payment Integration (PCI Compliant)
-- [x] Stripe Elements for card collection (no raw card data on server)
-- [x] SetupIntent flow for secure card tokenization
+- [x] Stripe Elements for card collection
+- [x] SetupIntent flow for secure tokenization
 - [x] Per-entity Stripe accounts (WSIC, LKN, LWP)
 - [x] Customer creation and payment method attachment
-- [x] ACH placeholder with bank verification email flow
 
-#### Email System Improvements
-- [x] Contract email with brand logos in header
-- [x] Confirmation email with product/pricing breakdown
-- [x] ACH setup email (action required messaging)
-- [x] Fixed Outlook compatibility (solid background-color fallbacks)
-- [x] Warm, relational messaging (no order numbers to clients)
-- [x] Conditional email based on payment method selected
-
-#### Success Page Variants
-- [x] Card payment: Green "You're All Set!" confirmation
-- [x] ACH payment: Blue "Almost There!" with action required warning
-
-### ✅ COMPLETED (Previous Sessions)
-
-#### Order Creation & Signature Flow
-- [x] Order form with client selection, products, pricing
-- [x] Sales rep signature modal on submission
-- [x] Price adjustment detection (book value vs custom)
-- [x] Auto-approval when no price adjustments
-- [x] Auto-send to client when auto-approved (if contact exists)
-- [x] Success page with celebratory messaging
-- [x] Edit existing orders
-
-#### Approval Workflow
-- [x] Pending approvals page for managers
-- [x] Badge count in sidebar navigation
-- [x] Approve/Reject with notes
-- [x] Submitter name display
-
-#### Orders List
-- [x] Reorganized columns (Client first, order # underneath)
-- [x] All statuses: draft, pending_approval, approved, sent, signed, active
-- [x] Sales rep name display
-- [x] Filter and sort capabilities
+#### Email System
+- [x] Contract email with brand logos
+- [x] Confirmation email with product breakdown
+- [x] ACH setup email (action required)
+- [x] Outlook compatibility fixes
 
 ---
 
 ## 📋 NEXT UP (Priority Order)
 
-### 1. Additional Order Form Types
-Create variants of the order form for different scenarios:
-
-#### Upload Order (Already Signed)
-- [ ] New order type selector in OrderForm
-- [ ] File upload field for signed PDF
-- [ ] Skip signing flow - goes directly to "signed" status
-- [ ] Still collects payment info
-- [ ] Store PDF in order record
-
-#### Change Order (Electronic)
-- [ ] Select existing signed order to modify
-- [ ] Show original vs new line items comparison
-- [ ] Calculate price difference (+/- monthly)
-- [ ] New signing flow for changes only
-- [ ] Link to parent order
-- [ ] Update campaign when signed
-
-#### Change Order (Upload)
-- [ ] Select existing order
-- [ ] Upload signed change order PDF
-- [ ] Same comparison view
-- [ ] Skip signing flow
-
-#### Kill Order (Electronic)
-- [ ] Select existing order to cancel
-- [ ] Show cancellation terms
-- [ ] Effective date selection
-- [ ] E-signature for cancellation
-- [ ] Update order status to "cancelled"
-- [ ] Trigger campaign pause/end
-
-#### Kill Order (Upload)
-- [ ] Upload signed cancellation document
-- [ ] Same cancellation flow without e-sign
-
-### 2. Billing & Invoice Management System
+### 1. 🔥 Billing/Invoice Management System (RECOMMENDED NEXT)
 
 #### Invoice Generation
 - [ ] Auto-generate invoices on billing cycle
-- [ ] Support different billing frequencies (monthly, quarterly)
-- [ ] Calculate amounts based on active orders
+- [ ] Support billing frequencies (monthly, quarterly)
+- [ ] Calculate amounts from active orders
 - [ ] Include setup fees on first invoice
 - [ ] Apply CC processing fee when applicable
 
@@ -112,10 +94,10 @@ Create variants of the order form for different scenarios:
 - [ ] Admin view of pending invoices
 - [ ] Edit invoice line items before sending
 - [ ] Bulk approve/send functionality
-- [ ] Invoice status tracking (draft → approved → sent → paid/overdue)
+- [ ] Invoice status: draft → approved → sent → paid/overdue
 
 #### Invoice Delivery
-- [ ] Send invoice email with payment link
+- [ ] Send invoice email with Stripe payment link
 - [ ] Stripe hosted invoice page
 - [ ] Payment confirmation emails
 - [ ] Receipt generation
@@ -124,8 +106,8 @@ Create variants of the order form for different scenarios:
 - [ ] Track days since invoice sent
 - [ ] Warning emails at 15, 25, 30 days
 - [ ] Auto-charge backup payment after 30 days
-- [ ] Late fee calculation (if applicable)
 - [ ] Payment failure handling
+- [ ] Late fee calculation
 
 #### Billing Dashboard
 - [ ] Outstanding invoices view
@@ -133,45 +115,52 @@ Create variants of the order form for different scenarios:
 - [ ] Revenue reporting
 - [ ] Aging report (30/60/90 days)
 
-### 3. ACH Bank Verification
+### 2. ACH Bank Verification
 - [ ] Stripe Financial Connections integration
 - [ ] Bank verification page (`/ach-setup/:token`)
 - [ ] Verification status webhooks
 - [ ] Update payment_status on completion
 - [ ] Send confirmation when verified
 
+### 3. Contract PDF Generation
+- [ ] Auto-generate PDF from signed orders
+- [ ] Include all order details, signatures, terms
+- [ ] Store in documents table
+- [ ] Email PDF to client after signing
+
 ---
 
-## 📊 Order Status Flow (Updated)
+## 📊 Order Status Flow
 
 ```
-                                    ┌─────────────┐
-                                    │   Upload    │
-                                    │   Order     │
-                                    └──────┬──────┘
-                                           │
-                                           ▼
+                                    ┌─────────────────┐
+                                    │  Upload Order   │
+                                    │  (pre-signed)   │
+                                    └────────┬────────┘
+                                             │
+                                             ▼
 ┌─────────┐     ┌──────────────────┐     ┌──────────┐     ┌──────┐     ┌────────┐     ┌────────┐
 │  Draft  │ ──► │ Pending Approval │ ──► │ Approved │ ──► │ Sent │ ──► │ Signed │ ──► │ Active │
 └─────────┘     └──────────────────┘     └──────────┘     └──────┘     └────────┘     └────────┘
-     │                   │                     │                            │
-     │                   ▼                     │                            │
-     │              ┌──────────┐               │                            │
-     │              │ Rejected │ ──────────────┘                            │
-     │              └──────────┘     (back to draft)                        │
-     │                                                                      │
-     ▼                                                                      ▼
-  (no price adjustments = auto-approve + auto-send)              ┌──────────────────┐
-                                                                 │  Change Order    │
-                                                                 │  or Kill Order   │
-                                                                 └──────────────────┘
+     │                   │                                                   │
+     │                   ▼                                                   │
+     │              ┌──────────┐                                             │
+     │              │ Rejected │ ◄──────────────────────────────────────────┘
+     │              └──────────┘     (back to draft)                  (Change/Kill Orders)
+     │
+     ▼
+  (no price adjustments = auto-approve + auto-send)
 ```
 
-### New Order Types:
-- **Standard Order** - Full signing flow
-- **Upload Order** - Pre-signed PDF, skip to signed
-- **Change Order** - Modify existing order
-- **Kill Order** - Cancel existing order
+### Order Types:
+| Type | Description | Flow |
+|------|-------------|------|
+| New Order (Electronic) | Standard e-signature | Full signing flow |
+| Upload Order | Pre-signed PDF | Skip to signed, collect payment |
+| Change Order (Electronic) | Modify existing | E-signature for changes |
+| Change Order (Upload) | Upload signed changes | Direct update |
+| Kill Order (Electronic) | Cancel with e-sign | Cancellation signature |
+| Kill Order (Upload) | Upload cancellation | Direct cancellation |
 
 ---
 
@@ -207,24 +196,36 @@ Create variants of the order form for different scenarios:
 | Postmark (Email) | ✅ Working | All email types functional |
 | Supabase (DB) | ✅ Working | PostgreSQL database |
 | Simpli.fi (Ads) | ✅ Working | Campaign data sync |
-| Stripe (Payments) | ✅ Integrated | Card collection working, ACH pending verification flow |
+| Stripe (Payments) | ✅ Working | Card collection working, ACH needs verification page |
 | Twilio (SMS) | 📋 Planned | Phase 3 |
 
 ---
 
-## 📝 Technical Debt / Improvements
+## 🔧 Technical Debt / Improvements
 
-- [ ] Users table sync with JWT auth
-- [ ] PDF generation for signed contracts
 - [ ] Stripe webhook handling for payment events
-- [ ] Better error handling in signing flow
+- [ ] Better error handling throughout
 - [ ] Unit tests for critical flows
 - [ ] API rate limiting
 - [ ] Audit logging for compliance
+- [ ] Users table sync with JWT auth
 
 ---
 
 ## 📅 Session History
+
+### January 26, 2026 - UI Improvements & Payment Fixes
+- Added Broadcast subcategories (Commercials, Show Sponsor, Host Your Own Show, Community Calendar)
+- Added 4 new products (Bible Minute, Premium/Standard Radio Show Host, Sunday Morning Sermon)
+- Simplified client search in Change/Kill order forms
+- Fixed client signing payment flow (token-based endpoints, customer validation)
+- Created fillable PDF templates for offline use
+
+### January 25, 2026 - Order Variants & Upload Forms
+- Built Upload Order form with payment collection
+- Added contract term/renewal fields to Change Order forms
+- Fixed inline ACH collection on ClientSigningPage
+- Created client creation modal for upload forms
 
 ### January 24, 2026 - Payment Integration & Signing Redesign
 - Redesigned ClientSigningPage to single-page 3-step flow
@@ -232,17 +233,13 @@ Create variants of the order form for different scenarios:
 - Added billing preference options (Card/ACH/Invoice)
 - Created ACH setup email flow
 - Fixed email header backgrounds for Outlook
-- Added product breakdown to confirmation emails
-- Added editable contact card to signing flow
 
 ### January 23, 2026 - Order Workflow Completion
 - Fixed "View Details" loading existing orders
 - Added sent/signed statuses to OrderList
 - Updated success page messaging
-- Discovered and resolved Postmark issues
 
 ### January 21, 2026 - Approval Workflow
 - Created ApprovalsPage component
 - Built ClientSigningPage (original version)
 - Added signature capture and verification
-- Implemented email notifications
