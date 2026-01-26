@@ -138,7 +138,7 @@ router.get('/invoices', async (req, res) => {
         u.name as created_by_name,
         CASE 
           WHEN i.status = 'sent' AND i.due_date::date < CURRENT_DATE 
-          THEN EXTRACT(DAY FROM (CURRENT_DATE - i.due_date::date))::int
+          THEN (CURRENT_DATE - i.due_date::date)
           ELSE 0
         END as days_overdue
       FROM invoices i
@@ -882,7 +882,7 @@ router.get('/aging-report', async (req, res) => {
           WHEN i.due_date::date >= CURRENT_DATE - INTERVAL '90 days' THEN '61-90'
           ELSE 'over-90'
         END as aging_bucket,
-        EXTRACT(DAY FROM (CURRENT_DATE - i.due_date::date))::int as days_overdue
+        (CURRENT_DATE - i.due_date::date) as days_overdue
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       WHERE i.status = 'sent' AND i.balance_due > 0
