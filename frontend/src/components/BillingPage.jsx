@@ -71,7 +71,6 @@ export default function BillingPage() {
   const [activeTab, setActiveTab] = useState('invoices');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [agingReport, setAgingReport] = useState(null);
   
   // Modals
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -103,15 +102,6 @@ export default function BillingPage() {
       console.error('Error loading billing data:', err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadAgingReport = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/billing/aging-report`, { headers: getAuthHeaders() });
-      if (res.ok) setAgingReport(await res.json());
-    } catch (err) {
-      console.error('Error loading aging report:', err);
     }
   };
 
@@ -392,8 +382,8 @@ export default function BillingPage() {
           <div style={{ ...styles.tab, ...(activeTab === 'invoices' ? styles.tabActive : {}) }} onClick={() => setActiveTab('invoices')}>
             Invoices
           </div>
-          <div style={{ ...styles.tab, ...(activeTab === 'aging' ? styles.tabActive : {}) }} onClick={() => { setActiveTab('aging'); loadAgingReport(); }}>
-            Aging Report
+          <div style={{ ...styles.tab, ...(activeTab === 'dashboard' ? styles.tabActive : {}) }} onClick={() => setActiveTab('dashboard')}>
+            Financial Dashboard
           </div>
         </div>
 
@@ -549,10 +539,25 @@ export default function BillingPage() {
                         ) : (
                           <>
                             <div style={styles.detailsGrid}>
-                              {/* Client Info */}
+                              {/* Client Info with Contact */}
                               <div style={styles.detailSection}>
                                 <div style={styles.detailTitle}><Building2 size={14} style={{ display: 'inline', marginRight: '6px' }} />Client</div>
-                                <div style={{ fontWeight: '600', marginBottom: '8px' }}>{details.client_name}</div>
+                                <div style={{ fontWeight: '600', marginBottom: '12px', fontSize: '15px' }}>{details.client_name}</div>
+                                {details.contact_name && details.contact_name.trim() !== '' && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '6px' }}>
+                                    <User size={14} /> {details.contact_name}
+                                  </div>
+                                )}
+                                {details.contact_email && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', marginBottom: '6px' }}>
+                                    <Mail size={14} /> {details.contact_email}
+                                  </div>
+                                )}
+                                {details.contact_phone && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b' }}>
+                                    <Phone size={14} /> {details.contact_phone}
+                                  </div>
+                                )}
                               </div>
 
                               {/* Invoice Info */}
@@ -580,24 +585,56 @@ export default function BillingPage() {
                                 </div>
                               </div>
 
-                              {/* Payment Info */}
+                              {/* Payment Info with last 4 */}
                               <div style={styles.detailSection}>
                                 <div style={styles.detailTitle}><CreditCard size={14} style={{ display: 'inline', marginRight: '6px' }} />Payment</div>
                                 <div style={{ display: 'grid', gap: '8px', fontSize: '13px' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#64748b' }}>Method:</span>
-                                    <span style={{ fontWeight: '500', textTransform: 'capitalize' }}>{details.billing_preference || 'Invoice'}</span>
-                                  </div>
-                                  {details.payment_method_id && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <span style={{ color: '#64748b' }}>Backup Payment:</span>
-                                      <span style={{ fontWeight: '500' }}>•••• on file</span>
-                                    </div>
-                                  )}
-                                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: '#64748b' }}>Auto-charge:</span>
-                                    <span style={{ fontWeight: '500', color: '#f59e0b' }}>Day 30 if unpaid</span>
-                                  </div>
+                                  {(() => {
+                                    const pref = details.billing_preference || details.order_billing_preference || 'invoice';
+                                    const paymentType = details.payment_type;
+                                    const cardLast4 = details.card_last4;
+                                    const bankLast4 = details.bank_last4;
+                                    const bankName = details.bank_name;
+                                    
+                                    // Determine primary method display
+                                    let primaryMethod = 'Invoice';
+                                    let backupMethod = null;
+                                    
+                                    if (pref === 'card') {
+                                      primaryMethod = cardLast4 ? `Credit Card ••••${cardLast4}` : 'Credit Card';
+                                    } else if (pref === 'ach') {
+                                      primaryMethod = bankLast4 ? `${bankName || 'Bank'} ••••${bankLast4}` : 'ACH Bank Transfer';
+                                    } else {
+                                      // Invoice - show backup
+                                      primaryMethod = 'Invoice';
+                                      if (paymentType === 'card' && cardLast4) {
+                                        backupMethod = `Card ••••${cardLast4}`;
+                                      } else if ((paymentType === 'ach' || paymentType === 'us_bank_account') && bankLast4) {
+                                        backupMethod = `${bankName || 'Bank'} ••••${bankLast4}`;
+                                      } else if (details.payment_method_id || details.order_payment_method_id) {
+                                        backupMethod = 'Payment on file';
+                                      }
+                                    }
+                                    
+                                    return (
+                                      <>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                          <span style={{ color: '#64748b' }}>Method:</span>
+                                          <span style={{ fontWeight: '500' }}>{primaryMethod}</span>
+                                        </div>
+                                        {backupMethod && (
+                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: '#64748b' }}>Backup:</span>
+                                            <span style={{ fontWeight: '500' }}>{backupMethod}</span>
+                                          </div>
+                                        )}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                          <span style={{ color: '#64748b' }}>Auto-charge:</span>
+                                          <span style={{ fontWeight: '500', color: '#f59e0b' }}>Day 30 if unpaid</span>
+                                        </div>
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -652,67 +689,143 @@ export default function BillingPage() {
           </>
         )}
 
-        {/* Aging Report Tab */}
-        {activeTab === 'aging' && (
+        {/* Financial Dashboard Tab */}
+        {activeTab === 'dashboard' && (
           <div style={{ padding: '20px' }}>
-            {!agingReport ? (
-              <div style={{ textAlign: 'center', padding: '40px' }}><Loader2 size={32} /></div>
-            ) : (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
-                  {[
-                    { label: 'Current', value: agingReport.totals?.current, color: '#059669' },
-                    { label: '1-30 Days', value: agingReport.totals?.['1-30'], color: '#f59e0b' },
-                    { label: '31-60 Days', value: agingReport.totals?.['31-60'], color: '#ea580c' },
-                    { label: '61-90 Days', value: agingReport.totals?.['61-90'], color: '#dc2626' },
-                    { label: 'Over 90', value: agingReport.totals?.['over-90'], color: '#7f1d1d' },
-                  ].map(bucket => (
-                    <div key={bucket.label} style={{ background: '#f8fafc', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '4px' }}>{bucket.label}</div>
-                      <div style={{ fontSize: '24px', fontWeight: '700', color: bucket.color }}>{formatCurrency(bucket.value)}</div>
-                    </div>
-                  ))}
-                </div>
+            {/* Key Metrics Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px', marginBottom: '24px' }}>
+              {(() => {
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const thisMonthInvoices = invoices.filter(inv => {
+                  const d = new Date(inv.created_at);
+                  return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                });
+                const thisMonthTotal = thisMonthInvoices.reduce((sum, inv) => sum + parseFloat(inv.total || 0), 0);
+                const paidInvoices = invoices.filter(inv => inv.status === 'paid');
+                const paidTotal = paidInvoices.reduce((sum, inv) => sum + parseFloat(inv.total || 0), 0);
+                const collectionRate = invoices.length > 0 ? Math.round((paidInvoices.length / invoices.length) * 100) : 0;
+                const avgInvoice = invoices.length > 0 ? invoices.reduce((sum, inv) => sum + parseFloat(inv.total || 0), 0) / invoices.length : 0;
                 
-                {agingReport.invoices?.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc' }}>
-                        <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Invoice</th>
-                        <th style={{ padding: '12px', textAlign: 'left', fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Client</th>
-                        <th style={{ padding: '12px', textAlign: 'right', fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Balance</th>
-                        <th style={{ padding: '12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Days Overdue</th>
-                        <th style={{ padding: '12px', textAlign: 'center', fontSize: '12px', fontWeight: '600', color: '#64748b' }}>Aging</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {agingReport.invoices.map(inv => (
-                        <tr key={inv.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                          <td style={{ padding: '12px', fontWeight: '500' }}>{inv.invoice_number}</td>
-                          <td style={{ padding: '12px' }}>{inv.client_name}</td>
-                          <td style={{ padding: '12px', textAlign: 'right', fontWeight: '600' }}>{formatCurrency(inv.balance_due)}</td>
-                          <td style={{ padding: '12px', textAlign: 'center', color: '#dc2626' }}>{inv.days_overdue}</td>
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
-                            <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: '500',
-                              background: inv.aging_bucket === 'current' ? '#dcfce7' : inv.aging_bucket === '1-30' ? '#fef3c7' : '#fee2e2',
-                              color: inv.aging_bucket === 'current' ? '#166534' : inv.aging_bucket === '1-30' ? '#92400e' : '#991b1b'
-                            }}>
-                              {inv.aging_bucket}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
-                    <CheckCircle size={48} color="#059669" style={{ marginBottom: '16px' }} />
-                    <h3>All Caught Up!</h3>
-                    <p>No outstanding invoices</p>
-                  </div>
-                )}
-              </>
-            )}
+                return (
+                  <>
+                    <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>This Month's Billing</div>
+                      <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e293b' }}>{formatCurrency(thisMonthTotal)}</div>
+                      <div style={{ fontSize: '13px', marginTop: '8px', color: '#059669' }}>{thisMonthInvoices.length} invoices created</div>
+                    </div>
+                    <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>Total Collected</div>
+                      <div style={{ fontSize: '32px', fontWeight: '700', color: '#059669' }}>{formatCurrency(paidTotal)}</div>
+                      <div style={{ fontSize: '13px', marginTop: '8px', color: '#64748b' }}>{paidInvoices.length} paid invoices</div>
+                    </div>
+                    <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>Collection Rate</div>
+                      <div style={{ fontSize: '32px', fontWeight: '700', color: collectionRate >= 80 ? '#059669' : collectionRate >= 60 ? '#f59e0b' : '#dc2626' }}>{collectionRate}%</div>
+                      <div style={{ fontSize: '13px', marginTop: '8px', color: '#64748b' }}>{paidInvoices.length} of {invoices.length} invoices</div>
+                    </div>
+                    <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>Avg Invoice Value</div>
+                      <div style={{ fontSize: '32px', fontWeight: '700', color: '#1e293b' }}>{formatCurrency(avgInvoice)}</div>
+                      <div style={{ fontSize: '13px', marginTop: '8px', color: '#64748b' }}>Across {invoices.length} invoices</div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Aging Buckets */}
+            <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0', marginBottom: '24px' }}>
+              <h3 style={{ margin: '0 0 20px 0', fontSize: '16px', fontWeight: '600', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={18} /> Accounts Receivable Aging
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
+                {(() => {
+                  const sentInvoices = invoices.filter(inv => inv.status === 'sent' || inv.status === 'partial');
+                  const buckets = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, 'over90': 0 };
+                  sentInvoices.forEach(inv => {
+                    const days = parseInt(inv.days_overdue) || 0;
+                    const balance = parseFloat(inv.balance_due || inv.total) || 0;
+                    if (days <= 0) buckets.current += balance;
+                    else if (days <= 30) buckets['1-30'] += balance;
+                    else if (days <= 60) buckets['31-60'] += balance;
+                    else if (days <= 90) buckets['61-90'] += balance;
+                    else buckets['over90'] += balance;
+                  });
+                  return [
+                    { label: 'Current', value: buckets.current, color: '#059669', bg: '#dcfce7' },
+                    { label: '1-30 Days', value: buckets['1-30'], color: '#f59e0b', bg: '#fef3c7' },
+                    { label: '31-60 Days', value: buckets['31-60'], color: '#ea580c', bg: '#ffedd5' },
+                    { label: '61-90 Days', value: buckets['61-90'], color: '#dc2626', bg: '#fee2e2' },
+                    { label: 'Over 90', value: buckets['over90'], color: '#7f1d1d', bg: '#fecaca' },
+                  ].map(bucket => (
+                    <div key={bucket.label} style={{ background: bucket.bg, padding: '20px', borderRadius: '10px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '8px', fontWeight: '500' }}>{bucket.label}</div>
+                      <div style={{ fontSize: '28px', fontWeight: '700', color: bucket.color }}>{formatCurrency(bucket.value)}</div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            {/* Two Column Layout */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              {/* Top Clients */}
+              <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: '600', color: '#1e293b' }}>Top Clients by Revenue</h3>
+                {(() => {
+                  const clientTotals = {};
+                  invoices.forEach(inv => {
+                    if (!clientTotals[inv.client_name]) clientTotals[inv.client_name] = 0;
+                    clientTotals[inv.client_name] += parseFloat(inv.total || 0);
+                  });
+                  const sorted = Object.entries(clientTotals).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                  if (sorted.length === 0) return <div style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>No data yet</div>;
+                  return sorted.map(([name, total], idx) => (
+                    <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: idx < sorted.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#eff6ff', color: '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '600' }}>{idx + 1}</span>
+                        <span style={{ fontWeight: '500' }}>{name}</span>
+                      </div>
+                      <span style={{ fontWeight: '600', color: '#1e293b' }}>{formatCurrency(total)}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+
+              {/* Invoice Status Breakdown */}
+              <div style={{ background: 'white', borderRadius: '12px', padding: '24px', border: '1px solid #e2e8f0' }}>
+                <h3 style={{ margin: '0 0 16px 0', fontSize: '16px', fontWeight: '600', color: '#1e293b' }}>Invoice Status Breakdown</h3>
+                {(() => {
+                  const statusCounts = {};
+                  const statusTotals = {};
+                  invoices.forEach(inv => {
+                    const s = inv.status || 'draft';
+                    statusCounts[s] = (statusCounts[s] || 0) + 1;
+                    statusTotals[s] = (statusTotals[s] || 0) + parseFloat(inv.total || 0);
+                  });
+                  const statusConfig = {
+                    paid: { label: 'Paid', color: '#059669' },
+                    sent: { label: 'Sent', color: '#f59e0b' },
+                    draft: { label: 'Draft', color: '#64748b' },
+                    approved: { label: 'Approved', color: '#3b82f6' },
+                    void: { label: 'Void', color: '#94a3b8' },
+                  };
+                  return Object.entries(statusConfig).map(([status, config]) => (
+                    statusCounts[status] > 0 && (
+                      <div key={status} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: config.color }}></span>
+                          <span style={{ color: '#374151' }}>{config.label}</span>
+                          <span style={{ color: '#94a3b8', fontSize: '13px' }}>({statusCounts[status] || 0})</span>
+                        </div>
+                        <span style={{ fontWeight: '600', color: config.color }}>{formatCurrency(statusTotals[status])}</span>
+                      </div>
+                    )
+                  ));
+                })()}
+              </div>
+            </div>
           </div>
         )}
       </div>

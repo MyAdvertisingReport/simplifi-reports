@@ -187,10 +187,17 @@ router.get('/invoices/:id', async (req, res) => {
         c.business_name as client_name,
         c.slug as client_slug,
         o.order_number, o.term_months, o.contract_start_date, o.contract_end_date,
-        o.billing_preference as order_billing_preference
+        o.billing_preference as order_billing_preference,
+        o.payment_type,
+        o.payment_method_id as order_payment_method_id,
+        -- Get primary contact info from client_contacts table
+        cc.first_name || ' ' || cc.last_name as contact_name,
+        cc.email as contact_email,
+        cc.phone as contact_phone
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       LEFT JOIN orders o ON i.order_id = o.id
+      LEFT JOIN client_contacts cc ON c.id = cc.client_id AND cc.is_primary = true
       WHERE i.id = $1
     `;
 
@@ -213,8 +220,34 @@ router.get('/invoices/:id', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
+    // Try to get payment method details if available
+    const invoice = invoiceResult.rows[0];
+    let paymentDetails = {};
+    
+    if (invoice.order_payment_method_id || invoice.payment_method_id) {
+      try {
+        // Get last 4 digits from Stripe if we have a payment method
+        const pmId = invoice.order_payment_method_id || invoice.payment_method_id;
+        if (pmId && stripeService) {
+          const pm = await stripeService.retrievePaymentMethod(pmId);
+          if (pm) {
+            if (pm.type === 'card' && pm.card) {
+              paymentDetails.card_last4 = pm.card.last4;
+              paymentDetails.card_brand = pm.card.brand;
+            } else if (pm.type === 'us_bank_account' && pm.us_bank_account) {
+              paymentDetails.bank_last4 = pm.us_bank_account.last4;
+              paymentDetails.bank_name = pm.us_bank_account.bank_name;
+            }
+          }
+        }
+      } catch (pmErr) {
+        console.log('Could not fetch payment method details:', pmErr.message);
+      }
+    }
+
     res.json({
-      ...invoiceResult.rows[0],
+      ...invoice,
+      ...paymentDetails,
       items: itemsResult.rows
     });
 
