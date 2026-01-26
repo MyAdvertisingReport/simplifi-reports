@@ -534,9 +534,18 @@ router.get('/', async (req, res) => {
     let paramCount = 0;
 
     if (status) {
-      paramCount++;
-      query += ` AND o.status = $${paramCount}`;
-      params.push(status);
+      // Support comma-separated status values (e.g., "signed,active")
+      const statuses = status.split(',').map(s => s.trim()).filter(s => s);
+      if (statuses.length === 1) {
+        paramCount++;
+        query += ` AND o.status = $${paramCount}`;
+        params.push(statuses[0]);
+      } else if (statuses.length > 1) {
+        const placeholders = statuses.map((_, i) => `$${paramCount + i + 1}`).join(', ');
+        query += ` AND o.status IN (${placeholders})`;
+        statuses.forEach(s => params.push(s));
+        paramCount += statuses.length;
+      }
     }
 
     if (filterClientId) {
