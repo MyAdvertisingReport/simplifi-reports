@@ -139,7 +139,15 @@ export default function BillingPage() {
 
   // Combined Approve & Send
   const handleApproveAndSend = async (invoice) => {
-    if (!confirm(`📧 Ready to send invoice to ${invoice.client_name}?\n\n✅ Invoice: ${invoice.invoice_number}\n💰 Amount: ${formatCurrency(invoice.total)}\n📅 Due: ${formatDate(invoice.due_date)}\n\nThe client will receive a professional invoice email with a secure payment link. Click OK to approve and send!`)) {
+    // Check if this is an auto-bill client (card or ACH)
+    const isAutoBill = invoice.billing_preference === 'card' || invoice.billing_preference === 'ach';
+    const billingMethod = invoice.billing_preference === 'card' ? 'credit card' : invoice.billing_preference === 'ach' ? 'ACH' : 'invoice';
+    
+    const message = isAutoBill
+      ? `📧 Ready to send invoice to ${invoice.client_name}?\n\n👤 ${invoice.client_name}\n💰 Amount: ${formatCurrency(invoice.total)}\n📅 Due: ${formatDate(invoice.due_date)}\n💳 Payment: Auto-bill via ${billingMethod}\n\nWhen you click 'OK' the client will be automatically billed and when payment is confirmed they will receive an email with a PAID receipt.`
+      : `📧 Ready to send invoice to ${invoice.client_name}?\n\n👤 ${invoice.client_name}\n💰 Amount: ${formatCurrency(invoice.total)}\n📅 Due: ${formatDate(invoice.due_date)}\n\nWhen you click 'OK' the client will receive an email with a link to pay the invoice via Stripe.`;
+    
+    if (!confirm(message)) {
       return;
     }
     
