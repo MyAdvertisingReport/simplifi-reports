@@ -563,7 +563,7 @@ function Sidebar({ isOpen }) {
   // Order Management section items
   const orderItems = [
     { path: '/orders', icon: List, label: 'All Orders' },
-    { path: '/orders/new', icon: FileText, label: 'New Order' },
+    { path: '/orders/new/select', icon: FileText, label: 'New Order' },
     { path: '/admin/products', icon: Database, label: 'Products' },
   ];
   
