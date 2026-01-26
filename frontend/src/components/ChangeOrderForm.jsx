@@ -134,7 +134,6 @@ export default function ChangeOrderForm() {
   const filteredOrders = useMemo(() => {
     if (!orderSearch) return orders.slice(0, 10);
     return orders.filter(o => 
-      o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
       o.client_name?.toLowerCase().includes(orderSearch.toLowerCase())
     ).slice(0, 10);
   }, [orders, orderSearch]);
@@ -340,15 +339,15 @@ export default function ChangeOrderForm() {
 
       <div style={styles.formGrid}>
         <div style={styles.mainColumn}>
-          {/* Step 1: Select Order */}
+          {/* Step 1: Select Client */}
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}><span style={styles.stepNumber}>1</span>Select Order to Modify</h2>
+            <h2 style={styles.sectionTitle}><span style={styles.stepNumber}>1</span>Select Client</h2>
             
             <div style={styles.searchWrapper}>
               <Icons.Search />
               <input
                 type="text"
-                placeholder="Search by order number or client name..."
+                placeholder="Search by client name..."
                 value={orderSearch}
                 onChange={(e) => { setOrderSearch(e.target.value); setShowOrderDropdown(true); }}
                 onFocus={() => setShowOrderDropdown(true)}
@@ -361,13 +360,12 @@ export default function ChangeOrderForm() {
                       key={order.id}
                       onClick={() => {
                         loadOrderDetails(order.id);
-                        setOrderSearch(order.order_number);
+                        setOrderSearch(order.client_name);
                         setShowOrderDropdown(false);
                       }}
                       style={styles.dropdownItem}
                     >
                       <div>
-                        <span style={styles.orderNumber}>{order.order_number}</span>
                         <span style={styles.clientName}>{order.client_name}</span>
                       </div>
                       <span style={styles.orderAmount}>{formatCurrency(order.monthly_total)}/mo</span>
@@ -381,8 +379,7 @@ export default function ChangeOrderForm() {
               <div style={styles.selectedOrderCard}>
                 <div style={styles.selectedOrderHeader}>
                   <div>
-                    <strong style={{ fontSize: '16px' }}>{selectedOrder.order_number}</strong>
-                    <span style={{ color: '#6b7280', marginLeft: '8px' }}>{selectedOrder.client_name}</span>
+                    <strong style={{ fontSize: '16px' }}>{selectedOrder.client_name}</strong>
                   </div>
                   <button onClick={() => { setSelectedOrder(null); setNewItems([]); setOrderSearch(''); }} style={styles.changeButton}>Change</button>
                 </div>

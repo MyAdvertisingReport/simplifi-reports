@@ -1,0 +1,827 @@
+%PDF-1.4
+%“Œ‹ž ReportLab Generated PDF document http://www.reportlab.com
+1 0 obj
+<<
+/F1 2 0 R /F2 3 0 R
+>>
+endobj
+2 0 obj
+<<
+/BaseFont /Helvetica /Encoding /WinAnsiEncoding /Name /F1 /Subtype /Type1 /Type /Font
+>>
+endobj
+3 0 obj
+<<
+/BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding /Name /F2 /Subtype /Type1 /Type /Font
+>>
+endobj
+4 0 obj
+<< /DA (/Helv 10 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [439.20000000000005 748.8 561.6 764.64 ]/Subtype /Widget /T (chg_num)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+5 0 obj
+<< /DA (/Helv 10 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [439.20000000000005 730.8 561.6 746.64 ]/Subtype /Widget /T (chg_date)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+6 0 obj
+<< /DA (/Helv 10 Tf 0.9607843137254902 0.9607843137254902 0.9607843137254902 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [136.79999999999998 646.8 230.39999999999998 662.64 ]/Subtype /Widget /T (orig_order)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+7 0 obj
+<< /DA (/Helv 10 Tf 0.9607843137254902 0.9607843137254902 0.9607843137254902 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [331.2 646.8 518.4 662.64 ]/Subtype /Widget /T (client_name)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+8 0 obj
+<< /DA (/Helv 10 Tf 0.9607843137254902 0.9607843137254902 0.9607843137254902 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [136.79999999999998 620.8 230.39999999999998 636.64 ]/Subtype /Widget /T (curr_monthly)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+9 0 obj
+<< /DA (/Helv 10 Tf 0.9607843137254902 0.9607843137254902 0.9607843137254902 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [331.2 620.8 424.8 636.64 ]/Subtype /Widget /T (eff_date)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+10 0 obj
+<< /AA    <<    /D 52 0 R
+    >> /AP     <<    /D        <<        /Off 53 0 R
+        /Yes 54 0 R
+        >>
+    /N        <<         /Yes 55 0 R
+        >>    >>
+ /AS /Off
+ /DA (/ZaDb 0 Tf 0 g)
+/DV /Off
+/F     4 /FT     /Btn /H     /T /MK     <<    /AC (\376\377)    /CA (4)    /RC (\376\377)    >> 
+/P 49 0 R
+/Rect    [122.39999999999999 557.8 134.39999999999998 569.8    ] 
+/Subtype    /Widget /T (term_yes)
+/Type    /Annot /V /Off
+ >>
+endobj
+11 0 obj
+<< /AA    <<    /D 56 0 R
+    >> /AP     <<    /D        <<        /Off 57 0 R
+        /Yes 58 0 R
+        >>
+    /N        <<         /Yes 59 0 R
+        >>    >>
+ /AS /Off
+ /DA (/ZaDb 0 Tf 0 g)
+/DV /Off
+/F     4 /FT     /Btn /H     /T /MK     <<    /AC (\376\377)    /CA (4)    /RC (\376\377)    >> 
+/P 49 0 R
+/Rect    [172.79999999999998 557.8 184.79999999999998 569.8    ] 
+/Subtype    /Widget /T (term_no)
+/Type    /Annot /V /Off
+ >>
+endobj
+12 0 obj
+<< /DA (/Helv 10 Tf 0.9607843137254902 0.9607843137254902 0.9607843137254902 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [93.60000000000001 531.8 165.60000000000002 547.64 ]/Subtype /Widget /T (new_term)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+13 0 obj
+<< /DA (/Helv 10 Tf 0.9607843137254902 0.9607843137254902 0.9607843137254902 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [237.6 531.8 309.6 547.64 ]/Subtype /Widget /T (new_start)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+14 0 obj
+<< /DA (/Helv 10 Tf 0.9607843137254902 0.9607843137254902 0.9607843137254902 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [374.40000000000003 531.8 446.40000000000003 547.64 ]/Subtype /Widget /T (new_end)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+15 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [43.199999999999996 441.79999999999995 187.2 459.0799999999999 ]/Subtype /Widget /T (chg0_prod)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+16 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [194.4 441.79999999999995 262.8 459.0799999999999 ]/Subtype /Widget /T (chg0_action)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+17 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [270.0 441.79999999999995 327.6 459.0799999999999 ]/Subtype /Widget /T (chg0_prev)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+18 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [334.8 441.79999999999995 392.40000000000003 459.0799999999999 ]/Subtype /Widget /T (chg0_new)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+19 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [399.59999999999997 441.79999999999995 518.4 459.0799999999999 ]/Subtype /Widget /T (chg0_term)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+20 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [43.199999999999996 416.79999999999995 187.2 434.0799999999999 ]/Subtype /Widget /T (chg1_prod)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+21 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [194.4 416.79999999999995 262.8 434.0799999999999 ]/Subtype /Widget /T (chg1_action)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+22 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [270.0 416.79999999999995 327.6 434.0799999999999 ]/Subtype /Widget /T (chg1_prev)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+23 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [334.8 416.79999999999995 392.40000000000003 434.0799999999999 ]/Subtype /Widget /T (chg1_new)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+24 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [399.59999999999997 416.79999999999995 518.4 434.0799999999999 ]/Subtype /Widget /T (chg1_term)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+25 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [43.199999999999996 391.79999999999995 187.2 409.0799999999999 ]/Subtype /Widget /T (chg2_prod)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+26 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [194.4 391.79999999999995 262.8 409.0799999999999 ]/Subtype /Widget /T (chg2_action)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+27 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [270.0 391.79999999999995 327.6 409.0799999999999 ]/Subtype /Widget /T (chg2_prev)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+28 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [334.8 391.79999999999995 392.40000000000003 409.0799999999999 ]/Subtype /Widget /T (chg2_new)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+29 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [399.59999999999997 391.79999999999995 518.4 409.0799999999999 ]/Subtype /Widget /T (chg2_term)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+30 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [43.199999999999996 366.79999999999995 187.2 384.0799999999999 ]/Subtype /Widget /T (chg3_prod)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+31 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [194.4 366.79999999999995 262.8 384.0799999999999 ]/Subtype /Widget /T (chg3_action)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+32 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [270.0 366.79999999999995 327.6 384.0799999999999 ]/Subtype /Widget /T (chg3_prev)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+33 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [334.8 366.79999999999995 392.40000000000003 384.0799999999999 ]/Subtype /Widget /T (chg3_new)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+34 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [399.59999999999997 366.79999999999995 518.4 384.0799999999999 ]/Subtype /Widget /T (chg3_term)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+35 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [43.199999999999996 341.79999999999995 187.2 359.0799999999999 ]/Subtype /Widget /T (chg4_prod)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+36 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [194.4 341.79999999999995 262.8 359.0799999999999 ]/Subtype /Widget /T (chg4_action)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+37 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [270.0 341.79999999999995 327.6 359.0799999999999 ]/Subtype /Widget /T (chg4_prev)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+38 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [334.8 341.79999999999995 392.40000000000003 359.0799999999999 ]/Subtype /Widget /T (chg4_new)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+39 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [399.59999999999997 341.79999999999995 518.4 359.0799999999999 ]/Subtype /Widget /T (chg4_term)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+40 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [43.199999999999996 316.79999999999995 187.2 334.0799999999999 ]/Subtype /Widget /T (chg5_prod)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+41 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [194.4 316.79999999999995 262.8 334.0799999999999 ]/Subtype /Widget /T (chg5_action)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+42 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [270.0 316.79999999999995 327.6 334.0799999999999 ]/Subtype /Widget /T (chg5_prev)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+43 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [334.8 316.79999999999995 392.40000000000003 334.0799999999999 ]/Subtype /Widget /T (chg5_new)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+44 0 obj
+<< /DA (/HeBo 9 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [399.59999999999997 316.79999999999995 518.4 334.0799999999999 ]/Subtype /Widget /T (chg5_term)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+45 0 obj
+<< /DA (/HeBo 10 Tf 0.996078431372549 0.9529411764705882 0.7803921568627451 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [316.8 286.79999999999995 388.8 304.79999999999995 ]/Subtype /Widget /T (prev_total)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+46 0 obj
+<< /DA (/HeBo 10 Tf 0.996078431372549 0.9529411764705882 0.7803921568627451 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [316.8 262.79999999999995 388.8 280.79999999999995 ]/Subtype /Widget /T (new_total)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+47 0 obj
+<< /DA (/HeBo 10 Tf 0.8627450980392157 0.9882352941176471 0.9058823529411765 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [316.8 238.79999999999995 388.8 256.79999999999995 ]/Subtype /Widget /T (difference)
+ /Type    /Annot /V ()
+ /Ff 0
+>>
+endobj
+48 0 obj
+<< /DA (/HeBo 12 Tf 1.0 1.0 1.0 rg) /DV ()
+ /F 4 /FT /Tx/MK << /BC [ 0 0 0 ] >> /MaxLen 1000000
+ /P 49 0 R
+ /Rect     [43.199999999999996 134.79999999999995 568.8000000000001 189.79999999999995 ]/Subtype /Widget /T (reason)
+ /Type    /Annot /V ()
+ /Ff 4096
+>>
+endobj
+49 0 obj
+<<
+/Annots [ 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 
+  14 0 R 15 0 R 16 0 R 17 0 R 18 0 R 19 0 R 20 0 R 21 0 R 22 0 R 23 0 R 
+  24 0 R 25 0 R 26 0 R 27 0 R 28 0 R 29 0 R 30 0 R 31 0 R 32 0 R 33 0 R 
+  34 0 R 35 0 R 36 0 R 37 0 R 38 0 R 39 0 R 40 0 R 41 0 R 42 0 R 43 0 R 
+  44 0 R 45 0 R 46 0 R 47 0 R 48 0 R ] /Contents 61 0 R /MediaBox [ 0 0 612 792 ] /Parent 60 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 
+  /Trans <<
+
+>> /Type /Page
+>>
+endobj
+50 0 obj
+<<
+/AcroForm 62 0 R /PageMode /UseNone /Pages 60 0 R /Type /Catalog
+>>
+endobj
+51 0 obj
+<<
+/Author (anonymous) /CreationDate (D:20260126141013+00'00') /Creator (ReportLab PDF Library - www.reportlab.com) /Keywords () /ModDate (D:20260126141013+00'00') /Producer (ReportLab PDF Library - www.reportlab.com) 
+  /Subject (unspecified) /Title (untitled) /Trapped /False
+>>
+endobj
+52 0 obj
+<< /S  /Hide >>
+endobj
+53 0 obj
+<<
+/BBox [0 0 12 12] /Filter [  ] /Length 24 /Resources <<
+/Font <<
+/ZaDb 63 0 R
+>> /ProcSet [ /PDF /Text ]
+>> /SubType /Form
+>>
+stream
+0.749 g 0 0 12 12 re f
+endstream
+endobj
+54 0 obj
+<<
+/BBox [0 0 12 12] /Filter [  ] /Length 135 /Resources <<
+/Font <<
+/ZaDb 64 0 R
+>> /ProcSet [ /PDF /Text ]
+>> /SubType /Form
+>>
+stream
+0.749 g 0 0 12 12 re f q 1 1 12 12 re W n BT /ZaDb 9.103320587643388 Tf 0 g 1 0 0 1 2.577183609216238 2.7273898168645605 Tm (4) Tj ET
+endstream
+endobj
+55 0 obj
+<<
+/BBox [0 0 12 12] /Filter [  ] /Length 116 /Resources <<
+/Font <<
+/ZaDb 65 0 R
+>> /ProcSet [ /PDF /Text ]
+>> /SubType /Form
+>>
+stream
+q 1 1 12 12 re W n BT /ZaDb 9.103320587643388 Tf 0 g   1 0 0 1 2.577183609216238 2.7273898168645605 Tm (4) Tj ET Q
+endstream
+endobj
+56 0 obj
+<< /S  /Hide >>
+endobj
+57 0 obj
+<<
+/BBox [0 0 12 12] /Filter [  ] /Length 24 /Resources <<
+/Font <<
+/ZaDb 66 0 R
+>> /ProcSet [ /PDF /Text ]
+>> /SubType /Form
+>>
+stream
+0.749 g 0 0 12 12 re f
+endstream
+endobj
+58 0 obj
+<<
+/BBox [0 0 12 12] /Filter [  ] /Length 135 /Resources <<
+/Font <<
+/ZaDb 67 0 R
+>> /ProcSet [ /PDF /Text ]
+>> /SubType /Form
+>>
+stream
+0.749 g 0 0 12 12 re f q 1 1 12 12 re W n BT /ZaDb 9.103320587643388 Tf 0 g 1 0 0 1 2.577183609216238 2.7273898168645605 Tm (4) Tj ET
+endstream
+endobj
+59 0 obj
+<<
+/BBox [0 0 12 12] /Filter [  ] /Length 116 /Resources <<
+/Font <<
+/ZaDb 68 0 R
+>> /ProcSet [ /PDF /Text ]
+>> /SubType /Form
+>>
+stream
+q 1 1 12 12 re W n BT /ZaDb 9.103320587643388 Tf 0 g   1 0 0 1 2.577183609216238 2.7273898168645605 Tm (4) Tj ET Q
+endstream
+endobj
+60 0 obj
+<<
+/Count 1 /Kids [ 49 0 R ] /Type /Pages
+>>
+endobj
+61 0 obj
+<<
+/Filter [ /ASCII85Decode /FlateDecode ] /Length 1526
+>>
+stream
+Gatm<hf%4>&:Vr41"+lF>Fcc&:YYVa,/d'8)Mj?9;bqh8YRmGB7#%M;e3EqEGAYAYXHQ:$&7B*oB"i2un]mSRO"Xs+k8SrX'M^:e&.7Y7#kp<S?Q`*>]L_lbaMF&CItchVS.QN%Yr^!HWf07a.WJY14:-^njeic6K.e3QS5Q$".@%;>r1B5D3V+X%4S1s22t5epl"C?(C6?b)6M`@2T??-H%?W!H#U_Ue:u=5MINFG$A!eP)ERJu^RJFkI&LU6TSj55$=uUZ3I&14K/5uYbrRpmD#PLNG5eq44kHhj:%]l)>0uKqZ8gm+\M"$L.V!RHsPF_M>m6/WhZ.!!h/ithM--;?]F?(6M^0$+4M(dj6*Y7:#id!D:ig^G`WRJ:WCRC^g`c2a+O&P@6O=G@7Xg3>_IYLiPRZiKl9]^U<cSd@qCJHqJL2Ojb>06H8O_1)"`e_p`Qq8.Qn#!c)Y76/B.]8&rcq.M[oDRMAB-3.[::si3q*'.)d+-62TMWB>b&R#7kXH[X-0E</9a8KLdQ"c=>@gb.p0kK`0O1c0bgsCE*tM?s6Intq]m>BiKVW0'2tm\*&5lMEr]4A&[Xs/<9Ju(DHY"eD6<8.(WcelM7fP,`C..aUFM)bO57B;JQ0)3I0X)OC,,*m34Pe>@]jimo]JDUo(GD)Fd?7lU5X7E"UF^@'=eN`UeG'MojAE<d9Q.):#0Br6>Z=lhPTGm16[JGu9@"88AjE$d?/DUS9PIIW`@LTcG'mq\9X;8#%[%Pj6JqktPJ&TWMhh--FK15=Cp"be$_Lh6Vb%!'>ASB$fRUBL?5Ml=IWl'KKrnmm'HBKNDnpSg2PP":a/gO9-BL>TrZY^&+`6ej8^/=`]qD+H`I)^ZhCWLZK]?*h`>$l),E\:I[7ZF[D5Mkk7Fs#+)]@,Ggu^$5XP1J.m*uRB6%VM=)5D31`+Z5)N&J6\UXO$6g;!q1T3k_:]m41k$Q!PnFeC@^]26,a#'CgYfp-.>bq!R83&/RIPqAam0fmPpUO;aW^:e,]Dp>T%RUuFTlS_ts0<A=Mp6oR+29Yi2QM&k2gMAT*C=Y9cQt^G!:?Ib[VJ!(Bq^pONDc(>C,!<A(<VrM7QYcQ'44`jakt9<Y,BH07Z`)B=9ppaAC^/TB[sKIE\__.6eSj_ilBUm5X8$Kn,T<-_b#oVO4MqXL45"nk3=dDF\A3>k/PNP;VMrR4::tf7FJrQSDFlsX:<%6-8]jfkYgK.no;$!%oU=CcmEp.BJf"gJaq3S2E"GqA1H4Q24FI,a84Sm6+U2C:W="9k3d+9^l+2hGW8d42-g\-=T&m";i;7\I#PZk%B5.[X<M:,n\$3VG0K81m*N8gZ2VZ&kBl)q%Z+F*/Cmh8VGN>I91FM'0Q,395S>;oopPHgeYHEet*ff8u8&H1HPKE4UIm1k#H`,""&hr')i+ei)*'<gRan>djG8f2,USRi2],1>)KNB5<[_)+_drh"U64HPbFQAb+4JqQm#>^68(L1M:p$DQZ60jq5W]'Te9WsR!SGWVt;'RI~>endstream
+endobj
+62 0 obj
+<<
+/NeedAppearances false
+/DA (/Helv 0 Tf 0 g )
+/DR 69 0 R
+/Fields [ 4 0 R 5 0 R 6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R 
+  14 0 R 15 0 R 16 0 R 17 0 R 18 0 R 19 0 R 20 0 R 21 0 R 22 0 R 23 0 R 
+  24 0 R 25 0 R 26 0 R 27 0 R 28 0 R 29 0 R 30 0 R 31 0 R 32 0 R 33 0 R 
+  34 0 R 35 0 R 36 0 R 37 0 R 38 0 R 39 0 R 40 0 R 41 0 R 42 0 R 43 0 R 
+  44 0 R 45 0 R 46 0 R 47 0 R 48 0 R ]
+
+/SigFlags 0>>
+endobj
+63 0 obj
+ << /BaseFont    /ZapfDingbats /Name    /ZaDb /Subtype    /Type1 /Type    /Font>>
+endobj
+64 0 obj
+ << /BaseFont    /ZapfDingbats /Name    /ZaDb /Subtype    /Type1 /Type    /Font>>
+endobj
+65 0 obj
+ << /BaseFont    /ZapfDingbats /Name    /ZaDb /Subtype    /Type1 /Type    /Font>>
+endobj
+66 0 obj
+ << /BaseFont    /ZapfDingbats /Name    /ZaDb /Subtype    /Type1 /Type    /Font>>
+endobj
+67 0 obj
+ << /BaseFont    /ZapfDingbats /Name    /ZaDb /Subtype    /Type1 /Type    /Font>>
+endobj
+68 0 obj
+ << /BaseFont    /ZapfDingbats /Name    /ZaDb /Subtype    /Type1 /Type    /Font>>
+endobj
+69 0 obj
+<< /Encoding 70 0 R
+ /Font 71 0 R
+>>
+endobj
+70 0 obj
+<< /PDFDocEncoding 72 0 R
+>>
+endobj
+71 0 obj
+<<
+/CoBO 73 0 R /CoBo 74 0 R /CoOb 75 0 R /Cour 76 0 R /HeBO 77 0 R /HeBo 78 0 R 
+  /HeOb 79 0 R /Helv 80 0 R /TiBI 81 0 R /TiBo 82 0 R /TiIt 83 0 R /Time 84 0 R 
+  /ZaDb 85 0 R
+>>
+endobj
+72 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+73 0 obj
+<< /BaseFont /Courier-BoldOblique
+ /Encoding 86 0 R
+ /Name /CoBO
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+74 0 obj
+<< /BaseFont /Courier-Bold
+ /Encoding 87 0 R
+ /Name /CoBo
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+75 0 obj
+<< /BaseFont /Courier-Oblique
+ /Encoding 88 0 R
+ /Name /CoOb
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+76 0 obj
+<< /BaseFont /Courier
+ /Encoding 89 0 R
+ /Name /Cour
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+77 0 obj
+<< /BaseFont /Helvetica-BoldOblique
+ /Encoding 90 0 R
+ /Name /HeBO
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+78 0 obj
+<< /BaseFont /Helvetica-Bold
+ /Encoding 91 0 R
+ /Name /HeBo
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+79 0 obj
+<< /BaseFont /Helvetica-Oblique
+ /Encoding 92 0 R
+ /Name /HeOb
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+80 0 obj
+<< /BaseFont /Helvetica
+ /Encoding 93 0 R
+ /Name /Helv
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+81 0 obj
+<< /BaseFont /Times-BoldItalic
+ /Encoding 94 0 R
+ /Name /TiBI
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+82 0 obj
+<< /BaseFont /Times-Bold
+ /Encoding 95 0 R
+ /Name /TiBo
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+83 0 obj
+<< /BaseFont /Times-Italic
+ /Encoding 96 0 R
+ /Name /TiIt
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+84 0 obj
+<< /BaseFont /Times-Roman
+ /Encoding 97 0 R
+ /Name /Time
+ /Subtype  /Type1  /Type  /Font >>
+endobj
+85 0 obj
+ << /BaseFont    /ZapfDingbats /Name    /ZaDb /Subtype    /Type1 /Type    /Font>>
+endobj
+86 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+87 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+88 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+89 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+90 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+91 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+92 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+93 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+94 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+95 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+96 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+97 0 obj
+<< /Differences    [ 24 /breve /caron /circumflex /dotaccent /hungarumlaut /ogonek /ring /tilde 39 /quotesingle 96 /grave 128 /bullet /dagger /daggerdbl /ellipsis /emdash /endash /florin /fraction /guilsinglleft /guilsinglright /minus /perthousand /quotedblbase /quotedblleft /quotedblright /quoteleft /quoteright /quotesinglbase /trademark /fi /fl /Lslash /OE /Scaron /Ydieresis /Zcaron /dotlessi /lslash /oe /scaron /zcaron 160 /Euro 164 /currency 166 /brokenbar 168 /dieresis /copyright /ordfeminine 172 /logicalnot /.notdef /registered /macron /degree /plusminus /twosuperior /threesuperior /acute /mu 183 /periodcentered /cedilla /onesuperior /ordmasculine 188 /onequarter /onehalf /threequarters 192 /Agrave /Aacute /Acircumflex /Atilde /Adieresis /Aring /AE /Ccedilla /Egrave /Eacute /Ecircumflex /Edieresis /Igrave /Iacute /Icircumflex /Idieresis /Eth /Ntilde /Ograve /Oacute /Ocircumflex /Otilde /Odieresis /multiply /Oslash /Ugrave /Uacute /Ucircumflex /Udieresis /Yacute /Thorn /germandbls /agrave /aacute /acircumflex /atilde /adieresis /aring /ae /ccedilla /egrave /eacute /ecircumflex /edieresis /igrave /iacute /icircumflex /idieresis /eth /ntilde /ograve /oacute /ocircumflex /otilde /odieresis /divide /oslash /ugrave /uacute /ucircumflex /udieresis /yacute /thorn /ydieresis    ] /Type /Encoding>>
+endobj
+xref
+0 98
+0000000000 65535 f 
+0000000073 00000 n 
+0000000114 00000 n 
+0000000221 00000 n 
+0000000333 00000 n 
+0000000575 00000 n 
+0000000818 00000 n 
+0000001121 00000 n 
+0000001399 00000 n 
+0000001704 00000 n 
+0000001979 00000 n 
+0000002449 00000 n 
+0000002918 00000 n 
+0000003219 00000 n 
+0000003496 00000 n 
+0000003797 00000 n 
+0000004065 00000 n 
+0000004322 00000 n 
+0000004577 00000 n 
+0000004844 00000 n 
+0000005112 00000 n 
+0000005380 00000 n 
+0000005637 00000 n 
+0000005892 00000 n 
+0000006159 00000 n 
+0000006427 00000 n 
+0000006695 00000 n 
+0000006952 00000 n 
+0000007207 00000 n 
+0000007474 00000 n 
+0000007742 00000 n 
+0000008010 00000 n 
+0000008267 00000 n 
+0000008522 00000 n 
+0000008789 00000 n 
+0000009057 00000 n 
+0000009325 00000 n 
+0000009582 00000 n 
+0000009837 00000 n 
+0000010104 00000 n 
+0000010372 00000 n 
+0000010640 00000 n 
+0000010897 00000 n 
+0000011152 00000 n 
+0000011419 00000 n 
+0000011687 00000 n 
+0000011989 00000 n 
+0000012290 00000 n 
+0000012593 00000 n 
+0000012875 00000 n 
+0000013404 00000 n 
+0000013491 00000 n 
+0000013788 00000 n 
+0000013820 00000 n 
+0000014006 00000 n 
+0000014304 00000 n 
+0000014583 00000 n 
+0000014615 00000 n 
+0000014801 00000 n 
+0000015099 00000 n 
+0000015378 00000 n 
+0000015439 00000 n 
+0000017057 00000 n 
+0000017486 00000 n 
+0000017584 00000 n 
+0000017682 00000 n 
+0000017780 00000 n 
+0000017878 00000 n 
+0000017976 00000 n 
+0000018074 00000 n 
+0000018129 00000 n 
+0000018175 00000 n 
+0000018372 00000 n 
+0000019704 00000 n 
+0000019823 00000 n 
+0000019935 00000 n 
+0000020050 00000 n 
+0000020157 00000 n 
+0000020278 00000 n 
+0000020392 00000 n 
+0000020509 00000 n 
+0000020618 00000 n 
+0000020734 00000 n 
+0000020844 00000 n 
+0000020956 00000 n 
+0000021067 00000 n 
+0000021165 00000 n 
+0000022497 00000 n 
+0000023829 00000 n 
+0000025161 00000 n 
+0000026493 00000 n 
+0000027825 00000 n 
+0000029157 00000 n 
+0000030489 00000 n 
+0000031821 00000 n 
+0000033153 00000 n 
+0000034485 00000 n 
+0000035817 00000 n 
+trailer
+<<
+/ID 
+[<58d194a0b23b2ca64cadbcb052d5f8fe><58d194a0b23b2ca64cadbcb052d5f8fe>]
+% ReportLab generated PDF document -- digest (http://www.reportlab.com)
+
+/Info 51 0 R
+/Root 50 0 R
+/Size 98
+>>
+startxref
+37149
+%%EOF

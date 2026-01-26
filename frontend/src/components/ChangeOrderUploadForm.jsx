@@ -96,7 +96,6 @@ export default function ChangeOrderUploadForm() {
   const filteredOrders = useMemo(() => {
     if (!orderSearch) return orders.slice(0, 10);
     return orders.filter(o => 
-      o.order_number?.toLowerCase().includes(orderSearch.toLowerCase()) ||
       o.client_name?.toLowerCase().includes(orderSearch.toLowerCase())
     ).slice(0, 10);
   }, [orders, orderSearch]);
@@ -236,19 +235,19 @@ export default function ChangeOrderUploadForm() {
 
       <div style={styles.formGrid}>
         <div style={styles.mainColumn}>
-          {/* Step 1: Select Order */}
+          {/* Step 1: Select Client */}
           <div style={styles.section}>
-            <h2 style={styles.sectionTitle}><span style={styles.stepNumber}>1</span>Select Order to Modify</h2>
+            <h2 style={styles.sectionTitle}><span style={styles.stepNumber}>1</span>Select Client</h2>
             <div style={styles.searchWrapper}>
               <Icons.Search />
-              <input type="text" placeholder="Search orders..." value={orderSearch}
+              <input type="text" placeholder="Search by client name..." value={orderSearch}
                 onChange={(e) => { setOrderSearch(e.target.value); setShowOrderDropdown(true); }}
                 onFocus={() => setShowOrderDropdown(true)} style={styles.searchInput} />
               {showOrderDropdown && filteredOrders.length > 0 && (
                 <div style={styles.dropdown}>
                   {filteredOrders.map((order) => (
-                    <button key={order.id} onClick={() => { loadOrderDetails(order.id); setOrderSearch(order.order_number); setShowOrderDropdown(false); }} style={styles.dropdownItem}>
-                      <div><span style={styles.orderNumber}>{order.order_number}</span><span style={styles.clientName}>{order.client_name}</span></div>
+                    <button key={order.id} onClick={() => { loadOrderDetails(order.id); setOrderSearch(order.client_name); setShowOrderDropdown(false); }} style={styles.dropdownItem}>
+                      <div><span style={styles.clientName}>{order.client_name}</span></div>
                       <span style={styles.orderAmount}>{formatCurrency(order.monthly_total)}/mo</span>
                     </button>
                   ))}
@@ -258,7 +257,7 @@ export default function ChangeOrderUploadForm() {
             {selectedOrder && (
               <div style={styles.selectedCard}>
                 <div style={styles.selectedHeader}>
-                  <div><strong>{selectedOrder.order_number}</strong> — {selectedOrder.client_name}</div>
+                  <div><strong>{selectedOrder.client_name}</strong></div>
                   <button onClick={() => { setSelectedOrder(null); setOrderSearch(''); }} style={styles.changeButton}>Change</button>
                 </div>
                 <div style={styles.orderDetails}>
