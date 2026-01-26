@@ -102,6 +102,25 @@ export default function UploadOrderForm() {
   const [selectedEntity, setSelectedEntity] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
 
+  // New Client Modal
+  const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [newClient, setNewClient] = useState({
+    business_name: '',
+    contact_first_name: '',
+    contact_last_name: '',
+    contact_email: '',
+    contact_phone: '',
+    address: '',
+    city: '',
+    state: '',
+    zip: '',
+  });
+  const [creatingClient, setCreatingClient] = useState(false);
+
+  // Payment/Billing Info (from signed contract)
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [billingNotes, setBillingNotes] = useState('');
+
   // Saving state
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -131,6 +150,56 @@ export default function UploadOrderForm() {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Create new client
+  const handleCreateClient = async () => {
+    if (!newClient.business_name.trim()) {
+      alert('Business name is required');
+      return;
+    }
+    if (!newClient.contact_email.trim()) {
+      alert('Contact email is required');
+      return;
+    }
+
+    setCreatingClient(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/clients`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newClient),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create client');
+      }
+
+      const createdClient = await response.json();
+      
+      // Add to clients list and select it
+      setClients(prev => [createdClient, ...prev]);
+      setSelectedClient(createdClient);
+      setClientSearch(createdClient.business_name);
+      setShowNewClientModal(false);
+      setNewClient({
+        business_name: '',
+        contact_first_name: '',
+        contact_last_name: '',
+        contact_email: '',
+        contact_phone: '',
+        address: '',
+        city: '',
+        state: '',
+        zip: '',
+      });
+    } catch (error) {
+      console.error('Error creating client:', error);
+      alert(`Failed to create client: ${error.message}`);
+    } finally {
+      setCreatingClient(false);
     }
   };
 
@@ -515,40 +584,55 @@ export default function UploadOrderForm() {
               Select Client
             </h2>
             
-            <div style={styles.clientSearchWrapper}>
-              <Icons.Search />
-              <input
-                type="text"
-                placeholder="Search clients..."
-                value={clientSearch}
-                onChange={(e) => {
-                  setClientSearch(e.target.value);
-                  setShowClientDropdown(true);
-                }}
-                onFocus={() => setShowClientDropdown(true)}
-                style={styles.clientSearchInput}
-              />
+            <div style={styles.clientSearchRow}>
+              <div style={styles.clientSearchWrapper}>
+                <Icons.Search />
+                <input
+                  type="text"
+                  placeholder="Search clients..."
+                  value={clientSearch}
+                  onChange={(e) => {
+                    setClientSearch(e.target.value);
+                    setShowClientDropdown(true);
+                  }}
+                  onFocus={() => setShowClientDropdown(true)}
+                  style={styles.clientSearchInput}
+                />
+                
+                {showClientDropdown && (
+                  <div style={styles.clientDropdown}>
+                    {filteredClients.length > 0 ? (
+                      filteredClients.map((client) => (
+                        <button
+                          key={client.id}
+                          onClick={() => {
+                            setSelectedClient(client);
+                            setClientSearch(client.business_name);
+                            setShowClientDropdown(false);
+                          }}
+                          style={styles.clientOption}
+                        >
+                          <span style={styles.clientName}>{client.business_name}</span>
+                          {client.contact_email && (
+                            <span style={styles.clientEmail}>{client.contact_email}</span>
+                          )}
+                        </button>
+                      ))
+                    ) : clientSearch && (
+                      <div style={styles.noResults}>
+                        No clients found matching "{clientSearch}"
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               
-              {showClientDropdown && filteredClients.length > 0 && (
-                <div style={styles.clientDropdown}>
-                  {filteredClients.map((client) => (
-                    <button
-                      key={client.id}
-                      onClick={() => {
-                        setSelectedClient(client);
-                        setClientSearch(client.business_name);
-                        setShowClientDropdown(false);
-                      }}
-                      style={styles.clientOption}
-                    >
-                      <span style={styles.clientName}>{client.business_name}</span>
-                      {client.contact_email && (
-                        <span style={styles.clientEmail}>{client.contact_email}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <button
+                onClick={() => setShowNewClientModal(true)}
+                style={styles.createClientButton}
+              >
+                <Icons.Plus /> New Client
+              </button>
             </div>
 
             {selectedClient && (
@@ -673,6 +757,38 @@ export default function UploadOrderForm() {
                 style={styles.textarea}
                 rows={3}
               />
+            </div>
+
+            {/* Payment Information from Signed Contract */}
+            <div style={styles.paymentSection}>
+              <h3 style={styles.paymentTitle}>Payment Information (from signed contract)</h3>
+              <div style={styles.formRow}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Payment Method</label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    style={styles.select}
+                  >
+                    <option value="">Select payment method...</option>
+                    <option value="credit_card">Credit Card</option>
+                    <option value="ach">ACH / Bank Transfer</option>
+                    <option value="check">Check</option>
+                    <option value="invoice">Invoice / Net 30</option>
+                    <option value="as_specified">As Specified on Contract</option>
+                  </select>
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Billing Notes</label>
+                  <input
+                    type="text"
+                    value={billingNotes}
+                    onChange={(e) => setBillingNotes(e.target.value)}
+                    placeholder="e.g., CC ending 4242, Invoice to AP dept..."
+                    style={styles.input}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -846,6 +962,145 @@ export default function UploadOrderForm() {
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Client Modal */}
+      {showNewClientModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowNewClientModal(false)}>
+          <div style={styles.newClientModal} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Create New Client</h2>
+              <button onClick={() => setShowNewClientModal(false)} style={styles.closeButton}>
+                <Icons.X />
+              </button>
+            </div>
+            
+            <div style={styles.modalBody}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Business Name *</label>
+                <input
+                  type="text"
+                  value={newClient.business_name}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, business_name: e.target.value }))}
+                  placeholder="Company name"
+                  style={styles.input}
+                  autoFocus
+                />
+              </div>
+
+              <div style={styles.formRow}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Contact First Name</label>
+                  <input
+                    type="text"
+                    value={newClient.contact_first_name}
+                    onChange={(e) => setNewClient(prev => ({ ...prev, contact_first_name: e.target.value }))}
+                    placeholder="First name"
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Contact Last Name</label>
+                  <input
+                    type="text"
+                    value={newClient.contact_last_name}
+                    onChange={(e) => setNewClient(prev => ({ ...prev, contact_last_name: e.target.value }))}
+                    placeholder="Last name"
+                    style={styles.input}
+                  />
+                </div>
+              </div>
+
+              <div style={styles.formRow}>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Email *</label>
+                  <input
+                    type="email"
+                    value={newClient.contact_email}
+                    onChange={(e) => setNewClient(prev => ({ ...prev, contact_email: e.target.value }))}
+                    placeholder="email@example.com"
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Phone</label>
+                  <input
+                    type="tel"
+                    value={newClient.contact_phone}
+                    onChange={(e) => setNewClient(prev => ({ ...prev, contact_phone: e.target.value }))}
+                    placeholder="(555) 123-4567"
+                    style={styles.input}
+                  />
+                </div>
+              </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Address</label>
+                <input
+                  type="text"
+                  value={newClient.address}
+                  onChange={(e) => setNewClient(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder="Street address"
+                  style={styles.input}
+                />
+              </div>
+
+              <div style={styles.formRow}>
+                <div style={{ ...styles.formGroup, flex: 2 }}>
+                  <label style={styles.label}>City</label>
+                  <input
+                    type="text"
+                    value={newClient.city}
+                    onChange={(e) => setNewClient(prev => ({ ...prev, city: e.target.value }))}
+                    placeholder="City"
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>State</label>
+                  <input
+                    type="text"
+                    value={newClient.state}
+                    onChange={(e) => setNewClient(prev => ({ ...prev, state: e.target.value }))}
+                    placeholder="NC"
+                    style={styles.input}
+                    maxLength={2}
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>ZIP</label>
+                  <input
+                    type="text"
+                    value={newClient.zip}
+                    onChange={(e) => setNewClient(prev => ({ ...prev, zip: e.target.value }))}
+                    placeholder="28036"
+                    style={styles.input}
+                    maxLength={10}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.modalFooter}>
+              <button
+                onClick={() => setShowNewClientModal(false)}
+                style={styles.cancelButton}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateClient}
+                disabled={creatingClient || !newClient.business_name.trim() || !newClient.contact_email.trim()}
+                style={{
+                  ...styles.submitButton,
+                  opacity: (creatingClient || !newClient.business_name.trim() || !newClient.contact_email.trim()) ? 0.5 : 1,
+                }}
+              >
+                {creatingClient ? 'Creating...' : 'Create Client'}
+              </button>
             </div>
           </div>
         </div>
@@ -1457,6 +1712,81 @@ const styles = {
     borderTopColor: '#3b82f6',
     borderRadius: '50%',
     animation: 'spin 1s linear infinite',
+  },
+  // New styles for client creation and payment
+  clientSearchRow: {
+    display: 'flex',
+    gap: '12px',
+    alignItems: 'flex-start',
+  },
+  createClientButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '12px 16px',
+    background: '#10b981',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  },
+  noResults: {
+    padding: '16px',
+    textAlign: 'center',
+    color: '#6b7280',
+    fontSize: '14px',
+  },
+  paymentSection: {
+    marginTop: '24px',
+    paddingTop: '24px',
+    borderTop: '1px solid #e2e8f0',
+  },
+  paymentTitle: {
+    fontSize: '15px',
+    fontWeight: '600',
+    color: '#374151',
+    margin: '0 0 16px 0',
+  },
+  newClientModal: {
+    backgroundColor: 'white',
+    borderRadius: '16px',
+    width: '560px',
+    maxWidth: '95vw',
+    maxHeight: '90vh',
+    overflow: 'hidden',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+  },
+  modalFooter: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '12px',
+    padding: '16px 24px',
+    borderTop: '1px solid #e2e8f0',
+    backgroundColor: '#f9fafb',
+  },
+  cancelButton: {
+    padding: '10px 20px',
+    background: 'white',
+    color: '#374151',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+  },
+  submitButton: {
+    padding: '10px 20px',
+    background: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
   },
 };
 
