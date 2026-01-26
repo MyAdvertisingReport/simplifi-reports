@@ -575,10 +575,10 @@ export default function BillingPage() {
           <div style={styles.statCard}>
             <div style={styles.statLabel}>Pending Approval</div>
             <div style={styles.statValue}>
-              {(stats.draft_count || 0) + (stats.approved_count || 0)}
+              {parseInt(stats.draft_count || 0) + parseInt(stats.approved_count || 0)}
             </div>
             <div style={{ fontSize: '13px', color: '#64748b', marginTop: '4px' }}>
-              {stats.draft_count} draft, {stats.approved_count} approved
+              {parseInt(stats.draft_count || 0)} draft, {parseInt(stats.approved_count || 0)} approved
             </div>
           </div>
         </div>
