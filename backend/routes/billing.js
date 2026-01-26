@@ -186,7 +186,6 @@ router.get('/invoices/:id', async (req, res) => {
         i.*,
         c.business_name as client_name,
         c.slug as client_slug,
-        c.contact_email, c.contact_phone,
         o.order_number, o.term_months, o.contract_start_date, o.contract_end_date,
         o.billing_preference as order_billing_preference
       FROM invoices i
