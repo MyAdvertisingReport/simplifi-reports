@@ -297,9 +297,9 @@ router.post('/invoices', async (req, res) => {
         $1, $2, $3, 'draft',
         $4, $5, $6, $7,
         $8, $9,
-        CURRENT_DATE, $10,
+        CURRENT_DATE, $10::date,
         $11, $12, $13,
-        $10 + INTERVAL '30 days', $14, $15
+        $10::date + INTERVAL '30 days', $14, $15
       )
       RETURNING *
     `, [
@@ -406,13 +406,13 @@ router.put('/invoices/:id', async (req, res) => {
       UPDATE invoices SET
         billing_period_start = $1,
         billing_period_end = $2,
-        due_date = $3,
+        due_date = $3::date,
         billing_preference = $4,
         subtotal = $5,
         processing_fee = $6,
         total = $7,
         balance_due = $7 - COALESCE(amount_paid, 0),
-        grace_period_ends_at = $3 + INTERVAL '30 days',
+        grace_period_ends_at = $3::date + INTERVAL '30 days',
         notes = $8,
         updated_at = NOW()
       WHERE id = $9
@@ -983,9 +983,9 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
         $1, $2, $3, 'draft',
         $4, $5, $6, $6,
         $7, $8,
-        CURRENT_DATE, $9,
+        CURRENT_DATE, $9::date,
         $10, $11, $12,
-        $13, $9 + INTERVAL '30 days', $14
+        $13, $9::date + INTERVAL '30 days', $14
       )
       RETURNING *
     `, [
