@@ -1,11 +1,42 @@
 # WSIC Advertising Platform - Development Roadmap
-## Updated: January 23, 2026
+## Updated: January 24, 2026
 
 ---
 
-## 🎯 Current Sprint: Order Workflow Complete
+## 🎯 Current Sprint: Payment Integration & Order Variants
 
-### ✅ COMPLETED (This Week)
+### ✅ COMPLETED (January 24, 2026)
+
+#### Client Signing Page Redesign
+- [x] Single-page 3-step flow (Review → Payment → Sign)
+- [x] Step indicator with visual progress
+- [x] Editable contact card in Step 1
+- [x] Three billing preferences (Card, ACH, Invoice)
+- [x] Invoice backup payment selection (Card or ACH)
+- [x] No pre-selection on payment options
+- [x] Proper amount calculations (monthly, setup fees, first month total)
+- [x] CC fee display (+3.5%) when applicable
+
+#### Stripe Payment Integration (PCI Compliant)
+- [x] Stripe Elements for card collection (no raw card data on server)
+- [x] SetupIntent flow for secure card tokenization
+- [x] Per-entity Stripe accounts (WSIC, LKN, LWP)
+- [x] Customer creation and payment method attachment
+- [x] ACH placeholder with bank verification email flow
+
+#### Email System Improvements
+- [x] Contract email with brand logos in header
+- [x] Confirmation email with product/pricing breakdown
+- [x] ACH setup email (action required messaging)
+- [x] Fixed Outlook compatibility (solid background-color fallbacks)
+- [x] Warm, relational messaging (no order numbers to clients)
+- [x] Conditional email based on payment method selected
+
+#### Success Page Variants
+- [x] Card payment: Green "You're All Set!" confirmation
+- [x] ACH payment: Blue "Almost There!" with action required warning
+
+### ✅ COMPLETED (Previous Sessions)
 
 #### Order Creation & Signature Flow
 - [x] Order form with client selection, products, pricing
@@ -13,21 +44,14 @@
 - [x] Price adjustment detection (book value vs custom)
 - [x] Auto-approval when no price adjustments
 - [x] Auto-send to client when auto-approved (if contact exists)
-- [x] Success page with celebratory, sales-focused messaging
-- [x] Edit existing orders (View Details works)
+- [x] Success page with celebratory messaging
+- [x] Edit existing orders
 
 #### Approval Workflow
 - [x] Pending approvals page for managers
 - [x] Badge count in sidebar navigation
 - [x] Approve/Reject with notes
-- [x] Submitter name display (uses signature as fallback)
-
-#### Client Contract Signing
-- [x] Public signing page (`/sign/:token`)
-- [x] Contract display with all order details
-- [x] Electronic signature capture
-- [x] IP address and timestamp recording
-- [x] Status updates on signature
+- [x] Submitter name display
 
 #### Orders List
 - [x] Reorganized columns (Client first, order # underneath)
@@ -37,85 +61,142 @@
 
 ---
 
-## 🔧 IMMEDIATE FIXES NEEDED
-
-### Email Delivery
-- [ ] **Postmark account approval** - Currently can only send to @myadvertisingreport.com
-  - Action: Log into Postmark dashboard and complete account verification
-  - Once approved, emails will send to any domain
-
-### Database
-- [ ] Users table sync - JWT users not in users table causes "submitted_by" to be NULL
-  - Current workaround: Using signature as fallback for display
-  - Future fix: Sync auth users to users table
-
----
-
 ## 📋 NEXT UP (Priority Order)
 
-### 1. Manual "Send to Client" Button
-When order is approved but wasn't auto-sent (no contact at time of approval):
-- [ ] Add "Send to Client" button on order detail/edit page
-- [ ] Generate signing token and send email on click
-- [ ] Update status to "sent"
+### 1. Additional Order Form Types
+Create variants of the order form for different scenarios:
 
-### 2. PDF Generation
-- [ ] Generate PDF after client signs
-- [ ] Include: order details, products, signatures, timestamps
-- [ ] Email PDF to both client and sales rep
-- [ ] Store PDF URL in order record
+#### Upload Order (Already Signed)
+- [ ] New order type selector in OrderForm
+- [ ] File upload field for signed PDF
+- [ ] Skip signing flow - goes directly to "signed" status
+- [ ] Still collects payment info
+- [ ] Store PDF in order record
 
-### 3. Order Detail View
-- [ ] Read-only view of submitted orders
-- [ ] Show full order history/timeline
-- [ ] Display signatures and timestamps
-- [ ] Action buttons based on status
+#### Change Order (Electronic)
+- [ ] Select existing signed order to modify
+- [ ] Show original vs new line items comparison
+- [ ] Calculate price difference (+/- monthly)
+- [ ] New signing flow for changes only
+- [ ] Link to parent order
+- [ ] Update campaign when signed
 
-### 4. Notifications
-- [ ] Email to sales rep when order approved
-- [ ] Email to sales rep when client signs
-- [ ] Email to client confirming signature
-- [ ] SMS notifications (Twilio) - future
+#### Change Order (Upload)
+- [ ] Select existing order
+- [ ] Upload signed change order PDF
+- [ ] Same comparison view
+- [ ] Skip signing flow
+
+#### Kill Order (Electronic)
+- [ ] Select existing order to cancel
+- [ ] Show cancellation terms
+- [ ] Effective date selection
+- [ ] E-signature for cancellation
+- [ ] Update order status to "cancelled"
+- [ ] Trigger campaign pause/end
+
+#### Kill Order (Upload)
+- [ ] Upload signed cancellation document
+- [ ] Same cancellation flow without e-sign
+
+### 2. Billing & Invoice Management System
+
+#### Invoice Generation
+- [ ] Auto-generate invoices on billing cycle
+- [ ] Support different billing frequencies (monthly, quarterly)
+- [ ] Calculate amounts based on active orders
+- [ ] Include setup fees on first invoice
+- [ ] Apply CC processing fee when applicable
+
+#### Invoice Approval Queue
+- [ ] Admin view of pending invoices
+- [ ] Edit invoice line items before sending
+- [ ] Bulk approve/send functionality
+- [ ] Invoice status tracking (draft → approved → sent → paid/overdue)
+
+#### Invoice Delivery
+- [ ] Send invoice email with payment link
+- [ ] Stripe hosted invoice page
+- [ ] Payment confirmation emails
+- [ ] Receipt generation
+
+#### Grace Period & Auto-Charge
+- [ ] Track days since invoice sent
+- [ ] Warning emails at 15, 25, 30 days
+- [ ] Auto-charge backup payment after 30 days
+- [ ] Late fee calculation (if applicable)
+- [ ] Payment failure handling
+
+#### Billing Dashboard
+- [ ] Outstanding invoices view
+- [ ] Payment history
+- [ ] Revenue reporting
+- [ ] Aging report (30/60/90 days)
+
+### 3. ACH Bank Verification
+- [ ] Stripe Financial Connections integration
+- [ ] Bank verification page (`/ach-setup/:token`)
+- [ ] Verification status webhooks
+- [ ] Update payment_status on completion
+- [ ] Send confirmation when verified
 
 ---
 
-## 🗓️ UPCOMING FEATURES
+## 📊 Order Status Flow (Updated)
 
-### Phase 2: Billing & Payments
-- [ ] Stripe integration for payment processing
-- [ ] Invoice generation
-- [ ] Recurring billing setup
-- [ ] Payment status tracking
+```
+                                    ┌─────────────┐
+                                    │   Upload    │
+                                    │   Order     │
+                                    └──────┬──────┘
+                                           │
+                                           ▼
+┌─────────┐     ┌──────────────────┐     ┌──────────┐     ┌──────┐     ┌────────┐     ┌────────┐
+│  Draft  │ ──► │ Pending Approval │ ──► │ Approved │ ──► │ Sent │ ──► │ Signed │ ──► │ Active │
+└─────────┘     └──────────────────┘     └──────────┘     └──────┘     └────────┘     └────────┘
+     │                   │                     │                            │
+     │                   ▼                     │                            │
+     │              ┌──────────┐               │                            │
+     │              │ Rejected │ ──────────────┘                            │
+     │              └──────────┘     (back to draft)                        │
+     │                                                                      │
+     ▼                                                                      ▼
+  (no price adjustments = auto-approve + auto-send)              ┌──────────────────┐
+                                                                 │  Change Order    │
+                                                                 │  or Kill Order   │
+                                                                 └──────────────────┘
+```
+
+### New Order Types:
+- **Standard Order** - Full signing flow
+- **Upload Order** - Pre-signed PDF, skip to signed
+- **Change Order** - Modify existing order
+- **Kill Order** - Cancel existing order
+
+---
+
+## 🗓️ Future Phases
 
 ### Phase 3: Campaign Management
 - [ ] Campaign creation from signed orders
 - [ ] Simpli.fi campaign sync
 - [ ] Creative asset management
 - [ ] Campaign performance dashboards
+- [ ] Automated campaign start/end dates
 
 ### Phase 4: Reporting Enhancements
 - [ ] Custom report builder
 - [ ] Scheduled report delivery
 - [ ] White-label client reports
 - [ ] Performance analytics
+- [ ] Revenue forecasting
 
----
-
-## 📊 Order Status Flow
-
-```
-┌─────────┐     ┌──────────────────┐     ┌──────────┐     ┌──────┐     ┌────────┐     ┌────────┐
-│  Draft  │ ──► │ Pending Approval │ ──► │ Approved │ ──► │ Sent │ ──► │ Signed │ ──► │ Active │
-└─────────┘     └──────────────────┘     └──────────┘     └──────┘     └────────┘     └────────┘
-     │                   │                     │
-     │                   ▼                     │
-     │              ┌──────────┐               │
-     │              │ Rejected │ ──────────────┘
-     │              └──────────┘     (back to draft)
-     │                   
-     ▼
-  (no price adjustments = auto-approve + auto-send if contact exists)
-```
+### Phase 5: Client Portal
+- [ ] Client self-service login
+- [ ] View their orders/invoices
+- [ ] Make payments
+- [ ] Download reports
+- [ ] Update contact info
 
 ---
 
@@ -123,24 +204,45 @@ When order is approved but wasn't auto-sent (no contact at time of approval):
 
 | System | Status | Notes |
 |--------|--------|-------|
-| Postmark (Email) | ⚠️ Pending | Account needs approval for external sends |
+| Postmark (Email) | ✅ Working | All email types functional |
 | Supabase (DB) | ✅ Working | PostgreSQL database |
 | Simpli.fi (Ads) | ✅ Working | Campaign data sync |
-| Stripe (Payments) | 🔜 Planned | Phase 2 |
-| Twilio (SMS) | 🔜 Planned | Phase 2 |
+| Stripe (Payments) | ✅ Integrated | Card collection working, ACH pending verification flow |
+| Twilio (SMS) | 📋 Planned | Phase 3 |
 
 ---
 
-## 📝 Recent Session Notes
+## 📝 Technical Debt / Improvements
 
-### Jan 23, 2026 - Order Workflow Completion
+- [ ] Users table sync with JWT auth
+- [ ] PDF generation for signed contracts
+- [ ] Stripe webhook handling for payment events
+- [ ] Better error handling in signing flow
+- [ ] Unit tests for critical flows
+- [ ] API rate limiting
+- [ ] Audit logging for compliance
+
+---
+
+## 📅 Session History
+
+### January 24, 2026 - Payment Integration & Signing Redesign
+- Redesigned ClientSigningPage to single-page 3-step flow
+- Integrated Stripe Elements for PCI-compliant card collection
+- Added billing preference options (Card/ACH/Invoice)
+- Created ACH setup email flow
+- Fixed email header backgrounds for Outlook
+- Added product breakdown to confirmation emails
+- Added editable contact card to signing flow
+
+### January 23, 2026 - Order Workflow Completion
 - Fixed "View Details" loading existing orders
 - Added sent/signed statuses to OrderList
-- Reorganized columns (Client first)
-- Updated success page messaging (celebratory, sales-focused)
-- Added auto_sent and sent_to capture
-- Discovered Postmark pending approval issue
-- All order statuses now properly displayed
+- Updated success page messaging
+- Discovered and resolved Postmark issues
 
-### Previous Sessions
-- See `/mnt/transcripts/` for full session histories
+### January 21, 2026 - Approval Workflow
+- Created ApprovalsPage component
+- Built ClientSigningPage (original version)
+- Added signature capture and verification
+- Implemented email notifications

@@ -1,209 +1,193 @@
-# Session Summary - January 21, 2026 (Session 3)
+# Session Summary - January 24, 2026
 
 ## 🎯 Session Goal
-Build order approval workflow and client signing experience:
-1. Approval flow when pricing differs from book value
-2. Client UI for viewing and signing contracts
-3. Sales rep signature capture on submission
+Redesign the client signing experience to a single-page 3-step flow with PCI-compliant payment collection via Stripe Elements.
 
 ## ✅ What We Accomplished
 
-### 1. Database Schema Updates
-Created migration script `001_add_signature_fields.sql` with:
-- Sales rep signature fields (`submitted_signature`, `submitted_signature_date`, `submitted_ip_address`)
-- Manager approval fields (`approved_by`, `approved_at`, `approval_notes`, `rejected_reason`)
-- Client signing fields (`signing_token`, `signed_by_name`, `signed_by_email`, `signed_at`, etc.)
-- Price adjustment tracking (`has_price_adjustments`)
-- Indexes for performance
+### 1. Client Signing Page Complete Redesign
 
-### 2. Backend Approval Endpoints (order.js)
-Added comprehensive approval workflow:
+**Before:** Multi-step flow with page redirects, raw card number collection (PCI violation)
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/orders/:id/submit` | POST | Submit order with sales rep signature |
-| `/api/orders/:id/approve` | PUT | Manager approves (role-checked) |
-| `/api/orders/:id/reject` | PUT | Manager rejects with reason |
-| `/api/orders/:id/send-to-client` | POST | Generate signing link & email client |
-| `/api/orders/sign/:token` | GET | Public - get contract for signing |
-| `/api/orders/sign/:token` | POST | Public - submit client signature |
-| `/api/orders/pending-approvals` | GET | List orders needing approval |
-| `/api/orders/pending-approvals/count` | GET | Count for badge display |
+**After:** Single-page 3-step experience:
 
-**Key Features:**
-- Auto-approval logic: If price = book value, order auto-approves
-- Secure signing tokens with 7-day expiration
-- IP address and user agent capture for legal compliance
-- Email notifications at each status change
-- Role-based access control for approval actions
+#### Step 1: Review Products Included
+- Product table with Name, Brand, Monthly, Setup Fee columns
+- Contract summary (Term, Start Date, Monthly Total, Setup Fees, Total Value)
+- **NEW:** Editable contact card with Name, Title, Email, Phone
+- "Edit" toggle to modify contact info before proceeding
 
-### 3. Pending Approvals Page (ApprovalsPage.jsx)
-Manager-facing approval queue with:
-- Card layout showing order details, values, submitter
-- Price adjustment warning badges
-- Approve/Reject modal dialogs
-- "View Details" link to full order
-- Empty state when caught up
-- Real-time removal after action
-- Consistent UI matching existing app patterns
+#### Step 2: Payment Information
+- Three billing options (none pre-selected):
+  - 💳 Credit Card - Auto Pay (+3.5% fee)
+  - 🏦 ACH - Auto Pay (No fee)
+  - 📄 Invoice - Pay Manually (requires backup payment)
+- **Invoice backup selection:** User chooses Card or ACH as backup
+- Amount summary showing Monthly + First Month (with fees if applicable)
+- **Stripe Elements** card input (PCI compliant - card data never touches our server)
+- ACH: Collects account holder name, sends verification email after signing
 
-### 4. Client Signing Page (ClientSigningPage.jsx)
-Public-facing contract signing experience:
-- **Review Step**: Contract summary, line items table, sales rep signature
-- **Sign Step**: Signer info form, typed signature input, terms checkbox
-- **Success Step**: Confirmation with next steps
-- No authentication required (uses secure token)
-- Mobile-responsive design
-- Professional branding matching main app
+#### Step 3: Sign Agreement
+- Name, Title, Email (pre-filled from Step 1)
+- Typed signature field
+- Terms agreement checkbox
+- Single "Sign & Complete" button
 
-### 5. Email Integration
-All workflow states now trigger appropriate emails:
-- Order submitted → Internal notification
-- Needs approval → Manager email
-- Approved → Submitter notification
-- Rejected → Submitter notification with reason
-- Sent to client → Client receives contract link
-- Signed → Both client & internal confirmation
+### 2. Stripe Payment Integration (PCI Compliant)
+
+**Problem:** Original implementation sent raw card numbers to backend - Stripe blocked this with warning message.
+
+**Solution:** Implemented proper Stripe Elements flow:
+
+```
+1. Frontend loads Stripe.js
+2. When Step 2 loads → POST /api/orders/sign/:token/setup-intent
+3. Backend creates Stripe Customer + SetupIntent
+4. Returns clientSecret + publishableKey
+5. Frontend mounts Stripe Card Element (secure iframe)
+6. User enters card → Stripe tokenizes client-side
+7. On confirm → stripe.confirmCardSetup() returns payment_method_id
+8. Final submit sends payment_method_id (not card data) to backend
+9. Backend attaches payment method to customer
+```
+
+**New Backend Endpoints:**
+- `POST /api/orders/sign/:token/setup-intent` - Creates SetupIntent, returns client secret
+- `POST /api/orders/sign/:token/complete` - Accepts signature + payment_method_id
+
+### 3. Email System Improvements
+
+#### Contract Email (sendContractToClient)
+- Added brand logos in header
+- Fixed background colors for Outlook (solid fallback before gradient)
+- Explicit white text colors with `!important`
+
+#### Confirmation Email (sendSignatureConfirmation)
+- Subject: "Welcome to the Family, [Business Name]! 🎉"
+- **NEW:** Product/pricing breakdown table
+- Shows Monthly Investment, Setup Fees, Contract Total
+- Warm, relational messaging (no order numbers)
+- Green header with brand logos
+
+#### ACH Setup Email (sendAchSetupEmail) - NEW
+- Subject: "[Business Name] - Complete Your Bank Account Setup"
+- Blue header with "📬 One More Step!"
+- Yellow warning box: "Action Required - Your package is not confirmed until you complete bank setup"
+- Green "Connect Bank Account" button
+- Only sent when ACH is selected
+
+### 4. Success Page Variants
+
+**Card Payment (or Invoice with Card backup):**
+- Green header "🎉 You're All Set!"
+- "Welcome Aboard!" subtitle
+- Green checkmark icon
+- "What's Next" steps
+
+**ACH Payment (or Invoice with ACH backup):**
+- Blue header "📧 Almost There!"
+- "One more step to complete" subtitle
+- Mailbox icon
+- Yellow "Action Required" warning box
+- "After Bank Setup" steps
+
+### 5. Bug Fixes
+
+- **Stripe Element duplication error:** Fixed by tracking `cardMounted` state and proper cleanup
+- **Email white text on white background:** Added solid `background-color` before gradient for Outlook
+- **Scroll to top on step confirm:** Removed - stays at current position
+- **"Bank Account" label:** Changed to "ACH" for consistency
 
 ---
 
-## 📁 Files Created/Modified This Session
+## 📁 Files Modified
 
-| File | Type | Description |
-|------|------|-------------|
-| `migrations/001_add_signature_fields.sql` | New | Database schema migration |
-| `order.js` | Updated | Complete rewrite with approval workflow |
-| `ApprovalsPage.jsx` | New | Manager approval queue component |
-| `ClientSigningPage.jsx` | New | Public client signing page |
-| `ROADMAP.md` | Updated | Added new features, SMS roadmap |
-| `SESSION_SUMMARY.md` | Updated | This file |
+| File | Changes |
+|------|---------|
+| `ClientSigningPage.jsx` | Complete rewrite - 900+ lines, 3-step single-page flow |
+| `server.js` | Added setup-intent endpoint, updated complete endpoint for payment_method_id |
+| `email-service.js` | Fixed headers, added ACH email, added product breakdown, warm messaging |
+| `package.json` | Added `stripe` dependency |
 
 ---
 
-## 🔧 Integration Steps (For Next Deployment)
+## 🗄️ Database Fields Used
 
-### Step 1: Run Database Migration
 ```sql
--- Execute in Supabase SQL Editor
--- Copy contents of migrations/001_add_signature_fields.sql
-```
-
-### Step 2: Update Backend (server.js)
-Add email service injection to order routes:
-```javascript
-// After importing email service
-const orderRoutes = require('./routes/order');
-orderRoutes.initEmailService(require('./services/email-service'));
-```
-
-### Step 3: Update Frontend (App.jsx)
-
-Add imports:
-```javascript
-import ApprovalsPage from './components/ApprovalsPage';
-import ClientSigningPage from './components/ClientSigningPage';
-```
-
-Add routes:
-```jsx
-<Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
-<Route path="/sign/:token" element={<ClientSigningPage />} />
-```
-
-### Step 4: Update Sidebar
-Add Approvals link with pending count badge:
-```jsx
-// In orderItems array (for managers/admins only)
-{ path: '/approvals', icon: Clock, label: 'Approvals', badge: pendingCount }
+-- Payment fields on orders table
+billing_preference      -- 'card', 'ach', 'invoice'
+stripe_customer_id      -- Stripe customer ID
+stripe_entity_code      -- 'wsic', 'lkn', 'lwp'
+payment_method_id       -- Stripe payment method ID
+payment_type            -- 'card', 'ach'
+payment_status          -- 'authorized', 'ach_pending', 'invoice_pending'
 ```
 
 ---
 
-## 📝 Important Notes
+## 🔑 Key Technical Decisions
 
-### Auto-Approval Logic
-Orders are automatically approved when:
-- All line items have `unit_price === original_price` (book value)
-- No manual price adjustments were made
+### 1. Single Page vs Multi-Page
+**Decision:** Single page with collapsible steps
+**Reason:** Better UX, no page reloads, maintains state throughout
 
-This means most standard orders skip the approval queue entirely.
+### 2. Stripe Elements vs Custom Fields
+**Decision:** Stripe Elements (hosted iframe)
+**Reason:** PCI compliance - card data never touches our server
 
-### Signing Token Security
-- Tokens are cryptographically random (32 bytes hex)
-- Tokens expire after 7 days
-- Tokens are nullified after successful signing
-- Cannot sign already-signed contracts
-- IP address and user agent recorded for audit trail
+### 3. SetupIntent vs PaymentIntent
+**Decision:** SetupIntent
+**Reason:** We're saving payment method for future charges, not charging immediately
 
-### Sales Rep Signature
-When submitting an order, the sales rep:
-1. Types their full name as signature
-2. Signature, timestamp, and IP are recorded
-3. This appears on the contract the client sees
-4. Creates legal record of who prepared the order
+### 4. ACH Flow
+**Decision:** Collect name only, send verification email
+**Reason:** Direct bank account creation requires Stripe Financial Connections for security
 
----
-
-## 🚀 Testing Checklist
-
-### Approval Flow
-- [ ] Create order with book-value pricing → auto-approves
-- [ ] Create order with adjusted pricing → goes to pending
-- [ ] Login as manager → see pending approvals
-- [ ] Approve order → status changes, email sent
-- [ ] Reject order → returns to draft, reason saved
-
-### Client Signing
-- [ ] Send to client → generates signing URL
-- [ ] Open signing URL (not logged in) → see contract
-- [ ] Sign contract → success page shown
-- [ ] Try signing same contract again → error (already signed)
-- [ ] Try expired link → error (expired)
-
-### Email Notifications
-- [ ] Submit with adjustments → manager gets email
-- [ ] Approve → submitter gets email
-- [ ] Reject → submitter gets email with reason
-- [ ] Send to client → client gets email with link
-- [ ] Client signs → both client & admin get emails
+### 5. Email by Payment Type
+**Decision:** Different emails for Card vs ACH
+**Reason:** ACH requires action (bank verification), Card is complete immediately
 
 ---
 
-## 📋 What's Next (Priority Order)
+## ⚠️ Known Limitations / TODOs
 
-1. **Deploy & Test** - Run migration, deploy changes, full testing
-2. **PDF Generation** - Generate signed contract PDF
-3. **Send to Client Button** - Add in order detail UI
-4. **Sidebar Badge** - Show pending approval count
-5. **SMS Notifications** - Twilio integration (added to roadmap)
-
----
-
-## 🔗 Quick Reference
-
-| Resource | URL/Command |
-|----------|-------------|
-| Production | https://myadvertisingreport.com |
-| Backend API | https://simplifi-reports-production.up.railway.app |
-| Supabase | https://app.supabase.com |
-| Railway Logs | Railway Dashboard → Deployments → View Logs |
-| Signing URL Pattern | `https://myadvertisingreport.com/sign/{token}` |
+1. **ACH Verification Page:** Need to build `/ach-setup/:token` page for Stripe Financial Connections
+2. **Invoice with ACH Backup:** Same flow as direct ACH - needs bank verification
+3. **Stripe Webhooks:** Should add for payment status updates
+4. **PDF Generation:** Not yet implemented for signed contracts
 
 ---
 
-## 💬 User Feedback Incorporated
+## 🧪 Testing Notes
 
-1. ✅ **Pending Approvals UI** - Created dedicated page matching app styling
-2. ✅ **Sales Rep Signature** - Captured on submit, displayed on contract
-3. ✅ **Client Email Notification** - Sent when contract ready for signing
-4. 📝 **SMS Notifications** - Added to roadmap as future enhancement (Twilio)
+### Test Card Numbers (Stripe Test Mode)
+- Success: `4242 4242 4242 4242`
+- Decline: `4000 0000 0000 0002`
+- Requires Auth: `4000 0025 0000 3155`
+
+### Test Flow
+1. Create order → Submit → Auto-approve (or approve manually)
+2. Send to client → Opens signing page
+3. Step 1: Confirm products
+4. Step 2: Select payment method, enter card/select ACH
+5. Step 3: Sign and complete
+6. Verify correct email received based on payment type
 
 ---
 
-## 📊 Files for Next Session
+## 📋 Next Session Priorities
 
-If continuing this work, you'll need:
-- `backend/server.js` - To integrate email service with order routes
-- `src/App.jsx` - To add routes and sidebar updates
-- The new component files created this session
-- Database migration ready to run
+1. **Order Form Variants:**
+   - Upload Order (pre-signed PDF)
+   - Change Order (electronic + upload)
+   - Kill Order (electronic + upload)
+
+2. **Billing/Invoice System:**
+   - Invoice generation
+   - Approval queue
+   - Send and track payments
+   - Auto-charge after grace period
+
+3. **ACH Verification:**
+   - Build Stripe Financial Connections page
+   - Handle verification webhooks

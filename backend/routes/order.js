@@ -1919,6 +1919,474 @@ router.get('/categories/list', async (req, res) => {
   }
 });
 
+// ============================================================
+// ORDER VARIANT ROUTES
+// Upload Orders, Change Orders, Kill Orders
+// ============================================================
+
+// POST /api/orders/upload - Create order from uploaded signed document
+router.post('/upload', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const {
+      client_id,
+      uploaded_document_id,
+      contract_start_date,
+      contract_end_date,
+      term_months,
+      billing_frequency = 'monthly',
+      notes,
+      client_signature_date,
+      items
+    } = req.body;
+
+    if (!client_id || !uploaded_document_id) {
+      return res.status(400).json({ error: 'Client and document are required' });
+    }
+
+    // Generate order number
+    const countResult = await client.query('SELECT COUNT(*) FROM orders');
+    const orderNumber = `ORD-${String(parseInt(countResult.rows[0].count) + 1001).padStart(5, '0')}`;
+
+    // Calculate totals
+    let monthly_total = 0;
+    let setup_fees_total = 0;
+    if (items && items.length > 0) {
+      for (const item of items) {
+        monthly_total += parseFloat(item.line_total) || 0;
+        setup_fees_total += parseFloat(item.setup_fee) || 0;
+      }
+    }
+    const contract_total = (monthly_total * (term_months || 1)) + setup_fees_total;
+
+    // Get user from token
+    let submitted_by = req.user?.id || null;
+
+    // Create order with 'signed' status
+    const orderResult = await client.query(
+      `INSERT INTO orders (
+        order_number, client_id, order_type, status,
+        contract_start_date, contract_end_date, term_months,
+        billing_frequency, monthly_total, contract_total,
+        notes, uploaded_document_id, submitted_by,
+        client_signature_date, created_at, updated_at
+      ) VALUES (
+        $1, $2, 'upload', 'signed',
+        $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+      ) RETURNING *`,
+      [
+        orderNumber, client_id, contract_start_date, contract_end_date,
+        term_months, billing_frequency, monthly_total, contract_total,
+        notes, uploaded_document_id, submitted_by, client_signature_date
+      ]
+    );
+
+    const order = orderResult.rows[0];
+
+    // Create order items
+    if (items && items.length > 0) {
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO order_items (
+            id, order_id, entity_id, product_id, product_name, product_category,
+            quantity, unit_price, original_price, discount_percent, line_total,
+            setup_fee, notes, created_at, updated_at
+          ) VALUES (
+            gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+          )`,
+          [
+            order.id, item.entity_id, item.product_id, item.product_name,
+            item.product_category, item.quantity || 1, item.unit_price,
+            item.original_price || item.unit_price, item.discount_percent || 0,
+            item.line_total, item.setup_fee || 0, item.notes
+          ]
+        );
+      }
+    }
+
+    // Update document with order reference
+    await client.query(
+      'UPDATE documents SET order_id = $1, updated_at = NOW() WHERE id = $2',
+      [order.id, uploaded_document_id]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      ...order,
+      order_number: orderNumber,
+      item_count: items?.length || 0
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error creating upload order:', error);
+    res.status(500).json({ error: 'Failed to create order' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/orders/change - Create change order (electronic)
+router.post('/change', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const {
+      parent_order_id,
+      effective_date,
+      notes,
+      management_approval_confirmed,
+      signature,
+      change_summary,
+      items
+    } = req.body;
+
+    if (!parent_order_id) {
+      return res.status(400).json({ error: 'Parent order is required' });
+    }
+
+    if (!management_approval_confirmed) {
+      return res.status(400).json({ error: 'Management approval is required' });
+    }
+
+    // Verify parent order
+    const parentResult = await client.query(
+      'SELECT * FROM orders WHERE id = $1 AND status IN ($2, $3)',
+      [parent_order_id, 'signed', 'active']
+    );
+
+    if (parentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent order not found or not in valid status' });
+    }
+
+    const parentOrder = parentResult.rows[0];
+
+    // Generate change order number
+    const countResult = await client.query(
+      "SELECT COUNT(*) FROM orders WHERE order_type IN ('change', 'change_upload')"
+    );
+    const changeOrderNumber = `CHG-${String(parseInt(countResult.rows[0].count) + 1001).padStart(5, '0')}`;
+
+    // Calculate totals
+    let monthly_total = 0;
+    let setup_fees_total = 0;
+    if (items && items.length > 0) {
+      for (const item of items) {
+        monthly_total += parseFloat(item.line_total) || 0;
+        setup_fees_total += parseFloat(item.setup_fee) || 0;
+      }
+    }
+
+    let submitted_by = req.user?.id || null;
+
+    // Create change order
+    const orderResult = await client.query(
+      `INSERT INTO orders (
+        order_number, client_id, order_type, status, parent_order_id,
+        contract_start_date, contract_end_date, term_months,
+        monthly_total, contract_total, notes, effective_date,
+        management_approval_confirmed, change_summary,
+        submitted_by, submitted_signature, submitted_signature_date,
+        has_price_adjustments, created_at, updated_at
+      ) VALUES (
+        $1, $2, 'change', 'pending_approval', $3,
+        $4, $5, $6, $7, $8, $9, $10, $11, $12,
+        $13, $14, NOW(), true, NOW(), NOW()
+      ) RETURNING *`,
+      [
+        changeOrderNumber, parentOrder.client_id, parent_order_id,
+        parentOrder.contract_start_date, parentOrder.contract_end_date,
+        parentOrder.term_months, monthly_total,
+        (monthly_total * (parentOrder.term_months || 1)) + setup_fees_total,
+        notes, effective_date, management_approval_confirmed,
+        JSON.stringify(change_summary), submitted_by, signature
+      ]
+    );
+
+    const changeOrder = orderResult.rows[0];
+
+    // Create order items
+    if (items && items.length > 0) {
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO order_items (
+            id, order_id, entity_id, product_id, product_name, product_category,
+            quantity, unit_price, original_price, line_total, setup_fee,
+            notes, created_at, updated_at
+          ) VALUES (
+            gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()
+          )`,
+          [
+            changeOrder.id, item.entity_id, item.product_id, item.product_name,
+            item.product_category, item.quantity || 1, item.unit_price,
+            item.unit_price, item.line_total, item.setup_fee || 0, item.notes
+          ]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      ...changeOrder,
+      order_number: changeOrderNumber,
+      item_count: items?.length || 0,
+      parent_order_number: parentOrder.order_number
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error creating change order:', error);
+    res.status(500).json({ error: 'Failed to create change order' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/orders/change-upload - Create change order from uploaded document
+router.post('/change-upload', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const {
+      parent_order_id,
+      uploaded_document_id,
+      effective_date,
+      notes,
+      management_approval_confirmed,
+      change_summary
+    } = req.body;
+
+    if (!parent_order_id || !uploaded_document_id) {
+      return res.status(400).json({ error: 'Parent order and document are required' });
+    }
+
+    // Verify parent order
+    const parentResult = await client.query(
+      'SELECT * FROM orders WHERE id = $1 AND status IN ($2, $3)',
+      [parent_order_id, 'signed', 'active']
+    );
+
+    if (parentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent order not found' });
+    }
+
+    const parentOrder = parentResult.rows[0];
+
+    // Generate order number
+    const countResult = await client.query(
+      "SELECT COUNT(*) FROM orders WHERE order_type IN ('change', 'change_upload')"
+    );
+    const orderNumber = `CHG-${String(parseInt(countResult.rows[0].count) + 1001).padStart(5, '0')}`;
+
+    const newMonthly = change_summary?.new_monthly || parentOrder.monthly_total;
+
+    // Create change order with 'signed' status
+    const orderResult = await client.query(
+      `INSERT INTO orders (
+        order_number, client_id, order_type, status, parent_order_id,
+        contract_start_date, contract_end_date, term_months,
+        monthly_total, notes, effective_date, uploaded_document_id,
+        management_approval_confirmed, change_summary, created_at, updated_at
+      ) VALUES (
+        $1, $2, 'change_upload', 'signed', $3,
+        $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+      ) RETURNING *`,
+      [
+        orderNumber, parentOrder.client_id, parent_order_id,
+        parentOrder.contract_start_date, parentOrder.contract_end_date,
+        parentOrder.term_months, newMonthly, notes, effective_date,
+        uploaded_document_id, management_approval_confirmed, JSON.stringify(change_summary)
+      ]
+    );
+
+    // Update parent order monthly total
+    await client.query(
+      'UPDATE orders SET monthly_total = $1, updated_at = NOW() WHERE id = $2',
+      [newMonthly, parent_order_id]
+    );
+
+    // Update document
+    await client.query(
+      'UPDATE documents SET order_id = $1, document_type = $2, updated_at = NOW() WHERE id = $3',
+      [orderResult.rows[0].id, 'change_order', uploaded_document_id]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json(orderResult.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Failed to create change order' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/orders/kill - Create kill order (electronic)
+router.post('/kill', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const {
+      parent_order_id,
+      effective_date,
+      cancellation_reason,
+      management_approval_confirmed,
+      signature
+    } = req.body;
+
+    if (!parent_order_id) {
+      return res.status(400).json({ error: 'Parent order is required' });
+    }
+
+    if (!management_approval_confirmed) {
+      return res.status(400).json({ error: 'Management approval is required' });
+    }
+
+    if (!cancellation_reason) {
+      return res.status(400).json({ error: 'Cancellation reason is required' });
+    }
+
+    // Verify parent order
+    const parentResult = await client.query(
+      'SELECT * FROM orders WHERE id = $1 AND status IN ($2, $3)',
+      [parent_order_id, 'signed', 'active']
+    );
+
+    if (parentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent order not found or not in valid status' });
+    }
+
+    const parentOrder = parentResult.rows[0];
+
+    // Generate kill order number
+    const countResult = await client.query(
+      "SELECT COUNT(*) FROM orders WHERE order_type IN ('kill', 'kill_upload')"
+    );
+    const killOrderNumber = `KIL-${String(parseInt(countResult.rows[0].count) + 1001).padStart(5, '0')}`;
+
+    let submitted_by = req.user?.id || null;
+
+    // Create kill order
+    const orderResult = await client.query(
+      `INSERT INTO orders (
+        order_number, client_id, order_type, status, parent_order_id,
+        contract_start_date, contract_end_date, term_months,
+        monthly_total, contract_total, notes, effective_date,
+        cancellation_reason, management_approval_confirmed,
+        submitted_by, submitted_signature, submitted_signature_date,
+        created_at, updated_at
+      ) VALUES (
+        $1, $2, 'kill', 'pending_approval', $3,
+        $4, $5, $6, $7, $8, $9, $10, $11, $12,
+        $13, $14, NOW(), NOW(), NOW()
+      ) RETURNING *`,
+      [
+        killOrderNumber, parentOrder.client_id, parent_order_id,
+        parentOrder.contract_start_date, parentOrder.contract_end_date,
+        parentOrder.term_months, parentOrder.monthly_total, parentOrder.contract_total,
+        cancellation_reason, effective_date, cancellation_reason,
+        management_approval_confirmed, submitted_by, signature
+      ]
+    );
+
+    await client.query('COMMIT');
+
+    res.status(201).json({
+      ...orderResult.rows[0],
+      parent_order_number: parentOrder.order_number
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error creating kill order:', error);
+    res.status(500).json({ error: 'Failed to create kill order' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/orders/kill-upload - Create kill order from uploaded document
+router.post('/kill-upload', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const {
+      parent_order_id,
+      uploaded_document_id,
+      effective_date,
+      cancellation_reason,
+      management_approval_confirmed
+    } = req.body;
+
+    if (!parent_order_id || !uploaded_document_id) {
+      return res.status(400).json({ error: 'Parent order and document are required' });
+    }
+
+    // Verify parent order
+    const parentResult = await client.query(
+      'SELECT * FROM orders WHERE id = $1 AND status IN ($2, $3)',
+      [parent_order_id, 'signed', 'active']
+    );
+
+    if (parentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Parent order not found' });
+    }
+
+    const parentOrder = parentResult.rows[0];
+
+    // Generate order number
+    const countResult = await client.query(
+      "SELECT COUNT(*) FROM orders WHERE order_type IN ('kill', 'kill_upload')"
+    );
+    const orderNumber = `KIL-${String(parseInt(countResult.rows[0].count) + 1001).padStart(5, '0')}`;
+
+    // Create kill order with 'signed' status
+    const orderResult = await client.query(
+      `INSERT INTO orders (
+        order_number, client_id, order_type, status, parent_order_id,
+        contract_start_date, contract_end_date, effective_date,
+        cancellation_reason, uploaded_document_id,
+        management_approval_confirmed, created_at, updated_at
+      ) VALUES (
+        $1, $2, 'kill_upload', 'signed', $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
+      ) RETURNING *`,
+      [
+        orderNumber, parentOrder.client_id, parent_order_id,
+        parentOrder.contract_start_date, parentOrder.contract_end_date,
+        effective_date, cancellation_reason, uploaded_document_id,
+        management_approval_confirmed
+      ]
+    );
+
+    // Update parent order status to cancelled
+    await client.query(
+      "UPDATE orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1",
+      [parent_order_id]
+    );
+
+    // Update document
+    await client.query(
+      'UPDATE documents SET order_id = $1, document_type = $2, updated_at = NOW() WHERE id = $3',
+      [orderResult.rows[0].id, 'kill_order', uploaded_document_id]
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json(orderResult.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error:', error);
+    res.status(500).json({ error: 'Failed to create kill order' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
 module.exports.initPool = initPool;
 module.exports.initEmailService = initEmailService;

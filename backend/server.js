@@ -19,6 +19,7 @@ const { initializeDatabase, seedInitialData, DatabaseHelper } = require('./datab
 const adminRoutes = require('./routes/admin');
 const orderRoutes = require('./routes/order');
 const emailRoutes = require('./routes/email');
+const documentRoutes = require('./routes/document');
 const emailService = require('./services/email-service');
 
 // Initialize Express
@@ -104,6 +105,10 @@ const setupAdminRoutes = () => {
   
   // Initialize order routes with the same pool
   orderRoutes.initPool(process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL);
+  
+  // Initialize document routes
+  documentRoutes.initPool(process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL);
+  console.log('Document routes initialized');
   
   // Inject email service into order routes for notifications
   if (orderRoutes.initEmailService) {
@@ -2418,6 +2423,12 @@ app.use('/api/orders', authenticateToken, (req, res, next) => {
   }
   next();
 }, orderRoutes);
+
+// ============================================
+// DOCUMENT ROUTES (Authenticated)
+// ============================================
+
+app.use('/api/documents', authenticateToken, documentRoutes);
 
 // ============================================
 // EMAIL ROUTES

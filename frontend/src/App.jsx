@@ -15,6 +15,13 @@ import OrderForm from './components/OrderForm';
 import OrderList from './components/OrderList';
 import ApprovalsPage from './components/ApprovalsPage';
 import ClientSigningPage from './components/ClientSigningPage';
+import OrderTypeSelector from './components/OrderTypeSelector';
+import UploadOrderForm from './components/UploadOrderForm';
+import ChangeOrderForm from './components/ChangeOrderForm';
+import ChangeOrderUploadForm from './components/ChangeOrderUploadForm';
+import KillOrderForm from './components/KillOrderForm';
+import KillOrderUploadForm from './components/KillOrderUploadForm';
+import AdminDocumentsPage from './components/AdminDocumentsPage';
 import { 
   ResponsiveContainer, 
   AreaChart as RechartsAreaChart, 
@@ -10347,8 +10354,15 @@ function App() {
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
+          <Route path="/admin/documents" element={<ProtectedRoute><AdminDocumentsPage /></ProtectedRoute>} />
           <Route path="/orders" element={<ProtectedRoute><OrderList /></ProtectedRoute>} />
           <Route path="/orders/new" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
+          <Route path="/orders/new/select" element={<ProtectedRoute><OrderTypeSelector /></ProtectedRoute>} />
+          <Route path="/orders/new/upload" element={<ProtectedRoute><UploadOrderForm /></ProtectedRoute>} />
+          <Route path="/orders/new/change" element={<ProtectedRoute><ChangeOrderForm /></ProtectedRoute>} />
+          <Route path="/orders/new/change-upload" element={<ProtectedRoute><ChangeOrderUploadForm /></ProtectedRoute>} />
+          <Route path="/orders/new/kill" element={<ProtectedRoute><KillOrderForm /></ProtectedRoute>} />
+          <Route path="/orders/new/kill-upload" element={<ProtectedRoute><KillOrderUploadForm /></ProtectedRoute>} />
           <Route path="/orders/:id/edit" element={<ProtectedRoute><OrderForm /></ProtectedRoute>} />
           <Route path="/approvals" element={<ProtectedRoute><ApprovalsPage /></ProtectedRoute>} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
