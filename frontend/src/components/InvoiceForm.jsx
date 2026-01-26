@@ -328,9 +328,13 @@ export default function InvoiceForm() {
                 <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
                   <Loader2 size={20} /> Loading clients...
                 </div>
+              ) : !clientSearch ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                  Start typing to search clients...
+                </div>
               ) : filteredClients.length === 0 ? (
                 <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
-                  {clientSearch ? 'No clients match your search' : 'No clients found'}
+                  No clients match your search
                   <br />
                   <button
                     type="button"
