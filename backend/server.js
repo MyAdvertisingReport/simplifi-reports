@@ -2104,9 +2104,11 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
     const { token } = req.params;
     const { billing_preference, signer_email, signer_name } = req.body;
 
+    console.log('[SETUP-INTENT] Starting for token:', token?.substring(0, 10) + '...');
+
     // Find order
     const orderResult = await adminPool.query(
-      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id
+      `SELECT o.*, c.business_name as client_name, c.id as client_id, c.stripe_customer_id as existing_stripe_id, c.email as client_email
        FROM orders o
        JOIN advertising_clients c ON o.client_id = c.id
        WHERE o.signing_token = $1 AND o.signing_token_expires_at > NOW()`,
@@ -2114,10 +2116,12 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
     );
 
     if (orderResult.rows.length === 0) {
+      console.log('[SETUP-INTENT] Invalid or expired token');
       return res.status(404).json({ error: 'Invalid or expired signing link' });
     }
 
     const order = orderResult.rows[0];
+    console.log('[SETUP-INTENT] Found order:', order.id, 'Client:', order.client_name);
 
     // Get primary entity
     const itemsResult = await adminPool.query(
@@ -2127,6 +2131,7 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
       [order.id]
     );
     const primaryEntityCode = itemsResult.rows[0]?.entity_code || 'wsic';
+    console.log('[SETUP-INTENT] Primary entity:', primaryEntityCode);
 
     // Initialize Stripe
     const Stripe = require('stripe');
@@ -2134,17 +2139,26 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
     const stripePublishableKey = process.env[`STRIPE_${primaryEntityCode.toUpperCase()}_PUBLISHABLE_KEY`] || process.env.STRIPE_WSIC_PUBLISHABLE_KEY;
     
     if (!stripeSecretKey) {
-      return res.status(500).json({ error: 'Payment system not configured' });
+      console.error('[SETUP-INTENT] Missing Stripe secret key for entity:', primaryEntityCode);
+      return res.status(500).json({ error: 'Payment system not configured for this entity' });
+    }
+    
+    if (!stripePublishableKey) {
+      console.error('[SETUP-INTENT] Missing Stripe publishable key for entity:', primaryEntityCode);
+      return res.status(500).json({ error: 'Payment system not fully configured' });
     }
     
     const stripe = new Stripe(stripeSecretKey);
 
-    // Get or create customer
+    // Get or create customer - use provided email, fall back to client email
+    const customerEmail = signer_email || order.client_email || `client-${order.client_id}@placeholder.local`;
     let customerId = order.existing_stripe_id;
+    
     if (!customerId) {
+      console.log('[SETUP-INTENT] Creating new Stripe customer for:', customerEmail);
       const customer = await stripe.customers.create({
-        email: signer_email,
-        name: order.client_name,
+        email: customerEmail,
+        name: order.client_name || 'Unknown Client',
         metadata: { client_id: order.client_id }
       });
       customerId = customer.id;
@@ -2154,9 +2168,13 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
         `UPDATE advertising_clients SET stripe_customer_id = $1 WHERE id = $2`,
         [customerId, order.client_id]
       );
+      console.log('[SETUP-INTENT] Created customer:', customerId);
+    } else {
+      console.log('[SETUP-INTENT] Using existing customer:', customerId);
     }
 
     // Create SetupIntent
+    console.log('[SETUP-INTENT] Creating SetupIntent for customer:', customerId);
     const setupIntent = await stripe.setupIntents.create({
       customer: customerId,
       payment_method_types: ['card'],
@@ -2169,6 +2187,8 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
       [primaryEntityCode, customerId, billing_preference, order.id]
     );
 
+    console.log('[SETUP-INTENT] Success! SetupIntent created:', setupIntent.id);
+
     res.json({
       clientSecret: setupIntent.client_secret,
       publishableKey: stripePublishableKey,
@@ -2176,8 +2196,12 @@ app.post('/api/orders/sign/:token/setup-intent', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error creating setup intent:', error);
-    res.status(500).json({ error: 'Failed to initialize payment' });
+    console.error('[SETUP-INTENT] Error:', error.message);
+    console.error('[SETUP-INTENT] Stack:', error.stack);
+    res.status(500).json({ 
+      error: 'Failed to initialize payment',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
