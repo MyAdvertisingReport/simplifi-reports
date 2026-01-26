@@ -87,7 +87,8 @@ export default function InvoiceForm() {
   const loadClients = async () => {
     setClientsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/clients`, { headers: getAuthHeaders() });
+      // Use the same endpoint as OrderForm
+      const res = await fetch(`${API_BASE}/api/orders/clients?limit=100`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         console.log('Loaded clients:', data);
@@ -149,7 +150,8 @@ export default function InvoiceForm() {
     setError(null);
     
     try {
-      const res = await fetch(`${API_BASE}/api/clients`, {
+      // Use the same endpoint as OrderForm
+      const res = await fetch(`${API_BASE}/api/orders/clients`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(newClientData)
@@ -161,7 +163,7 @@ export default function InvoiceForm() {
       }
       
       const client = await res.json();
-      setClients([...clients, client]);
+      setClients([client, ...clients]);
       setSelectedClient(client);
       setShowNewClientModal(false);
       setNewClientData({
