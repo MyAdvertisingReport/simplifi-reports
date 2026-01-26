@@ -542,7 +542,7 @@ function Sidebar({ isOpen }) {
   const navigate = useNavigate();
   
   // Track which sections are expanded
-  const [expandedSections, setExpandedSections] = useState({ orders: true });
+  const [expandedSections, setExpandedSections] = useState({ orders: true, settings: false });
   
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -557,26 +557,33 @@ function Sidebar({ isOpen }) {
     window.location.reload(); // Reload to update all components
   };
 
+  // Main nav items (always visible)
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/clients', icon: Building2, label: 'Clients' },
   ];
   
-  // Order Management section items
+  // Order Management section items (no Billing here now)
   const orderItems = [
     { path: '/orders', icon: List, label: 'All Orders' },
     { path: '/orders/new/select', icon: FileText, label: 'New Order' },
-    { path: '/billing', icon: DollarSign, label: 'Billing' },
     { path: '/admin/products', icon: Database, label: 'Products' },
   ];
   
-  if (user?.role === 'admin') {
-    navItems.push({ path: '/users', icon: Users, label: 'Users' });
-    navItems.push({ path: '/settings', icon: Settings, label: 'Settings' });
-  }
+  // Settings section items (admin only)
+  const settingsItems = [
+    { path: '/users', icon: Users, label: 'Users' },
+    { path: '/settings', icon: Settings, label: 'Preferences' },
+  ];
   
   // Check if current path is in order management section
-  const isOrderSection = location.pathname.startsWith('/orders') || location.pathname.startsWith('/billing') || location.pathname === '/admin/products';
+  const isOrderSection = location.pathname.startsWith('/orders') || location.pathname === '/admin/products';
+  
+  // Check if current path is billing
+  const isBillingSection = location.pathname.startsWith('/billing');
+  
+  // Check if current path is in settings section
+  const isSettingsSection = location.pathname === '/users' || location.pathname === '/settings';
 
   return (
     <aside style={{
@@ -678,7 +685,7 @@ function Sidebar({ isOpen }) {
               color: isOrderSection ? '#60a5fa' : '#9ca3af',
             }}
           >
-            <DollarSign size={20} />
+            <FileText size={20} />
             <span style={{ fontWeight: 600, flex: 1, textAlign: 'left' }}>Order Management</span>
             {expandedSections.orders ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
@@ -700,6 +707,59 @@ function Sidebar({ isOpen }) {
             </div>
           )}
         </div>
+        
+        {/* Billing - Standalone */}
+        <Link to="/billing" style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem',
+          marginTop: '0.5rem', marginBottom: '0.25rem', borderRadius: '0.5rem', textDecoration: 'none',
+          color: isBillingSection ? 'white' : '#9ca3af',
+          background: isBillingSection ? 'rgba(16,185,129,0.2)' : 'transparent'
+        }}>
+          <DollarSign size={20} style={{ color: isBillingSection ? '#10b981' : '#9ca3af' }} />
+          <span style={{ fontWeight: 600 }}>Billing</span>
+        </Link>
+        
+        {/* Settings Section (Admin only) */}
+        {user?.role === 'admin' && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <button
+              onClick={() => toggleSection('settings')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.75rem',
+                width: '100%',
+                border: 'none',
+                borderRadius: '0.5rem',
+                background: isSettingsSection ? 'rgba(59,130,246,0.1)' : 'transparent',
+                cursor: 'pointer',
+                color: isSettingsSection ? '#60a5fa' : '#9ca3af',
+              }}
+            >
+              <Settings size={20} />
+              <span style={{ fontWeight: 600, flex: 1, textAlign: 'left' }}>Settings</span>
+              {expandedSections.settings ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            
+            {/* Settings Sub-items */}
+            {expandedSections.settings && (
+              <div style={{ marginLeft: '0.5rem', borderLeft: '2px solid #374151', marginTop: '0.25rem' }}>
+                {settingsItems.map(({ path, icon: Icon, label }) => (
+                  <Link key={path} to={path} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.75rem',
+                    marginLeft: '0.75rem', marginBottom: '0.125rem', borderRadius: '0.375rem', textDecoration: 'none',
+                    color: location.pathname === path ? 'white' : '#9ca3af',
+                    background: location.pathname === path ? 'rgba(59,130,246,0.2)' : 'transparent',
+                    fontSize: '0.875rem'
+                  }}>
+                    <Icon size={16} /><span style={{ fontWeight: 500 }}>{label}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
       <div style={{ borderTop: '1px solid #374151', paddingTop: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>

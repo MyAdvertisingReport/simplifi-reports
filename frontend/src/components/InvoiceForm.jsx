@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   FileText, ArrowLeft, Plus, Trash2, DollarSign, Calendar,
-  Building2, Search, CheckCircle, AlertCircle
+  Building2, Search, CheckCircle, AlertCircle, X, User
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -37,6 +37,22 @@ export default function InvoiceForm() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [clientSearch, setClientSearch] = useState('');
+  const [clientsLoading, setClientsLoading] = useState(true);
+  
+  // New Client Modal
+  const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [newClientData, setNewClientData] = useState({
+    business_name: '',
+    contact_first_name: '',
+    contact_last_name: '',
+    contact_email: '',
+    contact_phone: '',
+    address_street: '',
+    address_city: '',
+    address_state: '',
+    address_zip: ''
+  });
+  const [creatingClient, setCreatingClient] = useState(false);
   
   const [billingPeriodStart, setBillingPeriodStart] = useState('');
   const [billingPeriodEnd, setBillingPeriodEnd] = useState('');
@@ -69,10 +85,23 @@ export default function InvoiceForm() {
   }, [billingPreference]);
 
   const loadClients = async () => {
+    setClientsLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/clients`, { headers: getAuthHeaders() });
-      if (res.ok) setClients(await res.json());
-    } catch (err) { console.error(err); }
+      if (res.ok) {
+        const data = await res.json();
+        console.log('Loaded clients:', data);
+        setClients(Array.isArray(data) ? data : []);
+      } else {
+        console.error('Failed to load clients:', res.status);
+        setClients([]);
+      }
+    } catch (err) { 
+      console.error('Error loading clients:', err); 
+      setClients([]);
+    } finally {
+      setClientsLoading(false);
+    }
   };
 
   const loadClientOrders = async (clientId) => {
@@ -80,7 +109,7 @@ export default function InvoiceForm() {
       const res = await fetch(`${API_BASE}/api/orders?client_id=${clientId}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
-        setOrders((data.orders || []).filter(o => ['signed', 'active'].includes(o.status)));
+        setOrders((data.orders || data || []).filter(o => ['signed', 'active'].includes(o.status)));
       }
     } catch (err) { console.error(err); }
   };
@@ -108,6 +137,49 @@ export default function InvoiceForm() {
       setBillingPeriodEnd(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
+  };
+
+  const handleCreateClient = async () => {
+    if (!newClientData.business_name.trim()) {
+      setError('Business name is required');
+      return;
+    }
+    
+    setCreatingClient(true);
+    setError(null);
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/clients`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newClientData)
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to create client');
+      }
+      
+      const client = await res.json();
+      setClients([...clients, client]);
+      setSelectedClient(client);
+      setShowNewClientModal(false);
+      setNewClientData({
+        business_name: '',
+        contact_first_name: '',
+        contact_last_name: '',
+        contact_email: '',
+        contact_phone: '',
+        address_street: '',
+        address_city: '',
+        address_state: '',
+        address_zip: ''
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreatingClient(false);
+    }
   };
 
   const subtotal = items.reduce((sum, i) => sum + (parseFloat(i.unit_price || 0) * (parseInt(i.quantity) || 1)), 0);
@@ -157,7 +229,9 @@ export default function InvoiceForm() {
     finally { setSubmitting(false); }
   };
 
-  const filteredClients = clients.filter(c => c.business_name?.toLowerCase().includes(clientSearch.toLowerCase()));
+  const filteredClients = clients.filter(c => 
+    c.business_name?.toLowerCase().includes(clientSearch.toLowerCase())
+  );
 
   const styles = {
     container: { padding: '24px', maxWidth: '900px', margin: '0 auto' },
@@ -173,14 +247,20 @@ export default function InvoiceForm() {
     button: { display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: '500', cursor: 'pointer', border: 'none' },
     buttonPrimary: { background: '#1e3a8a', color: 'white' },
     buttonSecondary: { background: '#f1f5f9', color: '#374151' },
+    buttonSuccess: { background: '#059669', color: 'white' },
     alert: { padding: '16px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' },
     alertError: { background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b' },
     alertSuccess: { background: '#dcfce7', border: '1px solid #bbf7d0', color: '#166534' },
-    clientCard: { padding: '12px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', marginBottom: '8px' },
+    clientCard: { padding: '12px 16px', border: '2px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', marginBottom: '8px', transition: 'all 0.15s' },
     clientCardSelected: { borderColor: '#1e3a8a', background: '#eff6ff' },
     modeToggle: { display: 'flex', gap: '8px', marginBottom: '20px' },
     modeButton: { flex: 1, padding: '12px', border: '2px solid #e2e8f0', borderRadius: '8px', background: 'white', cursor: 'pointer', textAlign: 'center' },
     modeButtonActive: { borderColor: '#1e3a8a', background: '#eff6ff' },
+    modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+    modal: { background: 'white', borderRadius: '16px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflow: 'auto', margin: '20px' },
+    modalHeader: { padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+    modalBody: { padding: '24px' },
+    modalFooter: { padding: '16px 24px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' },
   };
 
   if (loading) return <div style={styles.container}><div style={{ display: 'flex', justifyContent: 'center', padding: '80px' }}><Loader2 size={32} /></div></div>;
@@ -211,8 +291,19 @@ export default function InvoiceForm() {
       )}
 
       <form onSubmit={handleSubmit}>
+        {/* Client Selection */}
         <div style={styles.card}>
-          <h3 style={styles.sectionTitle}><Building2 size={20} /> Client</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}><Building2 size={20} /> Client</h3>
+            <button
+              type="button"
+              onClick={() => setShowNewClientModal(true)}
+              style={{ ...styles.button, ...styles.buttonSecondary, padding: '8px 12px' }}
+            >
+              <Plus size={16} /> Add Client
+            </button>
+          </div>
+          
           {selectedClient ? (
             <div style={{ ...styles.clientCard, ...styles.clientCardSelected }}>
               <div style={{ fontWeight: '600' }}>{selectedClient.business_name}</div>
@@ -222,26 +313,63 @@ export default function InvoiceForm() {
             <>
               <div style={{ position: 'relative', marginBottom: '12px' }}>
                 <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
-                <input type="text" placeholder="Search clients..." value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} style={{ ...styles.input, paddingLeft: '36px' }} />
+                <input 
+                  type="text" 
+                  placeholder="Search clients..." 
+                  value={clientSearch} 
+                  onChange={(e) => setClientSearch(e.target.value)} 
+                  style={{ ...styles.input, paddingLeft: '36px' }} 
+                />
               </div>
-              <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                {filteredClients.slice(0, 10).map(c => (
-                  <div key={c.id} style={styles.clientCard} onClick={() => setSelectedClient(c)}>
-                    <div style={{ fontWeight: '500' }}>{c.business_name}</div>
-                  </div>
-                ))}
-              </div>
+              
+              {clientsLoading ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                  <Loader2 size={20} /> Loading clients...
+                </div>
+              ) : filteredClients.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                  {clientSearch ? 'No clients match your search' : 'No clients found'}
+                  <br />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewClientModal(true)}
+                    style={{ ...styles.button, ...styles.buttonPrimary, marginTop: '12px', padding: '8px 16px' }}
+                  >
+                    <Plus size={16} /> Create New Client
+                  </button>
+                </div>
+              ) : (
+                <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                  {filteredClients.slice(0, 10).map(c => (
+                    <div key={c.id} style={styles.clientCard} onClick={() => setSelectedClient(c)}>
+                      <div style={{ fontWeight: '500' }}>{c.business_name}</div>
+                      {c.contact_email && <div style={{ fontSize: '12px', color: '#64748b' }}>{c.contact_email}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
 
+        {/* Order Selection for from-order mode */}
         {mode === 'from-order' && selectedClient && !orderIdParam && (
           <div style={styles.card}>
             <h3 style={styles.sectionTitle}><FileText size={20} /> Select Order</h3>
-            {orders.length === 0 ? <p style={{ color: '#64748b' }}>No billable orders found.</p> : (
+            {orders.length === 0 ? (
+              <p style={{ color: '#64748b' }}>No billable orders found for this client.</p>
+            ) : (
               <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
                 {orders.map(o => (
-                  <div key={o.id} style={{ ...styles.clientCard, ...(selectedOrder?.id === o.id ? styles.clientCardSelected : {}) }} onClick={() => { setSelectedOrder(o); setBillingPreference(o.billing_preference || 'invoice'); if (o.items) setItems(o.items.map(i => ({ description: i.product_name || 'Service', quantity: i.quantity || 1, unit_price: i.adjusted_price || i.unit_price || 0 }))); }}>
+                  <div 
+                    key={o.id} 
+                    style={{ ...styles.clientCard, ...(selectedOrder?.id === o.id ? styles.clientCardSelected : {}) }} 
+                    onClick={() => { 
+                      setSelectedOrder(o); 
+                      setBillingPreference(o.billing_preference || 'invoice'); 
+                      if (o.items) setItems(o.items.map(i => ({ description: i.product_name || 'Service', quantity: i.quantity || 1, unit_price: i.adjusted_price || i.unit_price || 0 }))); 
+                    }}
+                  >
                     <div style={{ fontWeight: '600' }}>{o.order_number}</div>
                     <div style={{ fontSize: '13px', color: '#64748b' }}>${parseFloat(o.monthly_total || 0).toLocaleString()}/mo</div>
                   </div>
@@ -251,6 +379,7 @@ export default function InvoiceForm() {
           </div>
         )}
 
+        {/* Invoice Details */}
         <div style={styles.card}>
           <h3 style={styles.sectionTitle}><Calendar size={20} /> Invoice Details</h3>
           <div style={styles.grid}>
@@ -261,6 +390,7 @@ export default function InvoiceForm() {
           </div>
         </div>
 
+        {/* Line Items */}
         <div style={styles.card}>
           <h3 style={styles.sectionTitle}><DollarSign size={20} /> Line Items</h3>
           {items.map((item, i) => (
@@ -279,11 +409,13 @@ export default function InvoiceForm() {
           </div>
         </div>
 
+        {/* Notes */}
         <div style={styles.card}>
           <label style={styles.label}>Notes</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ ...styles.input, minHeight: '80px' }} placeholder="Notes..." />
         </div>
 
+        {/* Actions */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button type="button" onClick={() => navigate('/billing')} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           {mode === 'from-order' ? (
@@ -293,6 +425,69 @@ export default function InvoiceForm() {
           )}
         </div>
       </form>
+
+      {/* New Client Modal */}
+      {showNewClientModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowNewClientModal(false)}>
+          <div style={styles.modal} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>Add New Client</h3>
+              <button onClick={() => setShowNewClientModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}><X size={20} /></button>
+            </div>
+            <div style={styles.modalBody}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={styles.label}>Business Name *</label>
+                <input 
+                  type="text" 
+                  value={newClientData.business_name} 
+                  onChange={(e) => setNewClientData({ ...newClientData, business_name: e.target.value })} 
+                  style={styles.input} 
+                  placeholder="Company Name"
+                />
+              </div>
+              
+              <div style={{ ...styles.grid, marginBottom: '16px' }}>
+                <div>
+                  <label style={styles.label}>Contact First Name</label>
+                  <input type="text" value={newClientData.contact_first_name} onChange={(e) => setNewClientData({ ...newClientData, contact_first_name: e.target.value })} style={styles.input} />
+                </div>
+                <div>
+                  <label style={styles.label}>Contact Last Name</label>
+                  <input type="text" value={newClientData.contact_last_name} onChange={(e) => setNewClientData({ ...newClientData, contact_last_name: e.target.value })} style={styles.input} />
+                </div>
+              </div>
+              
+              <div style={{ ...styles.grid, marginBottom: '16px' }}>
+                <div>
+                  <label style={styles.label}>Email</label>
+                  <input type="email" value={newClientData.contact_email} onChange={(e) => setNewClientData({ ...newClientData, contact_email: e.target.value })} style={styles.input} />
+                </div>
+                <div>
+                  <label style={styles.label}>Phone</label>
+                  <input type="tel" value={newClientData.contact_phone} onChange={(e) => setNewClientData({ ...newClientData, contact_phone: e.target.value })} style={styles.input} />
+                </div>
+              </div>
+              
+              <div style={{ marginBottom: '16px' }}>
+                <label style={styles.label}>Address</label>
+                <input type="text" value={newClientData.address_street} onChange={(e) => setNewClientData({ ...newClientData, address_street: e.target.value })} style={{ ...styles.input, marginBottom: '8px' }} placeholder="Street Address" />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px', gap: '8px' }}>
+                  <input type="text" value={newClientData.address_city} onChange={(e) => setNewClientData({ ...newClientData, address_city: e.target.value })} style={styles.input} placeholder="City" />
+                  <input type="text" value={newClientData.address_state} onChange={(e) => setNewClientData({ ...newClientData, address_state: e.target.value })} style={styles.input} placeholder="State" maxLength={2} />
+                  <input type="text" value={newClientData.address_zip} onChange={(e) => setNewClientData({ ...newClientData, address_zip: e.target.value })} style={styles.input} placeholder="ZIP" />
+                </div>
+              </div>
+            </div>
+            <div style={styles.modalFooter}>
+              <button type="button" onClick={() => setShowNewClientModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+              <button type="button" onClick={handleCreateClient} style={{ ...styles.button, ...styles.buttonSuccess }} disabled={creatingClient || !newClientData.business_name.trim()}>
+                {creatingClient ? <Loader2 size={16} /> : <CheckCircle size={16} />} Create Client
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
