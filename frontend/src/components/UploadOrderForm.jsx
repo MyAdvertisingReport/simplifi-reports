@@ -762,32 +762,198 @@ export default function UploadOrderForm() {
             {/* Payment Information from Signed Contract */}
             <div style={styles.paymentSection}>
               <h3 style={styles.paymentTitle}>Payment Information (from signed contract)</h3>
-              <div style={styles.formRow}>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Payment Method</label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    style={styles.select}
-                  >
-                    <option value="">Select payment method...</option>
-                    <option value="credit_card">Credit Card</option>
-                    <option value="ach">ACH / Bank Transfer</option>
-                    <option value="check">Check</option>
-                    <option value="invoice">Invoice / Net 30</option>
-                    <option value="as_specified">As Specified on Contract</option>
-                  </select>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Payment Method *</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  style={styles.select}
+                >
+                  <option value="">Select payment method...</option>
+                  <option value="credit_card">Credit Card</option>
+                  <option value="ach">ACH / Bank Transfer</option>
+                  <option value="check">Check</option>
+                  <option value="invoice">Invoice / Net 30</option>
+                </select>
+              </div>
+
+              {/* Credit Card Entry */}
+              {paymentMethod === 'credit_card' && (
+                <div style={styles.cardEntrySection}>
+                  <div style={styles.cardEntryHeader}>
+                    <span style={styles.lockIcon}>🔒</span>
+                    <span>Enter card details securely</span>
+                  </div>
+                  <p style={styles.cardEntryNote}>
+                    Card information is sent directly to Stripe and never touches our servers.
+                  </p>
+                  {/* This div will be replaced by Stripe Elements */}
+                  <div id="card-element" style={styles.stripeCardElement}>
+                    <div style={styles.cardInputsGrid}>
+                      <div style={styles.formGroup}>
+                        <label style={styles.label}>Card Number</label>
+                        <input
+                          type="text"
+                          placeholder="4242 4242 4242 4242"
+                          style={styles.input}
+                          maxLength="19"
+                          id="card-number"
+                        />
+                      </div>
+                      <div style={styles.formRow}>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Expiration</label>
+                          <input
+                            type="text"
+                            placeholder="MM / YY"
+                            style={styles.input}
+                            maxLength="7"
+                            id="card-expiry"
+                          />
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>CVC</label>
+                          <input
+                            type="text"
+                            placeholder="123"
+                            style={styles.input}
+                            maxLength="4"
+                            id="card-cvc"
+                          />
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>ZIP</label>
+                          <input
+                            type="text"
+                            placeholder="28036"
+                            style={styles.input}
+                            maxLength="10"
+                            id="card-zip"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p style={styles.stripeNotice}>
+                    <strong>Note:</strong> For full PCI compliance, integrate Stripe Elements. 
+                    Contact your developer to set up the Stripe integration.
+                  </p>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Billing Notes</label>
-                  <input
-                    type="text"
-                    value={billingNotes}
-                    onChange={(e) => setBillingNotes(e.target.value)}
-                    placeholder="e.g., CC ending 4242, Invoice to AP dept..."
-                    style={styles.input}
-                  />
+              )}
+
+              {/* ACH / Bank Transfer Entry */}
+              {paymentMethod === 'ach' && (
+                <div style={styles.cardEntrySection}>
+                  <div style={styles.cardEntryHeader}>
+                    <span style={styles.lockIcon}>🏦</span>
+                    <span>Enter bank account details</span>
+                  </div>
+                  <p style={styles.cardEntryNote}>
+                    Bank information is sent directly to Stripe for secure ACH processing.
+                  </p>
+                  <div style={styles.cardInputsGrid}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Account Holder Name</label>
+                      <input
+                        type="text"
+                        placeholder="Business Name or Individual Name"
+                        style={styles.input}
+                        id="ach-name"
+                      />
+                    </div>
+                    <div style={styles.formRow}>
+                      <div style={{ ...styles.formGroup, flex: 2 }}>
+                        <label style={styles.label}>Routing Number</label>
+                        <input
+                          type="text"
+                          placeholder="110000000"
+                          style={styles.input}
+                          maxLength="9"
+                          id="ach-routing"
+                        />
+                      </div>
+                      <div style={{ ...styles.formGroup, flex: 2 }}>
+                        <label style={styles.label}>Account Number</label>
+                        <input
+                          type="text"
+                          placeholder="000123456789"
+                          style={styles.input}
+                          id="ach-account"
+                        />
+                      </div>
+                    </div>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Account Type</label>
+                      <select style={styles.select} id="ach-type">
+                        <option value="checking">Checking</option>
+                        <option value="savings">Savings</option>
+                      </select>
+                    </div>
+                  </div>
+                  <p style={styles.stripeNotice}>
+                    <strong>Note:</strong> For full compliance, integrate Stripe ACH. 
+                    Contact your developer to set up bank account verification.
+                  </p>
                 </div>
+              )}
+
+              {/* Check Payment */}
+              {paymentMethod === 'check' && (
+                <div style={styles.checkSection}>
+                  <p style={styles.checkNote}>
+                    Client will pay by check. Invoices will be generated and mailed.
+                  </p>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Billing Address (for invoices)</label>
+                    <textarea
+                      placeholder="Enter billing address for check payments..."
+                      style={styles.textarea}
+                      rows={3}
+                      id="check-address"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Invoice / Net 30 */}
+              {paymentMethod === 'invoice' && (
+                <div style={styles.checkSection}>
+                  <p style={styles.checkNote}>
+                    Client will be invoiced with Net 30 payment terms.
+                  </p>
+                  <div style={styles.formRow}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Billing Contact Email</label>
+                      <input
+                        type="email"
+                        placeholder="ap@company.com"
+                        style={styles.input}
+                        id="invoice-email"
+                      />
+                    </div>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>PO Number (if required)</label>
+                      <input
+                        type="text"
+                        placeholder="PO-12345"
+                        style={styles.input}
+                        id="invoice-po"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Additional Billing Notes */}
+              <div style={{ ...styles.formGroup, marginTop: '16px' }}>
+                <label style={styles.label}>Additional Billing Notes</label>
+                <input
+                  type="text"
+                  value={billingNotes}
+                  onChange={(e) => setBillingNotes(e.target.value)}
+                  placeholder="Any special billing instructions..."
+                  style={styles.input}
+                />
               </div>
             </div>
           </div>
@@ -1748,6 +1914,62 @@ const styles = {
   paymentTitle: {
     fontSize: '15px',
     fontWeight: '600',
+    color: '#374151',
+    margin: '0 0 16px 0',
+  },
+  cardEntrySection: {
+    marginTop: '16px',
+    padding: '20px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '12px',
+    border: '1px solid #e2e8f0',
+  },
+  cardEntryHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: '8px',
+  },
+  lockIcon: {
+    fontSize: '16px',
+  },
+  cardEntryNote: {
+    fontSize: '13px',
+    color: '#64748b',
+    margin: '0 0 16px 0',
+  },
+  stripeCardElement: {
+    backgroundColor: 'white',
+    borderRadius: '8px',
+    padding: '16px',
+    border: '1px solid #d1d5db',
+  },
+  cardInputsGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  stripeNotice: {
+    fontSize: '12px',
+    color: '#6b7280',
+    marginTop: '12px',
+    padding: '12px',
+    backgroundColor: '#fffbeb',
+    borderRadius: '6px',
+    border: '1px solid #fcd34d',
+  },
+  checkSection: {
+    marginTop: '16px',
+    padding: '20px',
+    backgroundColor: '#f8fafc',
+    borderRadius: '12px',
+    border: '1px solid #e2e8f0',
+  },
+  checkNote: {
+    fontSize: '14px',
     color: '#374151',
     margin: '0 0 16px 0',
   },
