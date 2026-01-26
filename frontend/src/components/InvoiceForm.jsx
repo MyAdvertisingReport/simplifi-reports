@@ -115,6 +115,39 @@ export default function InvoiceForm() {
     } catch (err) { console.error(err); }
   };
 
+  // Handle order selection - fetch full order details
+  const handleSelectOrder = async (order) => {
+    try {
+      // Fetch full order details including items
+      const res = await fetch(`${API_BASE}/api/orders/${order.id}`, { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error('Failed to load order details');
+      const fullOrder = await res.json();
+      
+      setSelectedOrder(fullOrder);
+      setBillingPreference(fullOrder.billing_preference || 'invoice');
+      
+      // Populate line items from order
+      if (fullOrder.items?.length) {
+        setItems(fullOrder.items.map(item => ({
+          description: item.product_name || 'Advertising Service',
+          quantity: item.quantity || 1,
+          unit_price: parseFloat(item.adjusted_price || item.unit_price || 0),
+          order_item_id: item.id,
+          product_id: item.product_id
+        })));
+      }
+      
+      // Set billing period to current month by default
+      const now = new Date();
+      setBillingPeriodStart(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0]);
+      setBillingPeriodEnd(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]);
+      
+    } catch (err) { 
+      console.error('Error loading order details:', err);
+      setError(err.message); 
+    }
+  };
+
   const loadOrderDetails = async (orderId) => {
     try {
       setLoading(true);
@@ -359,7 +392,7 @@ export default function InvoiceForm() {
         </div>
 
         {/* Order Selection for from-order mode */}
-        {mode === 'from-order' && selectedClient && !orderIdParam && (
+        {mode === 'from-order' && selectedClient && !orderIdParam && !selectedOrder && (
           <div style={styles.card}>
             <h3 style={styles.sectionTitle}><FileText size={20} /> Select Order</h3>
             {orders.length === 0 ? (
@@ -370,11 +403,7 @@ export default function InvoiceForm() {
                   <div 
                     key={o.id} 
                     style={{ ...styles.clientCard, ...(selectedOrder?.id === o.id ? styles.clientCardSelected : {}) }} 
-                    onClick={() => { 
-                      setSelectedOrder(o); 
-                      setBillingPreference(o.billing_preference || 'invoice'); 
-                      if (o.items) setItems(o.items.map(i => ({ description: i.product_name || 'Service', quantity: i.quantity || 1, unit_price: i.adjusted_price || i.unit_price || 0 }))); 
-                    }}
+                    onClick={() => handleSelectOrder(o)}
                   >
                     <div style={{ fontWeight: '600' }}>{o.order_number}</div>
                     <div style={{ fontSize: '13px', color: '#64748b' }}>${parseFloat(o.monthly_total || 0).toLocaleString()}/mo</div>
@@ -382,6 +411,88 @@ export default function InvoiceForm() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Order Summary - Show selected order details */}
+        {mode === 'from-order' && selectedOrder && (
+          <div style={{ ...styles.card, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+              <div>
+                <h3 style={{ ...styles.sectionTitle, marginBottom: '4px' }}>📋 Order Summary</h3>
+                <div style={{ fontSize: '13px', color: '#64748b' }}>Review order details before generating invoice</div>
+              </div>
+              <span style={{ 
+                padding: '4px 10px', 
+                borderRadius: '12px', 
+                fontSize: '12px', 
+                fontWeight: '600',
+                background: selectedOrder.status === 'signed' ? '#dcfce7' : '#dbeafe',
+                color: selectedOrder.status === 'signed' ? '#166534' : '#1e40af'
+              }}>
+                {selectedOrder.status?.toUpperCase()}
+              </span>
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>Order Number</div>
+                <div style={{ fontWeight: '600', color: '#1e293b' }}>{selectedOrder.order_number}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>Contract Period</div>
+                <div style={{ fontWeight: '500', color: '#1e293b' }}>
+                  {selectedOrder.contract_start_date ? new Date(selectedOrder.contract_start_date).toLocaleDateString() : 'N/A'} - {selectedOrder.contract_end_date ? new Date(selectedOrder.contract_end_date).toLocaleDateString() : 'N/A'}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>Term</div>
+                <div style={{ fontWeight: '500', color: '#1e293b' }}>{selectedOrder.term_months} month{selectedOrder.term_months !== 1 ? 's' : ''}</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '16px' }}>
+              <div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>Monthly Total</div>
+                <div style={{ fontWeight: '700', color: '#1e3a8a', fontSize: '18px' }}>${parseFloat(selectedOrder.monthly_total || 0).toLocaleString()}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>Setup Fees</div>
+                <div style={{ fontWeight: '500', color: '#1e293b' }}>${parseFloat(selectedOrder.setup_fees || 0).toLocaleString()}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '2px' }}>Contract Total</div>
+                <div style={{ fontWeight: '500', color: '#1e293b' }}>${parseFloat(selectedOrder.contract_total || 0).toLocaleString()}</div>
+              </div>
+            </div>
+
+            {selectedOrder.items?.length > 0 && (
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>Products ({selectedOrder.items.length})</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {selectedOrder.items.map((item, idx) => (
+                    <span key={idx} style={{ 
+                      padding: '4px 10px', 
+                      background: '#e0e7ff', 
+                      color: '#3730a3', 
+                      borderRadius: '6px', 
+                      fontSize: '12px',
+                      fontWeight: '500'
+                    }}>
+                      {item.product_name} - ${parseFloat(item.adjusted_price || item.unit_price || 0).toLocaleString()}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <button 
+              type="button" 
+              onClick={() => { setSelectedOrder(null); setItems([{ description: '', quantity: 1, unit_price: '' }]); }}
+              style={{ marginTop: '12px', fontSize: '13px', color: '#1e3a8a', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Change Order
+            </button>
           </div>
         )}
 
