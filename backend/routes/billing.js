@@ -135,7 +135,7 @@ router.get('/invoices', async (req, res) => {
         c.business_name as client_name,
         c.slug as client_slug,
         o.order_number,
-        o.sales_rep as sales_rep_name,
+        u_sales.name as sales_rep_name,
         CASE 
           WHEN i.status = 'sent' AND i.due_date::date < CURRENT_DATE 
           THEN (CURRENT_DATE - i.due_date::date)
@@ -144,6 +144,7 @@ router.get('/invoices', async (req, res) => {
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       LEFT JOIN orders o ON i.order_id = o.id
+      LEFT JOIN users u_sales ON o.sales_associate_id = u_sales.id
       ${whereClause}
       ORDER BY i.${sortColumn} ${sortDirection}
       LIMIT $${limitParam} OFFSET $${offsetParam}
