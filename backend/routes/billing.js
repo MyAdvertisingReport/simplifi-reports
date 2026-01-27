@@ -1158,8 +1158,8 @@ router.get('/billable-orders', async (req, res) => {
     if (orderIds.length > 0) {
       const itemsQuery = `
         SELECT 
-          oi.order_id, oi.id as item_id, oi.quantity, oi.unit_price, oi.adjusted_price,
-          p.id as product_id, p.name as product_name,
+          oi.order_id, oi.id as item_id, oi.quantity, oi.unit_price, oi.line_total,
+          oi.product_id, oi.product_name,
           pc.code as category_code, pc.name as category_name
         FROM order_items oi
         LEFT JOIN products p ON oi.product_id = p.id
@@ -1232,7 +1232,7 @@ router.get('/billable-orders', async (req, res) => {
 
       // Calculate totals
       const subtotal = items.reduce((sum, item) => {
-        const price = parseFloat(item.adjusted_price || item.unit_price) || 0;
+        const price = parseFloat(item.unit_price) || 0;
         return sum + (price * (item.quantity || 1));
       }, 0);
 
@@ -1326,8 +1326,8 @@ router.post('/generate-monthly', async (req, res) => {
     if (orderIds.length > 0) {
       const itemsQuery = `
         SELECT 
-          oi.order_id, oi.id as item_id, oi.quantity, oi.unit_price, oi.adjusted_price,
-          p.id as product_id, p.name as product_name,
+          oi.order_id, oi.id as item_id, oi.quantity, oi.unit_price, oi.line_total,
+          oi.product_id, oi.product_name,
           pc.code as category_code
         FROM order_items oi
         LEFT JOIN products p ON oi.product_id = p.id
@@ -1395,7 +1395,7 @@ router.post('/generate-monthly', async (req, res) => {
 
         // Calculate totals
         const subtotal = items.reduce((sum, item) => {
-          const price = parseFloat(item.adjusted_price || item.unit_price) || 0;
+          const price = parseFloat(item.unit_price) || 0;
           return sum + (price * (item.quantity || 1));
         }, 0);
 
@@ -1441,7 +1441,7 @@ router.post('/generate-monthly', async (req, res) => {
         // Add line items
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
-          const price = parseFloat(item.adjusted_price || item.unit_price) || 0;
+          const price = parseFloat(item.unit_price) || 0;
           await client.query(`
             INSERT INTO invoice_items (
               invoice_id, description, quantity, unit_price, amount,
@@ -1586,8 +1586,8 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
         invoice.id,
         item.product_name || item.description || 'Advertising Service',
         item.quantity || 1,
-        item.adjusted_price || item.unit_price,
-        parseFloat(item.adjusted_price || item.unit_price) * (item.quantity || 1),
+        item.unit_price,
+        parseFloat(item.unit_price) * (item.quantity || 1),
         item.id,
         item.product_id,
         i
