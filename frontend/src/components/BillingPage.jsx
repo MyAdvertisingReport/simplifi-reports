@@ -1059,29 +1059,128 @@ export default function BillingPage() {
                 <div style={{ 
                   background: '#dcfce7', 
                   border: '1px solid #86efac', 
-                  borderRadius: '8px', 
-                  padding: '16px', 
+                  borderRadius: '12px', 
+                  padding: '20px', 
                   marginBottom: '20px' 
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                    <CheckCircle size={20} color="#166534" />
-                    <span style={{ fontWeight: '600', color: '#166534' }}>
-                      {generateResult.summary.created_count} invoice{generateResult.summary.created_count !== 1 ? 's' : ''} created!
-                    </span>
+                  {/* Success Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                    <div style={{ 
+                      width: '48px', height: '48px', borderRadius: '50%', 
+                      background: '#166534', display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                    }}>
+                      <CheckCircle size={28} color="white" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '20px', fontWeight: '700', color: '#166534' }}>
+                        {generateResult.summary.created_count} Invoice{generateResult.summary.created_count !== 1 ? 's' : ''} Created Successfully
+                      </div>
+                      <div style={{ color: '#15803d', fontSize: '15px' }}>
+                        Total billing amount: {formatCurrency(generateResult.summary.total_amount)}
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ color: '#166534', fontSize: '14px' }}>
-                    Total: {formatCurrency(generateResult.summary.total_amount)}
-                  </div>
-                  {generateResult.errors?.length > 0 && (
-                    <div style={{ marginTop: '12px', color: '#92400e', fontSize: '13px' }}>
-                      {generateResult.errors.length} order(s) skipped due to errors
+
+                  {/* Created Invoices Detail */}
+                  {generateResult.created?.length > 0 && (
+                    <div style={{ 
+                      background: 'white', 
+                      borderRadius: '8px', 
+                      border: '1px solid #86efac',
+                      overflow: 'hidden',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{ 
+                        padding: '12px 16px', 
+                        background: '#f0fdf4', 
+                        fontWeight: '600', 
+                        fontSize: '13px',
+                        color: '#166534',
+                        borderBottom: '1px solid #86efac'
+                      }}>
+                        Invoice Details
+                      </div>
+                      {generateResult.created.map((inv, idx) => (
+                        <div 
+                          key={inv.id} 
+                          style={{ 
+                            padding: '14px 16px', 
+                            borderBottom: idx < generateResult.created.length - 1 ? '1px solid #e5e7eb' : 'none',
+                            display: 'grid',
+                            gridTemplateColumns: '1fr auto',
+                            gap: '16px',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '4px' }}>
+                              {inv.client_name}
+                            </div>
+                            <div style={{ fontSize: '13px', color: '#64748b' }}>
+                              {inv.invoice_number} • Order {inv.order_number}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: '700', fontSize: '16px', color: '#166534' }}>
+                              {formatCurrency(inv.total)}
+                            </div>
+                            <div style={{ 
+                              fontSize: '11px', 
+                              color: '#64748b',
+                              background: '#f1f5f9',
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              display: 'inline-block',
+                              marginTop: '4px'
+                            }}>
+                              Draft
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
+
+                  {/* Errors if any */}
+                  {generateResult.errors?.length > 0 && (
+                    <div style={{ 
+                      background: '#fef3c7', 
+                      border: '1px solid #fcd34d',
+                      borderRadius: '8px', 
+                      padding: '12px 16px',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <AlertCircle size={16} />
+                        {generateResult.errors.length} Order{generateResult.errors.length !== 1 ? 's' : ''} Skipped
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#92400e' }}>
+                        {generateResult.errors.map((err, idx) => (
+                          <div key={idx} style={{ marginBottom: '4px' }}>
+                            • {err.order_number}: {err.error}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Next Steps */}
+                  <div style={{ 
+                    background: '#f0fdf4', 
+                    borderRadius: '8px', 
+                    padding: '12px 16px',
+                    marginBottom: '16px',
+                    fontSize: '14px',
+                    color: '#166534'
+                  }}>
+                    <strong>Next Steps:</strong> Review the draft invoices below, then click "Approve & Send" to email them to clients.
+                  </div>
+
                   <button
                     onClick={() => setShowGenerateModal(false)}
-                    style={{ ...styles.button, ...styles.buttonPrimary, marginTop: '12px' }}
+                    style={{ ...styles.button, ...styles.buttonPrimary }}
                   >
-                    Done
+                    View Invoices
                   </button>
                 </div>
               )}

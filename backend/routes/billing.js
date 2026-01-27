@@ -332,8 +332,9 @@ router.get('/invoices/:id', async (req, res) => {
       try {
         // Get last 4 digits from Stripe if we have a payment method
         const pmId = invoice.order_payment_method_id || invoice.payment_method_id;
+        const entityCode = invoice.stripe_entity_code || 'wsic';
         if (pmId && stripeService) {
-          const pm = await stripeService.retrievePaymentMethod(pmId);
+          const pm = await stripeService.getPaymentMethod(entityCode, pmId);
           if (pm) {
             if (pm.type === 'card' && pm.card) {
               paymentDetails.card_last4 = pm.card.last4;
