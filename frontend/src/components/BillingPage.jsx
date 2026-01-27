@@ -226,7 +226,17 @@ export default function BillingPage() {
 
   // Charge card on file
   const handleChargeCard = async (invoice) => {
-    if (!confirm(`Charge ${formatCurrency(invoice.balance_due)} to the card on file for ${invoice.client_name}?`)) {
+    const confirmMessage = `💳 Process Payment
+
+Client: ${invoice.client_name}
+Invoice: ${invoice.invoice_number || 'Pending'}
+Amount: ${formatCurrency(invoice.balance_due)}
+
+This will immediately charge the payment method on file.
+
+Click OK to process payment.`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
     
@@ -242,10 +252,10 @@ export default function BillingPage() {
         throw new Error(err.error || 'Failed to charge card');
       }
       
-      alert('Payment processed successfully!');
+      alert(`✅ Payment Successful!\n\n${formatCurrency(invoice.balance_due)} has been charged to ${invoice.client_name}'s payment method.\n\nThe invoice will be marked as PAID.`);
       loadData();
     } catch (err) {
-      alert(err.message);
+      alert(`❌ Payment Failed\n\n${err.message}`);
     } finally {
       setProcessing(null);
     }
@@ -253,7 +263,19 @@ export default function BillingPage() {
 
   // Void invoice
   const handleVoid = async (invoice) => {
-    if (!confirm(`Void invoice ${invoice.invoice_number}? This cannot be undone.`)) return;
+    const confirmMessage = `⚠️ Void Invoice
+
+Client: ${invoice.client_name}
+Invoice: ${invoice.invoice_number}
+Amount: ${formatCurrency(invoice.total)}
+
+This will permanently void the invoice. The client will NOT be notified.
+
+This action cannot be undone.
+
+Click OK to void this invoice.`;
+
+    if (!confirm(confirmMessage)) return;
     
     setProcessing(invoice.id);
     try {
@@ -263,9 +285,10 @@ export default function BillingPage() {
       });
       
       if (!res.ok) throw new Error('Failed to void');
+      alert(`Invoice ${invoice.invoice_number} has been voided.`);
       loadData();
     } catch (err) {
-      alert(err.message);
+      alert(`❌ Error: ${err.message}`);
     } finally {
       setProcessing(null);
     }
@@ -273,6 +296,20 @@ export default function BillingPage() {
 
   // Send reminder
   const handleSendReminder = async (invoice) => {
+    const daysOverdue = invoice.days_overdue || 0;
+    const confirmMessage = `📧 Send Payment Reminder
+
+Client: ${invoice.client_name}
+Invoice: ${invoice.invoice_number}
+Amount Due: ${formatCurrency(invoice.balance_due)}
+Days Overdue: ${daysOverdue}
+
+This will send a friendly payment reminder email to the client's primary contact.
+
+Click OK to send reminder.`;
+
+    if (!confirm(confirmMessage)) return;
+
     setProcessing(invoice.id);
     try {
       const res = await fetch(`${API_BASE}/api/billing/invoices/${invoice.id}/send-reminder`, {
@@ -281,10 +318,10 @@ export default function BillingPage() {
       });
       
       if (!res.ok) throw new Error('Failed to send reminder');
-      alert('Reminder sent!');
+      alert(`✅ Reminder Sent!\n\nPayment reminder email has been sent to ${invoice.client_name}.`);
       loadData();
     } catch (err) {
-      alert(err.message);
+      alert(`❌ Error: ${err.message}`);
     } finally {
       setProcessing(null);
     }
@@ -355,11 +392,26 @@ export default function BillingPage() {
     }
 
     const selectedCount = selectedOrders.size;
-    const selectedTotal = billableOrders
-      .filter(o => selectedOrders.has(o.id))
-      .reduce((sum, o) => sum + o.total, 0);
+    const selectedList = billableOrders.filter(o => selectedOrders.has(o.id));
+    const selectedTotal = selectedList.reduce((sum, o) => sum + o.total, 0);
+    
+    // Build informative confirmation message
+    const monthName = new Date(generateYear, generateMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const clientNames = selectedList.map(o => o.client_name).join('\n• ');
+    
+    const confirmMessage = `📋 Ready to Generate ${selectedCount} Invoice${selectedCount !== 1 ? 's' : ''}
 
-    if (!confirm(`Generate ${selectedCount} invoice${selectedCount > 1 ? 's' : ''} totaling ${formatCurrency(selectedTotal)}?`)) {
+Billing Period: ${monthName}
+Total Amount: ${formatCurrency(selectedTotal)}
+
+Clients:
+• ${clientNames}
+
+This will create DRAFT invoices that you can review before sending to clients.
+
+Click OK to proceed.`;
+
+    if (!confirm(confirmMessage)) {
       return;
     }
 
