@@ -1,186 +1,234 @@
-# Session Summary - January 26, 2026
+# Session Summary - January 27, 2026
 
 ## 🎯 Session Goal
-UI/UX improvements for order forms, add new products, fix client signing payment flow authentication issues.
+Build comprehensive Billing/Invoice Management System with invoice creation, workflow, email delivery, and financial dashboard.
 
 ## ✅ What We Accomplished
 
-### 1. Product Selector Improvements (New Order & Change Order)
+### 1. Complete Invoice Management System
 
-**Added Broadcast Subcategories:**
-- Brand → Category → **Subcategory** → Product flow
-- WSIC Radio → Broadcast now shows:
-  - 🎵 **Commercials** - Radio spot packages (includes Bible Minute)
-  - 🌟 **Show Sponsor** - Title & supporting sponsorships
-  - 🎤 **Host Your Own Show** - Radio show hosting packages (NEW)
-  - 📅 **Community Calendar** - Event announcements
+**Database Schema:**
+- `invoices` table with full lifecycle tracking
+- `invoice_items` table for line items
+- `invoice_payments` table for payment history
+- Foreign keys to clients, orders, users
 
-**Files Updated:**
-- `OrderForm.jsx` - Added subcategory step to ProductSelectorModal
-- `ChangeOrderForm.jsx` - Added same subcategory flow
+**Backend API (13 endpoints):**
+- `GET /api/billing/invoices` - List with filters, pagination, sorting
+- `GET /api/billing/invoices/:id` - Full details with items, contact info, payment method last 4
+- `POST /api/billing/invoices` - Create invoice (manual or from order)
+- `PUT /api/billing/invoices/:id` - Update draft invoice
+- `PUT /api/billing/invoices/:id/approve` - Approve invoice
+- `POST /api/billing/invoices/:id/send` - Send to client via email
+- `POST /api/billing/invoices/:id/record-payment` - Record manual payment
+- `POST /api/billing/invoices/:id/charge` - Charge payment method on file
+- `PUT /api/billing/invoices/:id/void` - Void invoice
+- `POST /api/billing/invoices/:id/send-reminder` - Send overdue reminder
+- `GET /api/billing/stats` - Dashboard statistics
+- `GET /api/billing/aging-report` - AR aging buckets
 
-### 2. New Products Added
+### 2. Invoice Email System
 
-**Broadcast → Commercials:**
-- **Bible Minute** - $1,000/month - 10x :60 second Bible Minute spots
+**Professional Email Template:**
+- Brand names displayed at top (WSIC • Lake Norman Woman • LiveWorkPlay)
+- "Your Invoice is Ready" header with month/year
+- Personalized greeting using contact first name
+- Service period, issue date, due date
+- Line items table with quantities and amounts
+- Green "Pay Invoice Now" button linking to Stripe
+- Auto-charge warning (30 days after due date)
+- Payment options: Online (Stripe) or Check
+- Check payable logic based on highest-priced item's brand
+- Footer: "Any questions? Please reach out directly to your Sales Associate"
 
-**Broadcast → Host Your Own Show (NEW subcategory):**
-- **Premium Radio Show Host** - $2,500/month - Premium time slot, 30x :15sec promos, weekly social clip
-- **Radio Show Host** - $2,000/month - Time slot, 30x :15sec promos, weekly social clip
-- **Sunday Morning Sermon** - $1,500/month - 30 min Sunday Morning slot, 30x :15sec promos
+**Conditional Messaging:**
+- Invoice clients: Link to pay online
+- Auto-bill clients: Will be charged automatically
 
-### 3. Client Search Simplification
+### 3. BillingPage UI Redesign
 
-**Change Order & Kill Order Forms:**
-- Removed order number from client search
-- Now searches by client name only
-- Cleaner dropdown display
-- Step 1 renamed to "Select Client"
+**Invoice List View:**
+- Columns: Client, Amount, Due Date, Sales Associate, Status, Actions
+- Removed invoice numbers from main display (relational approach)
+- Expandable rows showing full invoice details
+- Status badges with overdue detection
 
-### 4. Client Signing Payment Flow Fixes
+**Expanded Invoice Details:**
+- **Client Section:** Business name, contact name, email, phone
+- **Invoice Details:** Invoice #, issue date, due date, billing period
+- **Payment Section:** Method with last 4 digits, backup method, auto-charge info
+- **Line Items:** Full breakdown with subtotal, processing fee, total
 
-**Problem:** Payment collection was failing with 500 errors
+**Action Buttons by Status:**
+- Draft: Edit, Approve & Send
+- Approved: Send
+- Sent/Partial: Record Payment, Charge Card (if payment on file), Send Reminder
+- All non-paid: Void
 
-**Root Causes Fixed:**
-1. **Authentication required** - `/api/orders/payment-method/ach` was behind auth middleware
-2. **Non-existent column** - Query referenced `c.email` which doesn't exist in `advertising_clients`
-3. **Stale Stripe customer** - Customer ID in database didn't exist in Stripe (deleted or wrong account)
+**Confirmation Dialogs:**
+- Relational messaging (client name, amount, due date)
+- Different messages for invoice vs auto-bill clients
+- Clear explanation of what happens next
 
-**Solutions Implemented:**
-- Created new token-based payment endpoints (no auth required):
-  - `POST /api/orders/sign/:token/payment-method/ach`
-  - `POST /api/orders/sign/:token/payment-method/card`
-- Fixed SQL query to remove non-existent email column
-- Added Stripe customer validation - recreates customer if not found in Stripe
-- Added detailed `[SETUP-INTENT]` logging for debugging
+### 4. Financial Dashboard (Replaced Aging Report)
 
-**Files Updated:**
-- `server.js` - New payment endpoints, customer validation, logging
-- `ClientSigningPage.jsx` - Updated to use token-based endpoints
+**Key Metrics Row:**
+- This Month's Billing - Total invoiced this month
+- Total Collected - Sum of paid invoices
+- Collection Rate - % paid (color-coded: green >80%, yellow 60-80%, red <60%)
+- Avg Invoice Value - Average across all invoices
 
-### 5. Fillable PDF Templates Created
+**Accounts Receivable Aging:**
+- Current (not overdue)
+- 1-30 Days overdue
+- 31-60 Days overdue
+- 61-90 Days overdue
+- Over 90 Days overdue
+- Color-coded buckets from green to red
 
-Created three fillable PDF templates for offline client meetings:
+**Two-Column Analytics:**
+- Top Clients by Revenue (ranked list)
+- Invoice Status Breakdown (counts and totals by status)
 
-**contract_template_fillable.pdf** (3 pages)
-- Page 1: Advertiser info, contract details, payment method (CC/ACH fields)
-- Page 2: Products table (8 rows), totals, terms & conditions
-- Page 3: Signatures
+### 5. Edit Invoice Functionality
 
-**change_order_template_fillable.pdf** (1 page)
-- Original order reference, contract renewal section
-- Summary of changes table, reason for change, signatures
-
-**kill_order_template_fillable.pdf** (1 page)
-- Cancellation details, final settlement
-- Reason checkboxes, services being cancelled, signatures
+- Edit button for draft invoices
+- `/billing/edit/:id` route
+- InvoiceForm loads existing invoice data
+- Update API endpoint
+- Save Changes button
 
 ---
 
-## 📁 Files Modified/Created
-
-### Frontend
-| File | Changes |
-|------|---------|
-| `OrderForm.jsx` | Added Broadcast subcategories to ProductSelectorModal |
-| `ChangeOrderForm.jsx` | Added Broadcast subcategories, simplified client search |
-| `ChangeOrderUploadForm.jsx` | Simplified client search |
-| `ClientSigningPage.jsx` | Use token-based payment endpoints |
+## 📁 Files Created/Modified
 
 ### Backend
 | File | Changes |
 |------|---------|
-| `server.js` | Token-based ACH/card endpoints, customer validation, debug logging |
-| `migrations/add_broadcast_products.sql` | New products SQL |
-| `migrations/fix_premium_show_host_price.sql` | Price correction |
+| `routes/billing.js` | Complete billing API (13 endpoints) |
+| `services/email-service.js` | Invoice email templates (send, reminder) |
+| `migrations/add_invoices_table.sql` | Database schema |
 
-### PDF Templates (New)
-- `contract_template_fillable.pdf`
-- `change_order_template_fillable.pdf`
-- `kill_order_template_fillable.pdf`
+### Frontend
+| File | Changes |
+|------|---------|
+| `components/BillingPage.jsx` | Full redesign with dashboard |
+| `components/InvoiceForm.jsx` | Create/edit invoices with product selector |
+| `App.jsx` | Added billing routes, sidebar section |
 
 ---
 
 ## 🗄️ Database Changes
 
-**New Products Added:**
+**New Tables:**
 ```sql
--- Broadcast → Commercials
-Bible Minute - $1,000/month
+invoices (
+  id, invoice_number, client_id, order_id, status,
+  billing_period_start, billing_period_end,
+  issue_date, due_date, subtotal, processing_fee, total,
+  amount_paid, balance_due, billing_preference,
+  stripe_invoice_id, stripe_invoice_url, payment_method_id,
+  notes, created_by, approved_by, approved_at, sent_at,
+  paid_at, voided_at, created_at, updated_at
+)
 
--- Broadcast → Host Your Own Show (new subcategory)
-Premium Radio Show Host - $2,500/month
-Radio Show Host - $2,000/month
-Sunday Morning Sermon - $1,500/month
+invoice_items (
+  id, invoice_id, product_id, description,
+  quantity, unit_price, amount, sort_order
+)
+
+invoice_payments (
+  id, invoice_id, amount, payment_method,
+  stripe_payment_intent_id, reference, notes,
+  recorded_by, created_at
+)
 ```
 
 ---
 
 ## 🔑 Key Technical Decisions
 
-### 1. Token-Based Payment Endpoints
-**Decision:** Create separate `/api/orders/sign/:token/payment-method/*` endpoints
-**Reason:** Client signing page has no authentication - needs token-based authorization
+### 1. Invoice Numbers
+**Format:** `INV-YYYY-NNNNN` (e.g., INV-2026-01003)
+**Reason:** Clear year identification, sequential within year
 
-### 2. Stripe Customer Validation
-**Decision:** Verify customer exists in Stripe before using, recreate if missing
-**Reason:** Customer IDs in database may be stale (deleted, wrong Stripe account/mode)
+### 2. Payment Method Display
+**Decision:** Fetch last 4 digits from Stripe on invoice detail view
+**Reason:** Shows actual payment info without storing sensitive data
 
-### 3. Broadcast Subcategories
-**Decision:** Add subcategory step for Broadcast only
-**Reason:** Broadcast has distinct product types (spots vs sponsorships vs show hosting)
+### 3. Brand Detection for Check Payable
+**Decision:** Determine brand from highest-priced item in invoice
+**Reason:** Multi-brand invoices should default to primary revenue source
 
----
-
-## ⚠️ Known Issues Resolved
-
-| Issue | Solution |
-|-------|----------|
-| 401 on ACH endpoint | Created token-based endpoint without auth |
-| 500 "column c.email does not exist" | Removed non-existent column from query |
-| 500 "No such customer" | Added customer validation, recreate if missing |
-| Premium Radio Show Host $25,000 | Fixed to $2,500 |
+### 4. Financial Dashboard Calculations
+**Decision:** Calculate from invoice data client-side
+**Reason:** Real-time accuracy, no separate API call needed
 
 ---
 
-## 📋 Ready for Team Testing
+## 📋 Next Session Priorities
 
-Created comprehensive test checklist covering:
-- 11 New Order scenarios (different brands, products, payment methods)
-- 4 Change Order (Electronic) scenarios
-- 1 Change Order (Upload) scenario
-- 2 Kill Order (Electronic) scenarios
-- 1 Kill Order (Upload) scenario
-- 2 Upload Order scenarios
+### 1. Auto-Generate Invoices from Active Orders
+- Scheduled job to create monthly invoices
+- Pull line items from active orders
+- Handle different billing frequencies
+- Skip already-invoiced periods
+
+### 2. Stripe Webhooks for Payment Status
+- `invoice.paid` - Mark invoice as paid
+- `invoice.payment_failed` - Handle failures
+- `payment_intent.succeeded` - Update payment status
+
+### 3. Overdue Invoice Notifications
+- Automated emails at 7, 14, 21, 30 days
+- Different messaging at each stage
+- Auto-charge warning before Day 30
+
+### 4. CSV Export
+- Export invoice list to CSV
+- Export financial reports
+- Date range filtering
+
+### 5. Year-over-Year Dashboard
+- Compare to same month last year
+- YTD vs last year YTD
+- Growth percentages
 
 ---
 
-## 🎯 Next Session Priorities
+## 🧪 Testing Checklist
 
-### 1. Billing/Invoice Management System (Recommended Next)
-- Auto-generate invoices on billing cycle
-- Invoice approval queue for admin
-- Send invoices via email with Stripe payment link
-- Grace period tracking (30 days)
-- Auto-charge backup payment after grace period
-- Invoice statuses: draft → approved → sent → paid/overdue
+### Invoice Creation
+- [ ] Create invoice from scratch (select client, add products)
+- [ ] Create invoice linked to order
+- [ ] Edit draft invoice
+- [ ] Processing fee calculation (3.5% for card)
 
-### 2. ACH Bank Verification Flow
-- Build `/ach-setup/:token` page
-- Stripe Financial Connections integration
-- Handle verification webhooks
-- Update payment_status on completion
+### Invoice Workflow
+- [ ] Approve & Send (invoice client)
+- [ ] Approve & Send (auto-bill client)
+- [ ] Record manual payment
+- [ ] Charge card on file
+- [ ] Void invoice
+- [ ] Send reminder
 
-### 3. Contract PDF Generation
-- Auto-generate PDF contracts from signed orders
-- Include all order details, signatures, terms
-- Store in documents table
+### Email Delivery
+- [ ] Invoice email renders correctly
+- [ ] Brand detection for check payable
+- [ ] Auto-charge warning displays
+- [ ] Pay button links to Stripe
+
+### Financial Dashboard
+- [ ] Key metrics calculate correctly
+- [ ] Aging buckets populate
+- [ ] Top clients list
+- [ ] Status breakdown
 
 ---
 
 ## 🔧 Environment Notes
 
-- Railway deployment working correctly
-- Stripe integration functional for card payments
-- ACH flow sends setup email (verification page still TODO)
-- All three entities (WSIC, LKN, LWP) have Stripe accounts configured
+- Billing routes added to server.js
+- Email service has sendInvoiceToClient and sendInvoiceReminder functions
+- Stripe integration ready for webhooks
+- All three entities supported (WSIC, LKN, LWP)

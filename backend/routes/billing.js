@@ -190,14 +190,14 @@ router.get('/invoices/:id', async (req, res) => {
         o.billing_preference as order_billing_preference,
         o.payment_type,
         o.payment_method_id as order_payment_method_id,
-        -- Get primary contact info from client_contacts table
-        cc.first_name || ' ' || cc.last_name as contact_name,
-        cc.email as contact_email,
-        cc.phone as contact_phone
+        -- Get primary contact info from contacts table
+        ct.first_name || ' ' || ct.last_name as contact_name,
+        ct.email as contact_email,
+        ct.phone as contact_phone
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       LEFT JOIN orders o ON i.order_id = o.id
-      LEFT JOIN client_contacts cc ON c.id = cc.client_id AND cc.is_primary = true
+      LEFT JOIN contacts ct ON c.id = ct.client_id AND ct.is_primary = true
       WHERE i.id = $1
     `;
 

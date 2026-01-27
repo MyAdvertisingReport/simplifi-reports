@@ -15,17 +15,20 @@ simplifi-reports/              ← Git root (push from here)
 │   ├── routes/
 │   │   ├── order.js           ← Order API endpoints
 │   │   ├── order-variants.js  ← Upload/Change/Kill order endpoints
+│   │   ├── billing.js         ← Invoice management API ⭐ NEW
 │   │   ├── document.js        ← Document upload/download
 │   │   ├── admin.js
 │   │   └── email.js
 │   └── services/
-│       ├── email-service.js   ← Postmark integration
+│       ├── email-service.js   ← Postmark (includes invoice emails) ⭐
 │       └── stripe-service.js  ← Stripe payment processing
 │
 └── frontend/                  ← Vercel deployment
     └── src/
         ├── App.jsx            ← Main app (10k+ lines)
         └── components/
+            ├── BillingPage.jsx         ← Invoice list + Financial Dashboard ⭐ NEW
+            ├── InvoiceForm.jsx         ← Create/edit invoices ⭐ NEW
             ├── OrderForm.jsx           ← New order with product selector
             ├── OrderTypeSelector.jsx   ← 6 order type selection
             ├── UploadOrderForm.jsx     ← Upload pre-signed contracts
@@ -41,10 +44,10 @@ simplifi-reports/              ← Git root (push from here)
 ### 🚨 Git Commands MUST Use Full Paths:
 ```bash
 # ✅ CORRECT
-git add backend/server.js frontend/src/components/ClientSigningPage.jsx
+git add backend/routes/billing.js frontend/src/components/BillingPage.jsx
 
 # ❌ WRONG
-git add server.js ClientSigningPage.jsx
+git add billing.js BillingPage.jsx
 ```
 
 ---
@@ -63,7 +66,7 @@ git add server.js ClientSigningPage.jsx
 
 ---
 
-## 📊 Current State (January 26, 2026)
+## 📊 Current State (January 27, 2026)
 
 ### ✅ Working Features
 - User authentication (JWT)
@@ -77,43 +80,45 @@ git add server.js ClientSigningPage.jsx
 - **Client signing page - Single page 3-step flow**
 - **Payment collection via Stripe Elements (PCI compliant)**
 - **Three billing preferences: Card, ACH, Invoice**
-- **Editable contact info during signing**
-- **Conditional emails based on payment method**
 - Product selector with Broadcast subcategories
 - Document upload/download system
 - Simpli.fi campaign reporting
 - Public client report pages
 
-### Recent Completions (January 26, 2026)
-- ✅ Broadcast subcategories (Commercials, Show Sponsor, Host Your Own Show, Community Calendar)
-- ✅ New products: Bible Minute, Premium/Standard Radio Show Host, Sunday Morning Sermon
-- ✅ Fixed payment flow authentication issues
-- ✅ Token-based payment endpoints for client signing
-- ✅ Stripe customer validation (recreates if missing)
-- ✅ Fillable PDF templates for offline use
+### ✅ Billing System (NEW - January 27, 2026)
+- **Invoice Management:** Create, edit, approve, send, void
+- **Invoice Emails:** Professional template with brand logos, pay button
+- **BillingPage:** Expandable rows, client contact, payment method with last 4
+- **Financial Dashboard:** Key metrics, AR aging, top clients, status breakdown
+- **Payment Recording:** Manual payments, charge card on file
+- **Overdue Reminders:** Send reminder emails
 
 ---
 
-## 📋 Order Status Flow
+## 💰 Invoice Status Flow
 
 ```
-draft → pending_approval → approved → sent → signed → active
+draft → approved → sent → paid
               ↓
-         (rejected → draft)
+           (void)
 
-Auto-flow (no price adjustments):
-draft → approved → sent (automatic if contact exists)
+Auto-flow for auto-bill clients:
+approved → sent → (Stripe charges automatically) → paid
 ```
 
-### Order Types:
-| Type | Description | Flow |
-|------|-------------|------|
-| New Order (Electronic) | Standard e-signature | Full signing flow |
-| Upload Order | Pre-signed PDF | Skip to signed, collect payment |
-| Change Order (Electronic) | Modify existing | E-signature for changes |
-| Change Order (Upload) | Upload signed changes | Direct update |
-| Kill Order (Electronic) | Cancel with e-sign | Cancellation signature |
-| Kill Order (Upload) | Upload cancellation | Direct cancellation |
+### Invoice Features:
+| Feature | Status |
+|---------|--------|
+| Create from scratch | ✅ Working |
+| Create from order | ✅ Working |
+| Edit draft invoices | ✅ Working |
+| Approve & Send | ✅ Working |
+| Send invoice email | ✅ Working |
+| Record manual payment | ✅ Working |
+| Charge card on file | ✅ Working |
+| Send reminders | ✅ Working |
+| Auto-generate from orders | 📋 Next |
+| Stripe webhooks | 📋 Next |
 
 ---
 
@@ -136,8 +141,24 @@ POST /api/orders/sign/:token/complete          - Submit signature
 
 ## 🗄️ Key Database Tables
 
+### Billing Tables (NEW)
 ```sql
--- Orders (with payment fields)
+invoices (
+  id, invoice_number, client_id, order_id, status,
+  billing_period_start, billing_period_end,
+  issue_date, due_date, subtotal, processing_fee, total,
+  amount_paid, balance_due, billing_preference,
+  stripe_invoice_id, stripe_invoice_url, payment_method_id,
+  notes, created_by, approved_by, sent_at, paid_at, voided_at
+)
+
+invoice_items (id, invoice_id, product_id, description, quantity, unit_price, amount)
+
+invoice_payments (id, invoice_id, amount, payment_method, reference, recorded_by)
+```
+
+### Order Table (Key Fields)
+```sql
 orders (
   id, order_number, client_id, status, monthly_total, contract_total,
   order_type,                -- 'new', 'upload', 'change', 'kill', etc.
@@ -145,39 +166,44 @@ orders (
   billing_preference,        -- 'card', 'ach', 'invoice'
   stripe_customer_id,
   stripe_entity_code,        -- 'wsic', 'lkn', 'lwp'
-  stripe_payment_method_id,
+  payment_method_id,
+  payment_type,              -- 'card', 'ach', 'us_bank_account'
   payment_status,            -- 'authorized', 'ach_pending', 'invoice_pending'
-  ...
+  sales_associate_id         -- UUID → users table
 )
-
--- Documents
-documents (id, order_id, client_id, document_type, filename, file_path, ...)
-
--- Products (new additions)
-products: Bible Minute, Premium Radio Show Host, Radio Show Host, Sunday Morning Sermon
 ```
 
 ---
 
 ## 🎯 Next Up (Priority Order)
 
-### 1. 🔥 Billing/Invoice Management System (RECOMMENDED)
-- Auto-generate invoices on billing cycle
-- Invoice approval queue for admin review
-- Send invoices via email with Stripe payment link
-- Grace period tracking (30 days)
-- Auto-charge backup payment method after grace period
-- Invoice status: draft → approved → sent → paid/overdue
-- Billing dashboard with aging reports
+### 1. 🔥 Auto-Generate Invoices from Active Orders
+- Scheduled endpoint to create monthly invoices
+- Query active orders, create invoice with line items
+- Handle pro-rated first month
+- Skip already-invoiced periods
+- Admin UI to trigger/preview batch generation
 
-### 2. ACH Bank Verification
-- Build `/ach-setup/:token` page
-- Stripe Financial Connections integration
-- Handle verification webhooks
+### 2. Stripe Webhooks for Payment Status
+- `POST /api/webhooks/stripe` endpoint
+- Handle `invoice.paid`, `payment_intent.succeeded`
+- Auto-mark invoices as paid
+- Send payment confirmation email
 
-### 3. Contract PDF Generation
-- Auto-generate PDF from signed orders
-- Include signatures, terms, all details
+### 3. Overdue Invoice Notifications
+- Automated emails at 7, 14, 21, 28 days
+- Final notice at Day 28 with auto-charge warning
+- Day 30: Auto-charge backup payment method
+
+### 4. CSV Export
+- Export invoice list with filters
+- Revenue reports by date range
+- Aging report export
+
+### 5. Year-over-Year Dashboard
+- This month vs same month last year
+- YTD comparisons
+- Growth percentages with trend indicators
 
 ---
 
@@ -211,20 +237,35 @@ git add . && git commit -m "message" && git push origin main
 | What | Path |
 |------|------|
 | Main Server | `backend/server.js` |
+| Billing Routes | `backend/routes/billing.js` |
 | Email Service | `backend/services/email-service.js` |
+| BillingPage | `frontend/src/components/BillingPage.jsx` |
+| InvoiceForm | `frontend/src/components/InvoiceForm.jsx` |
 | Client Signing | `frontend/src/components/ClientSigningPage.jsx` |
 | Order Form | `frontend/src/components/OrderForm.jsx` |
-| Change Order | `frontend/src/components/ChangeOrderForm.jsx` |
-| Kill Order | `frontend/src/components/KillOrderForm.jsx` |
 | Main App | `frontend/src/App.jsx` |
 
-### Product Selector Subcategories (Broadcast):
-- 🎵 Commercials - Radio spot packages, Bible Minute
-- 🌟 Show Sponsor - Presenting, Supporting, Friend of Show
-- 🎤 Host Your Own Show - Premium/Standard Radio Show Host, Sunday Morning Sermon
-- 📅 Community Calendar - Event announcements
+### Invoice Number Format:
+- Pattern: `INV-YYYY-NNNNN`
+- Example: `INV-2026-01003`
+
+### Billing API Endpoints:
+```
+GET    /api/billing/invoices              - List with filters
+GET    /api/billing/invoices/:id          - Full details
+POST   /api/billing/invoices              - Create
+PUT    /api/billing/invoices/:id          - Update draft
+PUT    /api/billing/invoices/:id/approve  - Approve
+POST   /api/billing/invoices/:id/send     - Send email
+POST   /api/billing/invoices/:id/record-payment
+POST   /api/billing/invoices/:id/charge   - Charge on file
+PUT    /api/billing/invoices/:id/void
+POST   /api/billing/invoices/:id/send-reminder
+GET    /api/billing/stats
+```
 
 ### Stripe Notes:
 - Token-based endpoints for client signing (no auth)
 - Customer validation before use (recreates if missing)
 - Per-entity Stripe accounts (WSIC, LKN, LWP)
+- Payment method last 4 fetched from Stripe API on invoice detail

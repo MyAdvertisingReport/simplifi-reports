@@ -1,5 +1,5 @@
 # WSIC Advertising Platform - File Structure
-## Updated: January 26, 2026
+## Updated: January 27, 2026
 
 ---
 
@@ -20,18 +20,20 @@ simplifi-reports/                    ← Git root (all commands from here)
 │   │   ├── 📄 admin.js              # /api/admin/* - Products, packages
 │   │   ├── 📄 order.js              # /api/orders/* - Order CRUD & variants
 │   │   ├── 📄 order-variants.js     # Upload, Change, Kill order endpoints
+│   │   ├── 📄 billing.js            # /api/billing/* - Invoice management ⭐ NEW
 │   │   ├── 📄 document.js           # Document upload/download API
 │   │   └── 📄 email.js              # /api/email/* - Email endpoints
 │   │
 │   ├── 📁 services/
-│   │   ├── 📄 email-service.js      # Postmark integration ⭐
+│   │   ├── 📄 email-service.js      # Postmark integration (includes invoice emails) ⭐
 │   │   ├── 📄 stripe-service.js     # Stripe payments
 │   │   └── 📄 pdf-generator.py      # Python PDF generation
 │   │
 │   └── 📁 migrations/
+│       ├── 📄 add_invoices_table.sql        # Invoice tables ⭐ NEW
 │       ├── 📄 add-documents-and-order-types.sql
-│       ├── 📄 add_broadcast_products.sql      # New products
-│       └── 📄 fix_premium_show_host_price.sql # Price fix
+│       ├── 📄 add_broadcast_products.sql
+│       └── 📄 fix_premium_show_host_price.sql
 │
 └── 📁 frontend/                     ← Vercel deployment
     ├── 📄 vercel.json               # API proxy to Railway ⭐
@@ -45,16 +47,18 @@ simplifi-reports/                    ← Git root (all commands from here)
         ├── 📄 index.css
         │
         └── 📁 components/
-            ├── 📄 OrderForm.jsx              # New order form with product selector ⭐
+            ├── 📄 BillingPage.jsx            # Invoice list + Financial Dashboard ⭐ NEW
+            ├── 📄 InvoiceForm.jsx            # Create/edit invoices ⭐ NEW
+            ├── 📄 OrderForm.jsx              # New order form with product selector
             ├── 📄 OrderList.jsx              # Order listing with filters
             ├── 📄 OrderTypeSelector.jsx      # 6-type order selection
             ├── 📄 UploadOrderForm.jsx        # Upload pre-signed contracts
-            ├── 📄 ChangeOrderForm.jsx        # Electronic change orders ⭐
+            ├── 📄 ChangeOrderForm.jsx        # Electronic change orders
             ├── 📄 ChangeOrderUploadForm.jsx  # Upload signed change orders
             ├── 📄 KillOrderForm.jsx          # Electronic kill orders
             ├── 📄 KillOrderUploadForm.jsx    # Upload signed kill orders
             ├── 📄 ApprovalsPage.jsx          # Manager approval queue
-            ├── 📄 ClientSigningPage.jsx      # Public 3-step signing ⭐
+            ├── 📄 ClientSigningPage.jsx      # Public 3-step signing
             ├── 📄 AdminDocumentsPage.jsx     # View all documents
             ├── 📄 ProductManagement.jsx      # Admin product CRUD
             ├── 📄 UserManagement.jsx         # Admin user management
@@ -67,10 +71,11 @@ simplifi-reports/                    ← Git root (all commands from here)
 
 | Task | Files Needed |
 |------|--------------|
-| Client signing flow | `ClientSigningPage.jsx`, `server.js` (setup-intent, complete, payment-method endpoints) |
+| **Billing/Invoices** | `BillingPage.jsx`, `InvoiceForm.jsx`, `billing.js`, `email-service.js` |
+| Client signing flow | `ClientSigningPage.jsx`, `server.js` |
 | Email templates | `email-service.js` |
 | Payment processing | `server.js`, `stripe-service.js` |
-| New order creation | `OrderForm.jsx` (has ProductSelectorModal with subcategories) |
+| New order creation | `OrderForm.jsx` |
 | Change orders | `ChangeOrderForm.jsx`, `ChangeOrderUploadForm.jsx` |
 | Kill orders | `KillOrderForm.jsx`, `KillOrderUploadForm.jsx` |
 | Upload orders | `UploadOrderForm.jsx` |
@@ -88,15 +93,46 @@ simplifi-reports/                    ← Git root (all commands from here)
 ```
 users                 - User accounts, roles
 advertising_clients   - Client companies (has stripe_customer_id)
-contacts              - Client contacts
-orders                - Advertising orders ⭐
+client_contacts       - Client contacts (primary contact for invoices)
+orders                - Advertising orders
 order_items           - Line items in orders
 products              - Available products
 packages              - Product bundles
 product_categories    - Product categories
 entities              - Business entities (WSIC, LKN, LWP)
 notes                 - Client notes
-documents             - Uploaded PDFs (contracts, change orders, kill orders)
+documents             - Uploaded PDFs
+```
+
+### Billing Tables (NEW)
+```
+invoices              - Invoice records with full lifecycle
+invoice_items         - Line items on invoices
+invoice_payments      - Payment history for invoices
+```
+
+### Invoice Table Key Fields
+```sql
+-- Identification
+id, invoice_number, client_id, order_id, status
+
+-- Dates
+billing_period_start, billing_period_end
+issue_date, due_date, sent_at, paid_at, voided_at
+
+-- Financials
+subtotal, processing_fee, total
+amount_paid, balance_due
+
+-- Payment
+billing_preference      -- 'card', 'ach', 'invoice'
+payment_method_id       -- Stripe payment method
+stripe_invoice_id       -- Stripe invoice ID
+stripe_invoice_url      -- Stripe hosted invoice URL
+
+-- Workflow
+created_by, approved_by, approved_at
+notes
 ```
 
 ### Order Table Key Fields
@@ -124,31 +160,33 @@ client_signer_name, client_signer_email, client_signer_title
 client_signer_ip, client_signer_user_agent
 
 -- Payment
-billing_preference      -- 'card', 'ach', 'invoice', 'check'
+billing_preference      -- 'card', 'ach', 'invoice'
 stripe_entity_code      -- 'wsic', 'lkn', 'lwp'
-stripe_customer_id      -- Stripe customer ID
-stripe_payment_method_id -- Stripe payment method ID
-payment_type            -- 'card', 'ach'
+stripe_customer_id
+payment_method_id
+payment_type            -- 'card', 'ach', 'us_bank_account'
 payment_status          -- 'authorized', 'ach_pending', 'invoice_pending'
-
--- Tracking
-auto_approved, auto_sent, sent_to, sent_to_client_at
-```
-
-### Documents Table
-```sql
-documents (
-  id, order_id, client_id,
-  document_type,          -- 'contract', 'change_order', 'kill_order'
-  filename, file_path, file_size, mime_type,
-  uploaded_by, uploaded_at,
-  storage_bucket          -- 'documents'
-)
 ```
 
 ---
 
 ## 🌐 API Endpoints
+
+### Billing (NEW - Protected)
+```
+GET    /api/billing/invoices              - List invoices with filters
+GET    /api/billing/invoices/:id          - Get invoice with items, contact, payment info
+POST   /api/billing/invoices              - Create invoice
+PUT    /api/billing/invoices/:id          - Update draft invoice
+PUT    /api/billing/invoices/:id/approve  - Approve invoice
+POST   /api/billing/invoices/:id/send     - Send invoice email
+POST   /api/billing/invoices/:id/record-payment - Record manual payment
+POST   /api/billing/invoices/:id/charge   - Charge payment method on file
+PUT    /api/billing/invoices/:id/void     - Void invoice
+POST   /api/billing/invoices/:id/send-reminder - Send overdue reminder
+GET    /api/billing/stats                 - Dashboard statistics
+GET    /api/billing/aging-report          - AR aging buckets
+```
 
 ### Orders (Protected)
 ```
@@ -162,7 +200,6 @@ PUT    /api/orders/:id/approve          - Manager approves
 PUT    /api/orders/:id/reject           - Manager rejects
 POST   /api/orders/:id/send-to-client   - Send contract link
 GET    /api/orders/pending-approvals    - List pending
-GET    /api/orders/pending-approvals/count - Count for badge
 ```
 
 ### Order Variants (Protected)
@@ -174,7 +211,7 @@ POST   /api/orders/kill                 - Create electronic kill order
 POST   /api/orders/kill-upload          - Create from uploaded kill order
 ```
 
-### Public Signing (No Auth) ⭐
+### Public Signing (No Auth)
 ```
 GET    /api/orders/sign/:token                    - Get contract for signing
 POST   /api/orders/sign/:token/setup-intent       - Create Stripe SetupIntent
@@ -191,16 +228,11 @@ POST   /api/documents/upload            - Upload new document
 GET    /api/documents/:id/download      - Download document
 ```
 
-### Email
-```
-GET    /api/email/status                - Check config
-POST   /api/email/test                  - Test email
-```
-
 ---
 
 ## 📧 Email Functions (email-service.js)
 
+### Order Emails
 ```javascript
 sendContractToClient({ order, contact })          // Contract ready to sign
 sendSignatureConfirmation({ order, contact })     // Card payment confirmed
@@ -212,9 +244,15 @@ sendOrderApproved({ order })                      // Approved notification
 sendOrderRejected({ order })                      // Rejected notification
 ```
 
+### Invoice Emails (NEW)
+```javascript
+sendInvoiceToClient({ invoice, contact, items })  // Invoice with pay link
+sendInvoiceReminder({ invoice, contact })         // Overdue reminder
+```
+
 ---
 
-## 🎨 Product Selector Flow (OrderForm & ChangeOrderForm)
+## 🎨 Product Selector Flow
 
 ```
 Step 1: Select Brand
@@ -262,11 +300,6 @@ STRIPE_LWP_SECRET_KEY=sk_live_...
 STRIPE_LWP_PUBLISHABLE_KEY=pk_live_...
 ```
 
-### Vercel (Frontend)
-```
-# No env vars needed - uses vercel.json proxy
-```
-
 ---
 
 ## 📝 Important Notes
@@ -290,9 +323,14 @@ API requests proxy to Railway:
 ### App.jsx Sections
 ~10,000+ lines. Request specific sections:
 - Routes: end of file
-- Sidebar: ~lines 528-710
-- Dashboard: ~lines 741-1050
-- Client Detail: ~lines 2350-3100
+- Sidebar: ~lines 528-760 (includes Billing section)
+- Dashboard: ~lines 800-1100
+- Client Detail: ~lines 2400-3200
+
+### Invoice Number Format
+- Pattern: `INV-YYYY-NNNNN`
+- Example: `INV-2026-01003`
+- Auto-increments within each year
 
 ### Email Template Rules
 - Use `background-color:` (solid) BEFORE `background:` (gradient) for Outlook
@@ -304,3 +342,4 @@ API requests proxy to Railway:
 - Customers are validated before use (may be stale/deleted)
 - If customer not found in Stripe, a new one is created
 - Token-based endpoints don't require authentication
+- Payment method last 4 digits fetched from Stripe API
