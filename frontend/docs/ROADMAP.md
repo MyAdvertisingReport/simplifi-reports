@@ -3,13 +3,13 @@
 
 ---
 
-## 🎯 Current Sprint: Billing System Phase 2
+## 🎯 Current Sprint: CRM & Client Management
 
 ### ✅ COMPLETED (January 27, 2026)
 
-#### Billing/Invoice Management System - Phase 1
+#### Billing System - Phase 1 & 2
 - [x] Database schema (invoices, invoice_items, invoice_payments tables)
-- [x] Backend API (13 endpoints for full CRUD + workflow)
+- [x] Backend API (15 endpoints for full CRUD + workflow)
 - [x] Invoice creation (manual + from order)
 - [x] Invoice approval workflow
 - [x] Send invoice email with Stripe payment link
@@ -19,6 +19,7 @@
 - [x] Void invoices
 - [x] Send overdue reminders
 - [x] Edit draft invoices
+- [x] **Auto-Generate Invoices from Signed Orders** ⭐
 
 #### BillingPage UI
 - [x] Expandable invoice rows with full details
@@ -26,8 +27,18 @@
 - [x] Payment method with last 4 digits
 - [x] Backup payment method for invoice clients
 - [x] Single "Approve & Send" workflow
-- [x] Relational confirmation dialogs
+- [x] Professional confirmation dialogs with context
 - [x] Status-based action buttons
+- [x] **Generate Invoices Modal** with order preview ⭐
+
+#### Auto-Generate Invoices Feature
+- [x] Preview billable orders for selected month
+- [x] Category-based billing periods (Radio=previous, Print=15th before, Digital=advance)
+- [x] Mixed order handling (bills at beginning of month)
+- [x] Due date logic (15th or last business day based on contract start)
+- [x] Skip already-invoiced orders
+- [x] Batch invoice creation with summary
+- [x] Professional confirmation with client list
 
 #### Financial Dashboard
 - [x] Key metrics (This Month, Collected, Collection Rate, Avg Value)
@@ -35,47 +46,64 @@
 - [x] Top Clients by Revenue
 - [x] Invoice Status Breakdown
 
-### ✅ COMPLETED (January 26, 2026)
-
-#### Product Selector Improvements
-- [x] Broadcast subcategories: Commercials, Show Sponsor, Host Your Own Show, Community Calendar
-- [x] Brand → Category → Subcategory → Product flow in OrderForm
-- [x] Same flow added to ChangeOrderForm
-- [x] Client search simplified (name only) in Change/Kill order forms
-
-#### New Products Added
-- [x] Bible Minute - $1,000/month (Broadcast → Commercials)
-- [x] Premium Radio Show Host - $2,500/month (Broadcast → Host Your Own Show)
-- [x] Radio Show Host - $2,000/month (Broadcast → Host Your Own Show)
-- [x] Sunday Morning Sermon - $1,500/month (Broadcast → Host Your Own Show)
-
-#### Client Signing Payment Flow Fixes
-- [x] Token-based payment endpoints (no auth required)
-- [x] Fixed SQL query errors (non-existent columns)
-- [x] Stripe customer validation (recreate if missing)
-- [x] Detailed logging for debugging
+#### Security Audit
+- [x] Comprehensive security review
+- [x] Documentation of strengths and vulnerabilities
+- [x] Prioritized fix recommendations
+- [x] Implementation checklist
 
 ---
 
 ## 📋 NEXT UP (Priority Order)
 
-### 1. 🔥 Auto-Generate Invoices from Active Orders (RECOMMENDED NEXT)
+### 1. 🔥 Client Profile Enhancement (RECOMMENDED NEXT)
 
-#### Monthly Invoice Generation
-- [ ] Scheduled job/endpoint to trigger monthly billing
-- [ ] Query active orders with billing_frequency = 'monthly'
-- [ ] Create invoice with line items from order_items
-- [ ] Handle pro-rated first month
-- [ ] Skip orders already invoiced for the period
-- [ ] Support quarterly billing frequency
+#### Enhanced Client Model
+- [ ] Add client status field (Lead → Prospect → Active → Churned)
+- [ ] Add industry/vertical field
+- [ ] Add annual contract value calculation
+- [ ] Add client since date
+- [ ] Add client tier (Bronze, Silver, Gold, Platinum)
+- [ ] Custom tags for segmentation
 
-#### Batch Processing
-- [ ] Admin UI to trigger invoice generation
-- [ ] Preview before generating
-- [ ] Bulk approve generated invoices
-- [ ] Summary report of generated invoices
+#### Client Detail Page Redesign
+- [ ] Header with key client info and status badge
+- [ ] Quick stats: Total revenue, Active orders, Open invoices
+- [ ] Tabbed interface:
+  - Overview (summary + activity)
+  - Orders (full order history)
+  - Invoices (invoice history)
+  - Contacts (all contacts)
+  - Notes (client notes)
+  - Campaigns (Simpli.fi data)
+- [ ] Activity timeline showing all interactions
 
-### 2. Stripe Webhooks for Payment Status
+#### Dashboard Updates
+- [ ] Total clients by status
+- [ ] Revenue by client (top 10)
+- [ ] New clients this month
+- [ ] Client health indicators
+
+#### Contact Management Improvements
+- [ ] Multiple contacts per client
+- [ ] Contact roles (Primary, Billing, Marketing)
+- [ ] Contact preferences (email, phone)
+
+### 2. Security Improvements
+
+#### High Priority
+- [ ] Add `helmet` middleware for security headers
+- [ ] Add `express-rate-limit` for login endpoint
+- [ ] Remove JWT secret fallback (`|| 'dev-secret'`)
+- [ ] Protect diagnostic endpoints with auth
+
+#### Medium Priority
+- [ ] Strengthen password policy (12+ chars, complexity)
+- [ ] Add input validation library (`express-validator`)
+- [ ] Fix CORS to reject unknown origins
+- [ ] Add API request logging
+
+### 3. Stripe Webhooks for Payment Status
 
 #### Webhook Endpoints
 - [ ] `POST /api/webhooks/stripe` - Main webhook handler
@@ -90,7 +118,7 @@
 - [ ] Send payment confirmation email
 - [ ] Handle partial payments
 
-### 3. Overdue Invoice Notifications
+### 4. Overdue Invoice Notifications
 
 #### Automated Email Schedule
 - [ ] 7 days overdue - Friendly reminder
@@ -104,7 +132,7 @@
 - [ ] Prevent duplicate reminders
 - [ ] Admin view of notification history
 
-### 4. CSV Export
+### 5. CSV Export
 
 #### Invoice Export
 - [ ] Export filtered invoice list to CSV
@@ -117,7 +145,7 @@
 - [ ] Aging report CSV
 - [ ] Client revenue report CSV
 
-### 5. Year-over-Year Dashboard Comparisons
+### 6. Year-over-Year Dashboard Comparisons
 
 #### Time Period Comparisons
 - [ ] This month vs same month last year
@@ -134,12 +162,12 @@
 ## 📊 Invoice Status Flow
 
 ```
-                                    ┌─────────────────┐
-                                    │  Auto-Generate  │
-                                    │  from Orders    │
-                                    └────────┬────────┘
-                                             │
-                                             ▼
+                                    ┌─────────────────────┐
+                                    │  Auto-Generate from │
+                                    │   Signed Orders     │
+                                    └─────────┬───────────┘
+                                              │
+                                              ▼
 ┌─────────┐     ┌──────────┐     ┌──────────┐     ┌────────┐     ┌────────┐
 │  Draft  │ ──► │ Approved │ ──► │   Sent   │ ──► │  Paid  │     │  Void  │
 └─────────┘     └──────────┘     └──────────┘     └────────┘     └────────┘
@@ -166,25 +194,32 @@
 
 ## 🗓️ Future Phases
 
-### Phase 3: ACH Bank Verification
+### Phase 3: Sales Pipeline / CRM
+- [ ] Lead tracking and management
+- [ ] Opportunity stages with probabilities
+- [ ] Win/loss tracking
+- [ ] Sales associate quotas
+- [ ] Pipeline forecasting
+
+### Phase 4: ACH Bank Verification
 - [ ] Build `/ach-setup/:token` page
 - [ ] Stripe Financial Connections integration
 - [ ] Handle verification webhooks
 - [ ] Update payment_status on completion
 
-### Phase 4: Contract PDF Generation
+### Phase 5: Contract PDF Generation
 - [ ] Auto-generate PDF from signed orders
 - [ ] Include signatures, terms, all details
 - [ ] Store in documents table
 - [ ] Email PDF to client after signing
 
-### Phase 5: Campaign Management
+### Phase 6: Campaign Management
 - [ ] Campaign creation from signed orders
 - [ ] Simpli.fi campaign sync
 - [ ] Creative asset management
 - [ ] Campaign performance dashboards
 
-### Phase 6: Client Portal
+### Phase 7: Client Portal
 - [ ] Client self-service login
 - [ ] View their orders/invoices
 - [ ] Make payments online
@@ -198,7 +233,7 @@
 | System | Status | Notes |
 |--------|--------|-------|
 | Postmark (Email) | ✅ Working | Invoice emails functional |
-| Supabase (DB) | ✅ Working | Invoice tables created |
+| Supabase (DB) | ✅ Working | All tables created |
 | Simpli.fi (Ads) | ✅ Working | Campaign data sync |
 | Stripe (Payments) | ✅ Working | Payment links, charge on file |
 | Stripe Webhooks | 📋 Next | Auto-mark paid |
@@ -219,6 +254,28 @@
 
 ---
 
+## 🔒 Security Status
+
+**Current Score: 7.5/10**
+
+### Strengths
+- ✅ bcrypt password hashing
+- ✅ Account lockout after failed attempts
+- ✅ Parameterized SQL queries
+- ✅ Role-based access control
+- ✅ Stripe for PCI-compliant payments
+- ✅ Activity logging
+
+### Needs Improvement
+- ⚠️ JWT secret fallback
+- ⚠️ No rate limiting on login
+- ⚠️ Missing security headers
+- ⚠️ CORS allows all origins
+
+See `SECURITY_AUDIT.md` for full details and implementation guide.
+
+---
+
 ## 🔧 Technical Debt / Improvements
 
 - [ ] Stripe webhook handling for payment events
@@ -227,6 +284,7 @@
 - [ ] Unit tests for billing flows
 - [ ] API rate limiting
 - [ ] Audit logging for compliance
+- [ ] Security header implementation
 
 ---
 
@@ -252,13 +310,20 @@ git push origin main
 
 ## 📅 Session History
 
+### January 27, 2026 - Billing Phase 2 + Security Audit
+- Built auto-generate invoices from signed orders
+- Category-based billing logic (Radio, Print, Digital)
+- Professional confirmation dialogs
+- Payment method last 4 digit display fix
+- Comprehensive security audit (7.5/10)
+- Documentation updates
+
 ### January 27, 2026 - Billing System Phase 1
 - Built complete invoice management system
 - Created BillingPage with expandable rows
-- Added Financial Dashboard (replaced Aging Report)
+- Added Financial Dashboard
 - Invoice emails with brand detection
 - Edit invoice functionality
-- Payment method display with last 4 digits
 
 ### January 26, 2026 - UI Improvements & Payment Fixes
 - Added Broadcast subcategories

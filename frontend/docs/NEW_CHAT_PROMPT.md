@@ -11,24 +11,25 @@
 simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
 │   ├── server.js              ← Main server with all endpoints
+│   ├── auth.js                ← Authentication & session management
 │   ├── package.json           ← Dependencies (includes stripe)
 │   ├── routes/
 │   │   ├── order.js           ← Order API endpoints
 │   │   ├── order-variants.js  ← Upload/Change/Kill order endpoints
-│   │   ├── billing.js         ← Invoice management API ⭐ NEW
+│   │   ├── billing.js         ← Invoice management + Auto-generate ⭐
 │   │   ├── document.js        ← Document upload/download
 │   │   ├── admin.js
 │   │   └── email.js
 │   └── services/
-│       ├── email-service.js   ← Postmark (includes invoice emails) ⭐
+│       ├── email-service.js   ← Postmark (includes invoice emails)
 │       └── stripe-service.js  ← Stripe payment processing
 │
 └── frontend/                  ← Vercel deployment
     └── src/
         ├── App.jsx            ← Main app (10k+ lines)
         └── components/
-            ├── BillingPage.jsx         ← Invoice list + Financial Dashboard ⭐ NEW
-            ├── InvoiceForm.jsx         ← Create/edit invoices ⭐ NEW
+            ├── BillingPage.jsx         ← Invoice list + Generate Modal + Dashboard ⭐
+            ├── InvoiceForm.jsx         ← Create/edit invoices
             ├── OrderForm.jsx           ← New order with product selector
             ├── OrderTypeSelector.jsx   ← 6 order type selection
             ├── UploadOrderForm.jsx     ← Upload pre-signed contracts
@@ -69,7 +70,7 @@ git add billing.js BillingPage.jsx
 ## 📊 Current State (January 27, 2026)
 
 ### ✅ Working Features
-- User authentication (JWT)
+- User authentication (JWT + session-based)
 - Client management with contacts
 - Product/package catalog with entities (WSIC, LKN, LWP)
 - **6 Order Types:** New, Upload, Change (Electronic/Upload), Kill (Electronic/Upload)
@@ -85,13 +86,22 @@ git add billing.js BillingPage.jsx
 - Simpli.fi campaign reporting
 - Public client report pages
 
-### ✅ Billing System (NEW - January 27, 2026)
+### ✅ Billing System (Complete)
 - **Invoice Management:** Create, edit, approve, send, void
 - **Invoice Emails:** Professional template with brand logos, pay button
 - **BillingPage:** Expandable rows, client contact, payment method with last 4
 - **Financial Dashboard:** Key metrics, AR aging, top clients, status breakdown
 - **Payment Recording:** Manual payments, charge card on file
 - **Overdue Reminders:** Send reminder emails
+- **Auto-Generate Invoices:** Generate from signed orders with category-based billing ⭐
+
+### ✅ Security Features
+- bcrypt password hashing (10 salt rounds)
+- Account lockout after 5 failed attempts
+- Session management with expiration
+- Role-based access control (admin, sales_manager, sales_associate)
+- Parameterized SQL queries (injection prevention)
+- Activity logging for security events
 
 ---
 
@@ -106,19 +116,19 @@ Auto-flow for auto-bill clients:
 approved → sent → (Stripe charges automatically) → paid
 ```
 
-### Invoice Features:
-| Feature | Status |
-|---------|--------|
-| Create from scratch | ✅ Working |
-| Create from order | ✅ Working |
-| Edit draft invoices | ✅ Working |
-| Approve & Send | ✅ Working |
-| Send invoice email | ✅ Working |
-| Record manual payment | ✅ Working |
-| Charge card on file | ✅ Working |
-| Send reminders | ✅ Working |
-| Auto-generate from orders | 📋 Next |
-| Stripe webhooks | 📋 Next |
+### Auto-Generate Invoices Feature:
+- **"Generate Invoices" button** in Billing header
+- Preview billable orders with billing period & due date
+- Select which orders to invoice
+- Creates draft invoices with line items
+- Skips already-invoiced orders
+
+### Billing Rules by Product Category:
+| Category | Billing Period | Due Date |
+|----------|---------------|----------|
+| Broadcast/Podcast | Previous month | Based on contract start |
+| Print | Following month's issue | 15th of billing month |
+| Programmatic/Events/Web | Current month (advance) | Based on contract start |
 
 ---
 
@@ -141,7 +151,7 @@ POST /api/orders/sign/:token/complete          - Submit signature
 
 ## 🗄️ Key Database Tables
 
-### Billing Tables (NEW)
+### Billing Tables
 ```sql
 invoices (
   id, invoice_number, client_id, order_id, status,
@@ -149,7 +159,8 @@ invoices (
   issue_date, due_date, subtotal, processing_fee, total,
   amount_paid, balance_due, billing_preference,
   stripe_invoice_id, stripe_invoice_url, payment_method_id,
-  notes, created_by, approved_by, sent_at, paid_at, voided_at
+  notes, created_by, approved_by, sent_at, paid_at, voided_at,
+  grace_period_ends_at
 )
 
 invoice_items (id, invoice_id, product_id, description, quantity, unit_price, amount)
@@ -173,37 +184,41 @@ orders (
 )
 ```
 
+### Product Categories Table
+```sql
+product_categories (
+  id, name, code,            -- code: 'broadcast', 'podcast', 'print', 'programmatic', 'events', 'web_social'
+  description
+)
+```
+
 ---
 
 ## 🎯 Next Up (Priority Order)
 
-### 1. 🔥 Auto-Generate Invoices from Active Orders
-- Scheduled endpoint to create monthly invoices
-- Query active orders, create invoice with line items
-- Handle pro-rated first month
-- Skip already-invoiced periods
-- Admin UI to trigger/preview batch generation
+### 1. 🔥 Client Profile Enhancement (NEXT SESSION)
+- Enhanced client model with status (Lead → Prospect → Active → Churned)
+- Client detail page with order history, invoice history
+- Activity timeline
+- Contact management improvements
+- Dashboard updates with client metrics
 
-### 2. Stripe Webhooks for Payment Status
+### 2. Security Improvements
+- Add `helmet` for security headers
+- Add `express-rate-limit` for login protection
+- Remove JWT secret fallback
+- Protect diagnostic endpoints
+
+### 3. Stripe Webhooks for Payment Status
 - `POST /api/webhooks/stripe` endpoint
 - Handle `invoice.paid`, `payment_intent.succeeded`
 - Auto-mark invoices as paid
 - Send payment confirmation email
 
-### 3. Overdue Invoice Notifications
+### 4. Overdue Invoice Notifications
 - Automated emails at 7, 14, 21, 28 days
 - Final notice at Day 28 with auto-charge warning
 - Day 30: Auto-charge backup payment method
-
-### 4. CSV Export
-- Export invoice list with filters
-- Revenue reports by date range
-- Aging report export
-
-### 5. Year-over-Year Dashboard
-- This month vs same month last year
-- YTD comparisons
-- Growth percentages with trend indicators
 
 ---
 
@@ -232,7 +247,7 @@ git push origin main
 ```
 DATABASE_URL=postgresql://...
 POSTMARK_API_KEY=...
-JWT_SECRET=...
+JWT_SECRET=...                    # ⚠️ CRITICAL - Must be set
 BASE_URL=https://myadvertisingreport.com
 SUPABASE_URL=...
 SUPABASE_SERVICE_KEY=...
@@ -257,6 +272,7 @@ git add . && git commit -m "message" && git push origin main
 | What | Path |
 |------|------|
 | Main Server | `backend/server.js` |
+| Auth Routes | `backend/auth.js` |
 | Billing Routes | `backend/routes/billing.js` |
 | Email Service | `backend/services/email-service.js` |
 | BillingPage | `frontend/src/components/BillingPage.jsx` |
@@ -268,6 +284,10 @@ git add . && git commit -m "message" && git push origin main
 ### Invoice Number Format:
 - Pattern: `INV-YYYY-NNNNN`
 - Example: `INV-2026-01003`
+
+### Order Status for Billing:
+- `signed` = Active and billable
+- Use status filter in Generate Invoices modal
 
 ### Billing API Endpoints:
 ```
@@ -282,6 +302,8 @@ POST   /api/billing/invoices/:id/charge   - Charge on file
 PUT    /api/billing/invoices/:id/void
 POST   /api/billing/invoices/:id/send-reminder
 GET    /api/billing/stats
+GET    /api/billing/billable-orders       - Preview for generation
+POST   /api/billing/generate-monthly      - Batch create invoices
 ```
 
 ### Stripe Notes:
@@ -289,3 +311,12 @@ GET    /api/billing/stats
 - Customer validation before use (recreates if missing)
 - Per-entity Stripe accounts (WSIC, LKN, LWP)
 - Payment method last 4 fetched from Stripe API on invoice detail
+
+---
+
+## 🔒 Security Documentation
+See `SECURITY_AUDIT.md` for:
+- Current security posture (7.5/10)
+- High/Medium priority fixes
+- Implementation checklist
+- Quick win code snippets

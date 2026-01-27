@@ -11,6 +11,7 @@ simplifi-reports/                    ← Git root (all commands from here)
 │
 ├── 📁 backend/                      ← Railway deployment
 │   ├── 📄 server.js                 # Main server - ALL API endpoints ⭐
+│   ├── 📄 auth.js                   # Authentication routes & middleware
 │   ├── 📄 database.js               # PostgreSQL helpers & caching
 │   ├── 📄 simplifi-client.js        # Simpli.fi API integration
 │   ├── 📄 report-center-service.js  # Report generation
@@ -20,7 +21,7 @@ simplifi-reports/                    ← Git root (all commands from here)
 │   │   ├── 📄 admin.js              # /api/admin/* - Products, packages
 │   │   ├── 📄 order.js              # /api/orders/* - Order CRUD & variants
 │   │   ├── 📄 order-variants.js     # Upload, Change, Kill order endpoints
-│   │   ├── 📄 billing.js            # /api/billing/* - Invoice management ⭐ NEW
+│   │   ├── 📄 billing.js            # /api/billing/* - Invoice management ⭐
 │   │   ├── 📄 document.js           # Document upload/download API
 │   │   └── 📄 email.js              # /api/email/* - Email endpoints
 │   │
@@ -30,7 +31,7 @@ simplifi-reports/                    ← Git root (all commands from here)
 │   │   └── 📄 pdf-generator.py      # Python PDF generation
 │   │
 │   └── 📁 migrations/
-│       ├── 📄 add_invoices_table.sql        # Invoice tables ⭐ NEW
+│       ├── 📄 add_invoices_table.sql        # Invoice tables
 │       ├── 📄 add-documents-and-order-types.sql
 │       ├── 📄 add_broadcast_products.sql
 │       └── 📄 fix_premium_show_host_price.sql
@@ -47,8 +48,8 @@ simplifi-reports/                    ← Git root (all commands from here)
         ├── 📄 index.css
         │
         └── 📁 components/
-            ├── 📄 BillingPage.jsx            # Invoice list + Financial Dashboard ⭐ NEW
-            ├── 📄 InvoiceForm.jsx            # Create/edit invoices ⭐ NEW
+            ├── 📄 BillingPage.jsx            # Invoice list + Generate + Dashboard ⭐
+            ├── 📄 InvoiceForm.jsx            # Create/edit invoices
             ├── 📄 OrderForm.jsx              # New order form with product selector
             ├── 📄 OrderList.jsx              # Order listing with filters
             ├── 📄 OrderTypeSelector.jsx      # 6-type order selection
@@ -72,6 +73,7 @@ simplifi-reports/                    ← Git root (all commands from here)
 | Task | Files Needed |
 |------|--------------|
 | **Billing/Invoices** | `BillingPage.jsx`, `InvoiceForm.jsx`, `billing.js`, `email-service.js` |
+| **Auto-Generate Invoices** | `BillingPage.jsx`, `billing.js` |
 | Client signing flow | `ClientSigningPage.jsx`, `server.js` |
 | Email templates | `email-service.js` |
 | Payment processing | `server.js`, `stripe-service.js` |
@@ -84,6 +86,7 @@ simplifi-reports/                    ← Git root (all commands from here)
 | Approval workflow | `server.js`, `ApprovalsPage.jsx` |
 | Add new page | `App.jsx` (routes section) |
 | API routing issues | `vercel.json`, `server.js` |
+| **Security review** | `server.js`, `auth.js`, `SECURITY_AUDIT.md` |
 
 ---
 
@@ -91,20 +94,22 @@ simplifi-reports/                    ← Git root (all commands from here)
 
 ### Core Tables
 ```
-users                 - User accounts, roles
+users                 - User accounts, roles, failed login tracking
+user_sessions         - Active login sessions
+user_activity_log     - Security audit trail
 advertising_clients   - Client companies (has stripe_customer_id)
-client_contacts       - Client contacts (primary contact for invoices)
+contacts              - Client contacts (primary contact for invoices)
 orders                - Advertising orders
 order_items           - Line items in orders
 products              - Available products
 packages              - Product bundles
-product_categories    - Product categories
+product_categories    - Product categories (code field for billing logic)
 entities              - Business entities (WSIC, LKN, LWP)
 notes                 - Client notes
 documents             - Uploaded PDFs
 ```
 
-### Billing Tables (NEW)
+### Billing Tables
 ```
 invoices              - Invoice records with full lifecycle
 invoice_items         - Line items on invoices
@@ -119,6 +124,7 @@ id, invoice_number, client_id, order_id, status
 -- Dates
 billing_period_start, billing_period_end
 issue_date, due_date, sent_at, paid_at, voided_at
+grace_period_ends_at  -- For auto-charge timing
 
 -- Financials
 subtotal, processing_fee, total
@@ -172,7 +178,7 @@ payment_status          -- 'authorized', 'ach_pending', 'invoice_pending'
 
 ## 🌐 API Endpoints
 
-### Billing (NEW - Protected)
+### Billing (Protected)
 ```
 GET    /api/billing/invoices              - List invoices with filters
 GET    /api/billing/invoices/:id          - Get invoice with items, contact, payment info
@@ -186,6 +192,10 @@ PUT    /api/billing/invoices/:id/void     - Void invoice
 POST   /api/billing/invoices/:id/send-reminder - Send overdue reminder
 GET    /api/billing/stats                 - Dashboard statistics
 GET    /api/billing/aging-report          - AR aging buckets
+
+# Auto-Generate Invoices (NEW)
+GET    /api/billing/billable-orders       - Preview orders ready to invoice
+POST   /api/billing/generate-monthly      - Generate invoices for selected orders
 ```
 
 ### Orders (Protected)
@@ -211,7 +221,7 @@ POST   /api/orders/kill                 - Create electronic kill order
 POST   /api/orders/kill-upload          - Create from uploaded kill order
 ```
 
-### Public Signing (No Auth)
+### Public Signing (No Auth - Token Based)
 ```
 GET    /api/orders/sign/:token                    - Get contract for signing
 POST   /api/orders/sign/:token/setup-intent       - Create Stripe SetupIntent
@@ -244,11 +254,36 @@ sendOrderApproved({ order })                      // Approved notification
 sendOrderRejected({ order })                      // Rejected notification
 ```
 
-### Invoice Emails (NEW)
+### Invoice Emails
 ```javascript
 sendInvoiceToClient({ invoice, contact, items })  // Invoice with pay link
 sendInvoiceReminder({ invoice, contact })         // Overdue reminder
 ```
+
+---
+
+## 💰 Billing Logic
+
+### Product Category Billing Rules
+```
+Category Code        | Billing Type
+---------------------|------------------
+broadcast, podcast   | Previous month (services rendered)
+print                | 15th of month BEFORE issue month
+programmatic, events,| Following month (advance billing)
+web_social           |
+```
+
+### Due Date Logic
+- **Print products:** Always due on 15th
+- **Other products:** Based on contract start date
+  - Started 1st-9th: Due last business day
+  - Started 10th-20th: Due 15th
+  - Started 21st-31st: Due last business day
+
+### Mixed Orders
+- If order has BOTH previous-month and advance products
+- Bill entire order at beginning of month (advance timing)
 
 ---
 
@@ -286,7 +321,7 @@ Step 4: Select Product
 ```
 DATABASE_URL=postgresql://...
 POSTMARK_API_KEY=...
-JWT_SECRET=...
+JWT_SECRET=...                    # ⚠️ MUST be set in production
 BASE_URL=https://myadvertisingreport.com
 SUPABASE_URL=...
 SUPABASE_SERVICE_KEY=...
@@ -331,6 +366,10 @@ API requests proxy to Railway:
 - Pattern: `INV-YYYY-NNNNN`
 - Example: `INV-2026-01003`
 - Auto-increments within each year
+
+### Order Status for Billing
+- `signed` status = Active and billable
+- Orders with status 'signed' appear in Generate Invoices
 
 ### Email Template Rules
 - Use `background-color:` (solid) BEFORE `background:` (gradient) for Outlook

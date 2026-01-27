@@ -1,102 +1,90 @@
-# Session Summary - January 27, 2026
+# Session Summary - January 27, 2026 (Part 2)
 
 ## 🎯 Session Goal
-Build comprehensive Billing/Invoice Management System with invoice creation, workflow, email delivery, and financial dashboard.
+Complete billing auto-generate invoices feature, conduct security audit, and prepare for CRM/Client Profile enhancement.
 
 ## ✅ What We Accomplished
 
-### 1. Complete Invoice Management System
+### 1. Auto-Generate Invoices from Signed Orders
 
-**Database Schema:**
-- `invoices` table with full lifecycle tracking
-- `invoice_items` table for line items
-- `invoice_payments` table for payment history
-- Foreign keys to clients, orders, users
+**Backend Endpoints:**
+- `GET /api/billing/billable-orders` - Preview orders ready for invoicing
+- `POST /api/billing/generate-monthly` - Batch create invoices for selected orders
 
-**Backend API (13 endpoints):**
-- `GET /api/billing/invoices` - List with filters, pagination, sorting
-- `GET /api/billing/invoices/:id` - Full details with items, contact info, payment method last 4
-- `POST /api/billing/invoices` - Create invoice (manual or from order)
-- `PUT /api/billing/invoices/:id` - Update draft invoice
-- `PUT /api/billing/invoices/:id/approve` - Approve invoice
-- `POST /api/billing/invoices/:id/send` - Send to client via email
-- `POST /api/billing/invoices/:id/record-payment` - Record manual payment
-- `POST /api/billing/invoices/:id/charge` - Charge payment method on file
-- `PUT /api/billing/invoices/:id/void` - Void invoice
-- `POST /api/billing/invoices/:id/send-reminder` - Send overdue reminder
-- `GET /api/billing/stats` - Dashboard statistics
-- `GET /api/billing/aging-report` - AR aging buckets
+**Billing Logic by Product Category:**
+| Category | Billing Period | Due Date |
+|----------|---------------|----------|
+| Broadcast/Podcast | Previous month (services rendered) | Based on contract start |
+| Print | Following month's issue | Always 15th |
+| Programmatic/Events/Web | Current month (advance) | Based on contract start |
 
-### 2. Invoice Email System
+**Features:**
+- Preview billable orders with month selector
+- Shows billing period and due date per order
+- "Mixed Products" badge for orders with multiple billing types
+- Select/deselect individual orders
+- Summary cards: Orders to Invoice, Selected Total, Already Invoiced
+- Professional confirmation dialog with client list
+- Success message with invoice details
+- Skips already-invoiced orders
 
-**Professional Email Template:**
-- Brand names displayed at top (WSIC • Lake Norman Woman • LiveWorkPlay)
-- "Your Invoice is Ready" header with month/year
-- Personalized greeting using contact first name
-- Service period, issue date, due date
-- Line items table with quantities and amounts
-- Green "Pay Invoice Now" button linking to Stripe
-- Auto-charge warning (30 days after due date)
-- Payment options: Online (Stripe) or Check
-- Check payable logic based on highest-priced item's brand
-- Footer: "Any questions? Please reach out directly to your Sales Associate"
+### 2. Bug Fixes
 
-**Conditional Messaging:**
-- Invoice clients: Link to pay online
-- Auto-bill clients: Will be charged automatically
+**Fixed `contacts` table reference:**
+- Changed `client_contacts cc` → `contacts ct` in billing.js
+- Invoice detail expansion now works correctly
 
-### 3. BillingPage UI Redesign
+**Fixed `order_items` columns:**
+- Changed `oi.adjusted_price` → `oi.unit_price` (column didn't exist)
+- Changed `p.id as product_id` → `oi.product_id` (already on order_items)
 
-**Invoice List View:**
-- Columns: Client, Amount, Due Date, Sales Associate, Status, Actions
-- Removed invoice numbers from main display (relational approach)
-- Expandable rows showing full invoice details
-- Status badges with overdue detection
+**Fixed payment method display:**
+- Changed `stripeService.retrievePaymentMethod()` → `stripeService.getPaymentMethod(entityCode, pmId)`
+- Now correctly fetches last 4 digits from Stripe
 
-**Expanded Invoice Details:**
-- **Client Section:** Business name, contact name, email, phone
-- **Invoice Details:** Invoice #, issue date, due date, billing period
-- **Payment Section:** Method with last 4 digits, backup method, auto-charge info
-- **Line Items:** Full breakdown with subtotal, processing fee, total
+**Fixed order status query:**
+- Changed `status = 'active'` → `status = 'signed'` (signed = active for billing)
 
-**Action Buttons by Status:**
-- Draft: Edit, Approve & Send
-- Approved: Send
-- Sent/Partial: Record Payment, Charge Card (if payment on file), Send Reminder
-- All non-paid: Void
+### 3. Professional Confirmation Dialogs
 
-**Confirmation Dialogs:**
-- Relational messaging (client name, amount, due date)
-- Different messages for invoice vs auto-bill clients
+Updated all billing confirmations to include:
+- Emoji indicators (📋, 💳, ⚠️, 📧)
+- Client name and invoice number
+- Amount being processed
 - Clear explanation of what happens next
+- "Click OK to proceed" guidance
 
-### 4. Financial Dashboard (Replaced Aging Report)
+### 4. Comprehensive Security Audit
 
-**Key Metrics Row:**
-- This Month's Billing - Total invoiced this month
-- Total Collected - Sum of paid invoices
-- Collection Rate - % paid (color-coded: green >80%, yellow 60-80%, red <60%)
-- Avg Invoice Value - Average across all invoices
+**Overall Score: 7.5/10**
 
-**Accounts Receivable Aging:**
-- Current (not overdue)
-- 1-30 Days overdue
-- 31-60 Days overdue
-- 61-90 Days overdue
-- Over 90 Days overdue
-- Color-coded buckets from green to red
+**Strengths:**
+- ✅ bcrypt password hashing (10 rounds)
+- ✅ Account lockout after 5 failed attempts
+- ✅ Parameterized SQL queries (no injection)
+- ✅ Role-based access control
+- ✅ Stripe for PCI-compliant payments
+- ✅ Activity logging
 
-**Two-Column Analytics:**
-- Top Clients by Revenue (ranked list)
-- Invoice Status Breakdown (counts and totals by status)
+**High Priority Issues:**
+- ⚠️ JWT secret fallback to 'dev-secret'
+- ⚠️ No rate limiting on login endpoint
+- ⚠️ Missing security headers (helmet)
+- ⚠️ Diagnostic endpoints unprotected
 
-### 5. Edit Invoice Functionality
+**Created SECURITY_AUDIT.md with:**
+- Practical section for business stakeholders
+- Technical section for developers
+- Implementation checklist
+- Quick win code snippets
 
-- Edit button for draft invoices
-- `/billing/edit/:id` route
-- InvoiceForm loads existing invoice data
-- Update API endpoint
-- Save Changes button
+### 5. Documentation Updates
+
+Updated all roadmap documents:
+- FILE_STRUCTURE.md - Added billing endpoints, security notes
+- NEW_CHAT_PROMPT.md - Added auto-generate feature, security docs
+- ROADMAP.md - Marked billing complete, added CRM as next priority
+- SECURITY_AUDIT.md - New comprehensive security document
 
 ---
 
@@ -105,130 +93,112 @@ Build comprehensive Billing/Invoice Management System with invoice creation, wor
 ### Backend
 | File | Changes |
 |------|---------|
-| `routes/billing.js` | Complete billing API (13 endpoints) |
-| `services/email-service.js` | Invoice email templates (send, reminder) |
-| `migrations/add_invoices_table.sql` | Database schema |
+| `routes/billing.js` | Added billable-orders, generate-monthly endpoints; fixed column names |
 
 ### Frontend
 | File | Changes |
 |------|---------|
-| `components/BillingPage.jsx` | Full redesign with dashboard |
-| `components/InvoiceForm.jsx` | Create/edit invoices with product selector |
-| `App.jsx` | Added billing routes, sidebar section |
+| `components/BillingPage.jsx` | Added Generate Invoices modal, professional confirmations |
 
----
-
-## 🗄️ Database Changes
-
-**New Tables:**
-```sql
-invoices (
-  id, invoice_number, client_id, order_id, status,
-  billing_period_start, billing_period_end,
-  issue_date, due_date, subtotal, processing_fee, total,
-  amount_paid, balance_due, billing_preference,
-  stripe_invoice_id, stripe_invoice_url, payment_method_id,
-  notes, created_by, approved_by, approved_at, sent_at,
-  paid_at, voided_at, created_at, updated_at
-)
-
-invoice_items (
-  id, invoice_id, product_id, description,
-  quantity, unit_price, amount, sort_order
-)
-
-invoice_payments (
-  id, invoice_id, amount, payment_method,
-  stripe_payment_intent_id, reference, notes,
-  recorded_by, created_at
-)
-```
+### Documentation
+| File | Changes |
+|------|---------|
+| `FILE_STRUCTURE.md` | Updated with billing logic, security notes |
+| `NEW_CHAT_PROMPT.md` | Added auto-generate feature, next priorities |
+| `ROADMAP.md` | Marked Phase 2 complete, CRM next |
+| `SECURITY_AUDIT.md` | New file - comprehensive security review |
 
 ---
 
 ## 🔑 Key Technical Decisions
 
-### 1. Invoice Numbers
-**Format:** `INV-YYYY-NNNNN` (e.g., INV-2026-01003)
-**Reason:** Clear year identification, sequential within year
+### 1. Order Status for Billing
+**Decision:** Use `status = 'signed'` for billable orders
+**Reason:** "Signed" means contract is active and should be billed
 
-### 2. Payment Method Display
-**Decision:** Fetch last 4 digits from Stripe on invoice detail view
-**Reason:** Shows actual payment info without storing sensitive data
+### 2. Print Billing on 15th
+**Decision:** Print products always due on 15th of billing month
+**Reason:** Print invoices issued 15th of month BEFORE issue date
 
-### 3. Brand Detection for Check Payable
-**Decision:** Determine brand from highest-priced item in invoice
-**Reason:** Multi-brand invoices should default to primary revenue source
+### 3. Mixed Order Handling
+**Decision:** If order has both previous-month and advance products, bill at beginning of month
+**Reason:** Can't split invoice, so use advance timing
 
-### 4. Financial Dashboard Calculations
-**Decision:** Calculate from invoice data client-side
-**Reason:** Real-time accuracy, no separate API call needed
+### 4. Security Audit Format
+**Decision:** Two sections - Practical (business) and Technical (developers)
+**Reason:** Different audiences need different information
 
 ---
 
-## 📋 Next Session Priorities
+## 🎯 Next Session: Client Profile Enhancement
 
-### 1. Auto-Generate Invoices from Active Orders
-- Scheduled job to create monthly invoices
-- Pull line items from active orders
-- Handle different billing frequencies
-- Skip already-invoiced periods
+### Recommended Starting Files
+1. `App.jsx` - Dashboard and Client sections
+2. `advertising_clients` table schema
+3. `contacts` table schema
+4. Current client-related API endpoints
 
-### 2. Stripe Webhooks for Payment Status
-- `invoice.paid` - Mark invoice as paid
-- `invoice.payment_failed` - Handle failures
-- `payment_intent.succeeded` - Update payment status
+### Planned Features
+1. **Enhanced Client Model:**
+   - Status (Lead → Prospect → Active → Churned)
+   - Industry, tier, tags
+   - Annual contract value
 
-### 3. Overdue Invoice Notifications
-- Automated emails at 7, 14, 21, 30 days
-- Different messaging at each stage
-- Auto-charge warning before Day 30
+2. **Client Detail Page:**
+   - Header with key info
+   - Tabbed interface (Overview, Orders, Invoices, Contacts, Notes)
+   - Activity timeline
 
-### 4. CSV Export
-- Export invoice list to CSV
-- Export financial reports
-- Date range filtering
+3. **Dashboard Updates:**
+   - Clients by status
+   - Revenue by client
+   - Client health indicators
 
-### 5. Year-over-Year Dashboard
-- Compare to same month last year
-- YTD vs last year YTD
-- Growth percentages
+---
+
+## 📋 Outstanding Items
+
+### For Next Session
+- [ ] Get `App.jsx` Dashboard section (~lines 800-1100)
+- [ ] Get `App.jsx` Client Detail section (~lines 2400-3200)
+- [ ] Review `advertising_clients` table current schema
+- [ ] Review `contacts` table current schema
+
+### Security Improvements (Can be done anytime)
+- [ ] Install helmet and express-rate-limit
+- [ ] Remove JWT secret fallback
+- [ ] Protect diagnostic endpoints
 
 ---
 
 ## 🧪 Testing Checklist
 
-### Invoice Creation
-- [ ] Create invoice from scratch (select client, add products)
-- [ ] Create invoice linked to order
-- [ ] Edit draft invoice
-- [ ] Processing fee calculation (3.5% for card)
+### Auto-Generate Invoices
+- [x] Generate Invoices button appears in header
+- [x] Modal opens with month selector
+- [x] Billable orders load for selected month
+- [x] Orders show correct billing period
+- [x] Mixed products badge displays
+- [x] Already-invoiced orders shown separately
+- [x] Can select/deselect orders
+- [x] Confirmation shows client list
+- [x] Invoices created successfully
+- [x] Success message shows invoice details
 
-### Invoice Workflow
-- [ ] Approve & Send (invoice client)
-- [ ] Approve & Send (auto-bill client)
-- [ ] Record manual payment
-- [ ] Charge card on file
-- [ ] Void invoice
-- [ ] Send reminder
-
-### Email Delivery
-- [ ] Invoice email renders correctly
-- [ ] Brand detection for check payable
-- [ ] Auto-charge warning displays
-- [ ] Pay button links to Stripe
-
-### Financial Dashboard
-- [ ] Key metrics calculate correctly
-- [ ] Aging buckets populate
-- [ ] Top clients list
-- [ ] Status breakdown
+### Billing Confirmations
+- [x] Generate shows client names and total
+- [x] Charge card shows amount and invoice number
+- [x] Void shows warning about permanence
+- [x] Send reminder shows days overdue
 
 ---
 
-## 🔧 Environment Notes
+## 💡 Notes for Future
 
-- Billing routes added to server.js
-- Email service has sendInvoiceToClient and sendInvoiceReminder functions
-- Stripe integration ready for webhooks
-- All three entities supported (WSIC, LKN, LWP)
+1. **Scheduled Invoice Generation:** Currently manual trigger - could add cron job to auto-run on 1st and 15th
+
+2. **Stripe Webhooks:** Would eliminate need to manually mark invoices as paid
+
+3. **Security Quick Wins:** helmet + rate-limit can be added in ~10 minutes
+
+4. **Client CRM:** This is the foundation for sales pipeline features later
