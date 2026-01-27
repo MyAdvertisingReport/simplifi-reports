@@ -7,6 +7,9 @@
  * - Payment tracking and reminders
  * - Auto-charge after grace period
  * - Aging reports
+ * - Auto-generate invoices from active orders
+ * 
+ * Updated: January 27, 2026
  */
 
 const express = require('express');
@@ -61,6 +64,75 @@ const calculateDaysOverdue = (dueDate) => {
   const diffTime = now - due;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   return Math.max(0, diffDays);
+};
+
+/**
+ * Get the last business day of a given month
+ */
+const getLastBusinessDay = (year, month) => {
+  // Start from the last day of the month
+  const lastDay = new Date(year, month + 1, 0);
+  let day = lastDay.getDate();
+  
+  while (day > 0) {
+    const date = new Date(year, month, day);
+    const dayOfWeek = date.getDay();
+    // 0 = Sunday, 6 = Saturday
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      return day;
+    }
+    day--;
+  }
+  return lastDay.getDate(); // Fallback
+};
+
+/**
+ * Determine billing period based on product categories
+ * Radio/Podcast = previous month, Print/Programmatic/Events/Web = following month
+ */
+const determineBillingPeriod = (categoryCode, billingMonth, billingYear) => {
+  const previousMonthCategories = ['broadcast', 'podcast'];
+  const isPreviousMonth = previousMonthCategories.includes(categoryCode?.toLowerCase());
+  
+  if (isPreviousMonth) {
+    // Bill for PREVIOUS month
+    let periodMonth = billingMonth - 1;
+    let periodYear = billingYear;
+    if (periodMonth < 0) {
+      periodMonth = 11;
+      periodYear--;
+    }
+    return {
+      start: new Date(periodYear, periodMonth, 1),
+      end: new Date(periodYear, periodMonth + 1, 0) // Last day of month
+    };
+  } else {
+    // Bill for FOLLOWING month (current month at billing time)
+    return {
+      start: new Date(billingYear, billingMonth, 1),
+      end: new Date(billingYear, billingMonth + 1, 0)
+    };
+  }
+};
+
+/**
+ * Check if an order has a mix of "previous" and "following" month billing categories
+ */
+const hasMixedBillingCategories = (items) => {
+  const previousMonthCategories = ['broadcast', 'podcast'];
+  let hasPrevious = false;
+  let hasFollowing = false;
+  
+  for (const item of items) {
+    const cat = item.category_code?.toLowerCase();
+    if (previousMonthCategories.includes(cat)) {
+      hasPrevious = true;
+    } else {
+      hasFollowing = true;
+    }
+    if (hasPrevious && hasFollowing) return true;
+  }
+  return false;
 };
 
 // ============================================================
@@ -403,8 +475,8 @@ router.put('/invoices/:id', async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    if (!['draft', 'approved'].includes(checkResult.rows[0].status)) {
-      return res.status(400).json({ error: 'Cannot edit invoice that has been sent' });
+    if (checkResult.rows[0].status !== 'draft') {
+      return res.status(400).json({ error: 'Only draft invoices can be edited' });
     }
 
     await client.query('BEGIN');
@@ -419,11 +491,12 @@ router.put('/invoices/:id', async (req, res) => {
       add_processing_fee = false
     } = req.body;
 
-    // Recalculate totals
+    // Calculate subtotal from items
     let subtotal = items.reduce((sum, item) => {
       return sum + (parseFloat(item.unit_price) * (item.quantity || 1));
     }, 0);
 
+    // Calculate processing fee if card payment
     let processing_fee = 0;
     if (add_processing_fee && billing_preference === 'card') {
       processing_fee = Math.round(subtotal * 0.035 * 100) / 100;
@@ -432,29 +505,31 @@ router.put('/invoices/:id', async (req, res) => {
     const total = subtotal + processing_fee;
 
     // Update invoice
-    await client.query(`
+    const invoiceResult = await client.query(`
       UPDATE invoices SET
-        billing_period_start = $1,
-        billing_period_end = $2,
-        due_date = $3::date,
-        billing_preference = $4,
-        subtotal = $5,
-        processing_fee = $6,
-        total = $7,
-        balance_due = $7 - COALESCE(amount_paid, 0),
-        grace_period_ends_at = $3::date + INTERVAL '30 days',
+        subtotal = $1,
+        processing_fee = $2,
+        total = $3,
+        balance_due = $3,
+        billing_period_start = $4,
+        billing_period_end = $5,
+        due_date = $6::date,
+        billing_preference = $7,
+        grace_period_ends_at = $6::date + INTERVAL '30 days',
         notes = $8,
         updated_at = NOW()
       WHERE id = $9
+      RETURNING *
     `, [
-      billing_period_start, billing_period_end, due_date,
-      billing_preference, subtotal, processing_fee, total,
-      notes, id
+      subtotal, processing_fee, total,
+      billing_period_start, billing_period_end,
+      due_date, billing_preference, notes, id
     ]);
 
-    // Delete existing items and re-insert
-    await client.query(`DELETE FROM invoice_items WHERE invoice_id = $1`, [id]);
+    // Delete existing items
+    await client.query('DELETE FROM invoice_items WHERE invoice_id = $1', [id]);
 
+    // Insert new items
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       await client.query(`
@@ -476,15 +551,15 @@ router.put('/invoices/:id', async (req, res) => {
 
     await client.query('COMMIT');
 
-    // Fetch updated invoice
-    const result = await pool.query(`
+    // Fetch complete invoice
+    const fullInvoice = await pool.query(`
       SELECT i.*, c.business_name as client_name
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       WHERE i.id = $1
     `, [id]);
 
-    res.json(result.rows[0]);
+    res.json(fullInvoice.rows[0]);
 
   } catch (error) {
     await client.query('ROLLBACK');
@@ -502,15 +577,15 @@ router.put('/invoices/:id/approve', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Don't set approved_by to avoid FK constraint issues with users table
     const result = await pool.query(`
       UPDATE invoices SET
         status = 'approved',
+        approved_by = $1,
         approved_at = NOW(),
         updated_at = NOW()
-      WHERE id = $1 AND status = 'draft'
+      WHERE id = $2 AND status = 'draft'
       RETURNING *
-    `, [id]);
+    `, [req.user?.id, id]);
 
     if (result.rows.length === 0) {
       return res.status(400).json({ error: 'Invoice not found or not in draft status' });
@@ -531,12 +606,11 @@ router.post('/invoices/:id/send', async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get invoice details
+    // Get invoice with client info
     const invoiceResult = await pool.query(`
       SELECT 
         i.*,
-        c.business_name as client_name,
-        c.slug as client_slug
+        c.business_name as client_name
       FROM invoices i
       JOIN advertising_clients c ON i.client_id = c.id
       WHERE i.id = $1
@@ -623,14 +697,19 @@ router.post('/invoices/:id/send', async (req, res) => {
 
     // Send email notification
     if (emailService && emailService.sendInvoiceToClient) {
-      await emailService.sendInvoiceToClient({
-        invoice: {
-          ...invoice,
-          items: itemsResult.rows,
-          stripe_invoice_url: stripeInvoiceUrl
-        },
-        contact
-      });
+      try {
+        await emailService.sendInvoiceToClient({
+          invoice: {
+            ...invoice,
+            stripe_invoice_url: stripeInvoiceUrl
+          },
+          contact,
+          items: itemsResult.rows
+        });
+      } catch (emailError) {
+        console.error('Failed to send invoice email:', emailError);
+        // Don't fail the request - invoice is sent even if email fails
+      }
     }
 
     res.json({ 
@@ -649,15 +728,16 @@ router.post('/invoices/:id/send', async (req, res) => {
 // POST /api/billing/invoices/:id/record-payment - Record manual payment
 // ============================================================
 router.post('/invoices/:id/record-payment', async (req, res) => {
+  const client = await pool.connect();
+  
   try {
     const { id } = req.params;
-    const { amount, payment_method, notes, payment_date } = req.body;
+    const { amount, payment_method, reference, notes } = req.body;
 
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: 'Valid payment amount required' });
-    }
+    await client.query('BEGIN');
 
-    const invoiceResult = await pool.query(
+    // Get current invoice
+    const invoiceResult = await client.query(
       `SELECT * FROM invoices WHERE id = $1`,
       [id]
     );
@@ -667,55 +747,142 @@ router.post('/invoices/:id/record-payment', async (req, res) => {
     }
 
     const invoice = invoiceResult.rows[0];
-    const newAmountPaid = parseFloat(invoice.amount_paid || 0) + parseFloat(amount);
-    const newBalanceDue = parseFloat(invoice.total) - newAmountPaid;
-    
-    // Determine new status
-    let newStatus = invoice.status;
-    if (newBalanceDue <= 0) {
-      newStatus = 'paid';
-    } else if (newAmountPaid > 0) {
-      newStatus = 'partial';
-    }
+    const paymentAmount = parseFloat(amount);
+    const newBalance = parseFloat(invoice.balance_due) - paymentAmount;
+    const newStatus = newBalance <= 0 ? 'paid' : 'partial';
+    const amountPaid = parseFloat(invoice.amount_paid || 0) + paymentAmount;
 
-    await pool.query(`
+    // Insert payment record
+    await client.query(`
+      INSERT INTO invoice_payments (
+        invoice_id, amount, payment_method, reference, notes, recorded_by
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+    `, [id, paymentAmount, payment_method, reference, notes, req.user?.id]);
+
+    // Update invoice
+    const updateResult = await client.query(`
       UPDATE invoices SET
-        amount_paid = $1,
+        status = $1,
         balance_due = $2,
-        status = $3,
-        paid_at = CASE WHEN $3 = 'paid' THEN NOW() ELSE paid_at END,
-        notes = COALESCE(notes, '') || E'\n' || $4,
+        amount_paid = $3,
+        paid_at = CASE WHEN $1 = 'paid' THEN NOW() ELSE paid_at END,
         updated_at = NOW()
-      WHERE id = $5
-    `, [
-      newAmountPaid,
-      Math.max(0, newBalanceDue),
-      newStatus,
-      `Payment recorded: ${formatCurrency(amount)} via ${payment_method} on ${payment_date || new Date().toLocaleDateString()}. ${notes || ''}`,
-      id
-    ]);
+      WHERE id = $4
+      RETURNING *
+    `, [newStatus, Math.max(0, newBalance), amountPaid, id]);
 
-    res.json({ 
-      success: true, 
-      message: newStatus === 'paid' ? 'Invoice marked as paid' : 'Payment recorded',
-      new_balance: Math.max(0, newBalanceDue),
-      status: newStatus
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      invoice: updateResult.rows[0],
+      payment: { amount: paymentAmount, method: payment_method, reference }
     });
 
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error recording payment:', error);
     res.status(500).json({ error: 'Failed to record payment' });
+  } finally {
+    client.release();
   }
 });
 
 // ============================================================
-// POST /api/billing/invoices/:id/charge - Charge saved payment method
+// POST /api/billing/invoices/:id/charge - Charge payment method on file
 // ============================================================
 router.post('/invoices/:id/charge', async (req, res) => {
   try {
     const { id } = req.params;
-    const { payment_method_id } = req.body;
 
+    // Get invoice with order details
+    const invoiceResult = await pool.query(`
+      SELECT 
+        i.*,
+        o.payment_method_id as order_payment_method_id,
+        o.stripe_customer_id as order_stripe_customer_id,
+        c.stripe_customer_id as client_stripe_customer_id
+      FROM invoices i
+      LEFT JOIN orders o ON i.order_id = o.id
+      JOIN advertising_clients c ON i.client_id = c.id
+      WHERE i.id = $1
+    `, [id]);
+
+    if (invoiceResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const invoice = invoiceResult.rows[0];
+
+    if (invoice.status === 'paid') {
+      return res.status(400).json({ error: 'Invoice is already paid' });
+    }
+
+    const paymentMethodId = invoice.payment_method_id || invoice.order_payment_method_id;
+    const customerId = invoice.stripe_customer_id || invoice.order_stripe_customer_id || invoice.client_stripe_customer_id;
+
+    if (!paymentMethodId || !customerId) {
+      return res.status(400).json({ error: 'No payment method on file' });
+    }
+
+    if (!stripeService) {
+      return res.status(503).json({ error: 'Payment service not available' });
+    }
+
+    // Create payment intent and charge
+    const paymentResult = await stripeService.chargePaymentMethod(
+      invoice.stripe_entity_code || 'wsic',
+      {
+        customerId,
+        paymentMethodId,
+        amount: Math.round(parseFloat(invoice.balance_due) * 100), // Convert to cents
+        description: `Invoice ${invoice.invoice_number}`,
+        metadata: {
+          invoice_id: invoice.id,
+          invoice_number: invoice.invoice_number
+        }
+      }
+    );
+
+    if (paymentResult.status === 'succeeded') {
+      // Update invoice as paid
+      await pool.query(`
+        UPDATE invoices SET
+          status = 'paid',
+          balance_due = 0,
+          amount_paid = total,
+          paid_at = NOW(),
+          stripe_payment_intent_id = $2,
+          updated_at = NOW()
+        WHERE id = $1
+      `, [id, paymentResult.id]);
+
+      // Record the payment
+      await pool.query(`
+        INSERT INTO invoice_payments (
+          invoice_id, amount, payment_method, stripe_payment_intent_id, recorded_by
+        ) VALUES ($1, $2, 'card', $3, $4)
+      `, [id, invoice.balance_due, paymentResult.id, req.user?.id]);
+
+      res.json({ success: true, message: 'Payment processed successfully' });
+    } else {
+      res.status(400).json({ error: 'Payment failed', status: paymentResult.status });
+    }
+
+  } catch (error) {
+    console.error('Error charging payment method:', error);
+    res.status(500).json({ error: 'Failed to process payment' });
+  }
+});
+
+// ============================================================
+// POST /api/billing/invoices/:id/send-reminder - Send payment reminder
+// ============================================================
+router.post('/invoices/:id/send-reminder', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get invoice
     const invoiceResult = await pool.query(`
       SELECT i.*, c.business_name as client_name
       FROM invoices i
@@ -729,73 +896,35 @@ router.post('/invoices/:id/charge', async (req, res) => {
 
     const invoice = invoiceResult.rows[0];
 
-    if (!stripeService) {
-      return res.status(500).json({ error: 'Payment service not available' });
+    // Get contact
+    const contactResult = await pool.query(`
+      SELECT * FROM contacts 
+      WHERE client_id = $1 AND is_primary = true
+      LIMIT 1
+    `, [invoice.client_id]);
+
+    if (contactResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No primary contact found' });
     }
 
-    if (!invoice.stripe_customer_id) {
-      return res.status(400).json({ error: 'No payment method on file for this client' });
-    }
-
-    // Use provided payment method or fall back to invoice's stored method
-    const methodToCharge = payment_method_id || invoice.payment_method_id;
-
-    if (!methodToCharge) {
-      return res.status(400).json({ error: 'No payment method available' });
-    }
-
-    // Attempt charge
-    const chargeResult = await stripeService.chargeCustomer(
-      invoice.stripe_entity_code || 'wsic',
-      {
-        stripeCustomerId: invoice.stripe_customer_id,
-        paymentMethodId: methodToCharge,
-        amount: parseFloat(invoice.balance_due),
-        description: `Invoice ${invoice.invoice_number} - ${invoice.client_name}`,
-        invoiceId: invoice.id,
-        type: 'invoice'
-      }
-    );
-
-    if (!chargeResult.success) {
-      // Update payment attempt tracking
-      await pool.query(`
-        UPDATE invoices SET
-          payment_attempts = payment_attempts + 1,
-          last_payment_attempt_at = NOW(),
-          last_payment_error = $1,
-          updated_at = NOW()
-        WHERE id = $2
-      `, [chargeResult.message, id]);
-
-      return res.status(400).json({ 
-        error: 'Payment failed', 
-        message: chargeResult.message 
+    // Send reminder email
+    if (emailService && emailService.sendInvoiceReminder) {
+      await emailService.sendInvoiceReminder({
+        invoice,
+        contact: contactResult.rows[0]
       });
     }
 
-    // Update invoice as paid
+    // Update last reminder sent timestamp
     await pool.query(`
-      UPDATE invoices SET
-        status = 'paid',
-        amount_paid = total,
-        balance_due = 0,
-        paid_at = NOW(),
-        payment_attempts = payment_attempts + 1,
-        last_payment_attempt_at = NOW(),
-        updated_at = NOW()
-      WHERE id = $1
+      UPDATE invoices SET last_reminder_at = NOW(), updated_at = NOW() WHERE id = $1
     `, [id]);
 
-    res.json({ 
-      success: true, 
-      message: 'Payment processed successfully',
-      payment_intent_id: chargeResult.paymentIntent?.id
-    });
+    res.json({ success: true, message: 'Reminder sent' });
 
   } catch (error) {
-    console.error('Error charging invoice:', error);
-    res.status(500).json({ error: 'Failed to process payment' });
+    console.error('Error sending reminder:', error);
+    res.status(500).json({ error: 'Failed to send reminder' });
   }
 });
 
@@ -952,6 +1081,380 @@ router.get('/aging-report', async (req, res) => {
 });
 
 // ============================================================
+// GET /api/billing/billable-orders - Preview orders ready for invoicing
+// ============================================================
+router.get('/billable-orders', async (req, res) => {
+  try {
+    const { billing_month, billing_year } = req.query;
+    
+    // Default to current month
+    const now = new Date();
+    const month = billing_month !== undefined ? parseInt(billing_month) : now.getMonth();
+    const year = billing_year !== undefined ? parseInt(billing_year) : now.getFullYear();
+
+    // Get all active orders
+    const ordersQuery = `
+      SELECT 
+        o.id, o.order_number, o.client_id, o.monthly_total, o.billing_preference,
+        o.contract_start_date, o.contract_end_date, o.stripe_entity_code,
+        o.stripe_customer_id, o.payment_method_id,
+        c.business_name as client_name,
+        u.name as sales_rep_name,
+        EXTRACT(DAY FROM o.contract_start_date) as start_day
+      FROM orders o
+      JOIN advertising_clients c ON o.client_id = c.id
+      LEFT JOIN users u ON o.sales_associate_id = u.id
+      WHERE o.status = 'active'
+        AND o.contract_start_date <= $1::date
+        AND (o.contract_end_date IS NULL OR o.contract_end_date >= $2::date)
+      ORDER BY c.business_name
+    `;
+
+    // First day of billing month and last day
+    const periodStart = new Date(year, month, 1);
+    const periodEnd = new Date(year, month + 1, 0);
+
+    const ordersResult = await pool.query(ordersQuery, [
+      periodEnd.toISOString().split('T')[0],
+      periodStart.toISOString().split('T')[0]
+    ]);
+
+    // Get order items with category info for each order
+    const orderIds = ordersResult.rows.map(o => o.id);
+    
+    let itemsByOrder = {};
+    if (orderIds.length > 0) {
+      const itemsQuery = `
+        SELECT 
+          oi.order_id, oi.id as item_id, oi.quantity, oi.unit_price, oi.adjusted_price,
+          p.id as product_id, p.name as product_name,
+          pc.code as category_code, pc.name as category_name
+        FROM order_items oi
+        LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN product_categories pc ON p.category_id = pc.id
+        WHERE oi.order_id = ANY($1)
+      `;
+      const itemsResult = await pool.query(itemsQuery, [orderIds]);
+      
+      itemsResult.rows.forEach(item => {
+        if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = [];
+        itemsByOrder[item.order_id].push(item);
+      });
+    }
+
+    // Check for existing invoices this period
+    const existingQuery = `
+      SELECT DISTINCT order_id 
+      FROM invoices 
+      WHERE billing_period_start = $1 
+        AND billing_period_end = $2
+        AND status != 'void'
+    `;
+    const existingResult = await pool.query(existingQuery, [
+      periodStart.toISOString().split('T')[0],
+      periodEnd.toISOString().split('T')[0]
+    ]);
+    const existingOrderIds = new Set(existingResult.rows.map(r => r.order_id));
+
+    // Build billable orders list
+    const billableOrders = [];
+    const skippedOrders = [];
+
+    for (const order of ordersResult.rows) {
+      const items = itemsByOrder[order.id] || [];
+      const isMixed = hasMixedBillingCategories(items);
+      
+      // Determine billing date based on campaign start
+      const startDay = parseInt(order.start_day) || 1;
+      const billOn15th = startDay >= 10 && startDay <= 20; // Started around 15th
+      
+      // Determine due date
+      let dueDay;
+      if (billOn15th) {
+        dueDay = 15;
+      } else {
+        dueDay = getLastBusinessDay(year, month);
+      }
+      const dueDate = new Date(year, month, dueDay);
+
+      // Determine billing period based on categories
+      let billingPeriod;
+      if (isMixed) {
+        // Mixed = bill at beginning of month for current month
+        billingPeriod = {
+          start: new Date(year, month, 1),
+          end: new Date(year, month + 1, 0)
+        };
+      } else if (items.length > 0) {
+        // Use first item's category to determine period
+        billingPeriod = determineBillingPeriod(items[0].category_code, month, year);
+      } else {
+        // Default to current month
+        billingPeriod = {
+          start: new Date(year, month, 1),
+          end: new Date(year, month + 1, 0)
+        };
+      }
+
+      // Calculate totals
+      const subtotal = items.reduce((sum, item) => {
+        const price = parseFloat(item.adjusted_price || item.unit_price) || 0;
+        return sum + (price * (item.quantity || 1));
+      }, 0);
+
+      const processingFee = order.billing_preference === 'card' 
+        ? Math.round(subtotal * 0.035 * 100) / 100 
+        : 0;
+
+      const orderData = {
+        ...order,
+        items,
+        is_mixed: isMixed,
+        billing_period: billingPeriod,
+        due_date: dueDate,
+        subtotal,
+        processing_fee: processingFee,
+        total: subtotal + processingFee,
+        already_invoiced: existingOrderIds.has(order.id)
+      };
+
+      if (existingOrderIds.has(order.id)) {
+        skippedOrders.push(orderData);
+      } else {
+        billableOrders.push(orderData);
+      }
+    }
+
+    res.json({
+      billing_month: month,
+      billing_year: year,
+      period_label: new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      billable_orders: billableOrders,
+      skipped_orders: skippedOrders,
+      summary: {
+        total_orders: billableOrders.length,
+        total_amount: billableOrders.reduce((sum, o) => sum + o.total, 0),
+        skipped_count: skippedOrders.length
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching billable orders:', error);
+    res.status(500).json({ error: 'Failed to fetch billable orders' });
+  }
+});
+
+// ============================================================
+// POST /api/billing/generate-monthly - Generate invoices for billing period
+// ============================================================
+router.post('/generate-monthly', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    const { billing_month, billing_year, order_ids } = req.body;
+    
+    // Default to current month
+    const now = new Date();
+    const month = billing_month !== undefined ? parseInt(billing_month) : now.getMonth();
+    const year = billing_year !== undefined ? parseInt(billing_year) : now.getFullYear();
+
+    // Get billable orders (either specified or all)
+    let ordersQuery = `
+      SELECT 
+        o.id, o.order_number, o.client_id, o.monthly_total, o.billing_preference,
+        o.contract_start_date, o.contract_end_date, o.stripe_entity_code,
+        o.stripe_customer_id, o.payment_method_id,
+        c.business_name as client_name,
+        EXTRACT(DAY FROM o.contract_start_date) as start_day
+      FROM orders o
+      JOIN advertising_clients c ON o.client_id = c.id
+      WHERE o.status = 'active'
+    `;
+
+    const periodStart = new Date(year, month, 1);
+    const periodEnd = new Date(year, month + 1, 0);
+    let queryParams = [];
+
+    if (order_ids && order_ids.length > 0) {
+      ordersQuery += ` AND o.id = ANY($1)`;
+      queryParams.push(order_ids);
+    } else {
+      ordersQuery += ` AND o.contract_start_date <= $1::date AND (o.contract_end_date IS NULL OR o.contract_end_date >= $2::date)`;
+      queryParams.push(periodEnd.toISOString().split('T')[0], periodStart.toISOString().split('T')[0]);
+    }
+
+    const ordersResult = await client.query(ordersQuery, queryParams);
+
+    // Get order items
+    const orderIds = ordersResult.rows.map(o => o.id);
+    let itemsByOrder = {};
+    
+    if (orderIds.length > 0) {
+      const itemsQuery = `
+        SELECT 
+          oi.order_id, oi.id as item_id, oi.quantity, oi.unit_price, oi.adjusted_price,
+          p.id as product_id, p.name as product_name,
+          pc.code as category_code
+        FROM order_items oi
+        LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN product_categories pc ON p.category_id = pc.id
+        WHERE oi.order_id = ANY($1)
+      `;
+      const itemsResult = await client.query(itemsQuery, [orderIds]);
+      
+      itemsResult.rows.forEach(item => {
+        if (!itemsByOrder[item.order_id]) itemsByOrder[item.order_id] = [];
+        itemsByOrder[item.order_id].push(item);
+      });
+    }
+
+    // Check for existing invoices
+    const existingQuery = `
+      SELECT DISTINCT order_id 
+      FROM invoices 
+      WHERE billing_period_start = $1 
+        AND billing_period_end = $2
+        AND status != 'void'
+    `;
+    const existingResult = await client.query(existingQuery, [
+      periodStart.toISOString().split('T')[0],
+      periodEnd.toISOString().split('T')[0]
+    ]);
+    const existingOrderIds = new Set(existingResult.rows.map(r => r.order_id));
+
+    await client.query('BEGIN');
+
+    const createdInvoices = [];
+    const errors = [];
+
+    for (const order of ordersResult.rows) {
+      // Skip if already invoiced
+      if (existingOrderIds.has(order.id)) {
+        errors.push({ order_id: order.id, order_number: order.order_number, error: 'Already invoiced for this period' });
+        continue;
+      }
+
+      try {
+        const items = itemsByOrder[order.id] || [];
+        const isMixed = hasMixedBillingCategories(items);
+        
+        // Determine billing date
+        const startDay = parseInt(order.start_day) || 1;
+        const billOn15th = startDay >= 10 && startDay <= 20;
+        let dueDay = billOn15th ? 15 : getLastBusinessDay(year, month);
+        const dueDate = new Date(year, month, dueDay);
+
+        // Determine billing period
+        let billingPeriod;
+        if (isMixed || items.length === 0) {
+          billingPeriod = { start: periodStart, end: periodEnd };
+        } else {
+          billingPeriod = determineBillingPeriod(items[0].category_code, month, year);
+        }
+
+        // Calculate totals
+        const subtotal = items.reduce((sum, item) => {
+          const price = parseFloat(item.adjusted_price || item.unit_price) || 0;
+          return sum + (price * (item.quantity || 1));
+        }, 0);
+
+        const processingFee = order.billing_preference === 'card' 
+          ? Math.round(subtotal * 0.035 * 100) / 100 
+          : 0;
+
+        const total = subtotal + processingFee;
+
+        // Generate invoice number
+        const invoice_number = await generateInvoiceNumber();
+
+        // Create invoice
+        const invoiceResult = await client.query(`
+          INSERT INTO invoices (
+            invoice_number, client_id, order_id, status,
+            subtotal, processing_fee, total, balance_due,
+            billing_period_start, billing_period_end,
+            issue_date, due_date,
+            billing_preference, stripe_entity_code, stripe_customer_id,
+            payment_method_id, grace_period_ends_at
+          ) VALUES (
+            $1, $2, $3, 'draft',
+            $4, $5, $6, $6,
+            $7, $8,
+            CURRENT_DATE, $9::date,
+            $10, $11, $12,
+            $13, $9::date + INTERVAL '30 days'
+          )
+          RETURNING *
+        `, [
+          invoice_number, order.client_id, order.id,
+          subtotal, processingFee, total,
+          billingPeriod.start.toISOString().split('T')[0],
+          billingPeriod.end.toISOString().split('T')[0],
+          dueDate.toISOString().split('T')[0],
+          order.billing_preference, order.stripe_entity_code || 'wsic', order.stripe_customer_id,
+          order.payment_method_id
+        ]);
+
+        const invoice = invoiceResult.rows[0];
+
+        // Add line items
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const price = parseFloat(item.adjusted_price || item.unit_price) || 0;
+          await client.query(`
+            INSERT INTO invoice_items (
+              invoice_id, description, quantity, unit_price, amount,
+              order_item_id, product_id, sort_order
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `, [
+            invoice.id,
+            item.product_name || 'Advertising Service',
+            item.quantity || 1,
+            price,
+            price * (item.quantity || 1),
+            item.item_id,
+            item.product_id,
+            i
+          ]);
+        }
+
+        createdInvoices.push({
+          id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          client_name: order.client_name,
+          order_number: order.order_number,
+          total: invoice.total
+        });
+
+      } catch (orderError) {
+        console.error(`Error creating invoice for order ${order.order_number}:`, orderError);
+        errors.push({ order_id: order.id, order_number: order.order_number, error: orderError.message });
+      }
+    }
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      created: createdInvoices,
+      errors,
+      summary: {
+        created_count: createdInvoices.length,
+        error_count: errors.length,
+        total_amount: createdInvoices.reduce((sum, inv) => sum + parseFloat(inv.total), 0)
+      }
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error generating monthly invoices:', error);
+    res.status(500).json({ error: 'Failed to generate invoices' });
+  } finally {
+    client.release();
+  }
+});
+
+// ============================================================
 // POST /api/billing/generate-from-order/:orderId - Generate invoice from order
 // ============================================================
 router.post('/generate-from-order/:orderId', async (req, res) => {
@@ -1001,9 +1504,6 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
     const total = parseFloat(order.monthly_total) + processing_fee;
 
     // Create invoice
-    // Note: created_by may be null if user doesn't exist in users table
-    const createdBy = req.user?.id || null;
-    
     const invoiceResult = await client.query(`
       INSERT INTO invoices (
         invoice_number, client_id, order_id, status,
@@ -1011,14 +1511,14 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
         billing_period_start, billing_period_end,
         issue_date, due_date,
         billing_preference, stripe_entity_code, stripe_customer_id,
-        payment_method_id, grace_period_ends_at, created_by
+        payment_method_id, grace_period_ends_at
       ) VALUES (
         $1, $2, $3, 'draft',
         $4, $5, $6, $6,
         $7, $8,
         CURRENT_DATE, $9::date,
         $10, $11, $12,
-        $13, $9::date + INTERVAL '30 days', NULL
+        $13, $9::date + INTERVAL '30 days'
       )
       RETURNING *
     `, [
@@ -1028,7 +1528,7 @@ router.post('/generate-from-order/:orderId', async (req, res) => {
       billing_period_end,
       dueDate.toISOString().split('T')[0],
       order.billing_preference, order.stripe_entity_code || 'wsic', order.stripe_customer_id,
-      order.stripe_payment_method_id
+      order.payment_method_id
     ]);
 
     const invoice = invoiceResult.rows[0];

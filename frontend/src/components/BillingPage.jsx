@@ -14,7 +14,7 @@ import {
   DollarSign, FileText, Clock, AlertCircle, CheckCircle, XCircle,
   Send, CreditCard, Search, ChevronRight, ChevronDown,
   Plus, Calendar, Building2, Mail, RefreshCw,
-  AlertTriangle, Package, User, Phone, Banknote
+  AlertTriangle, Package, User, Phone, Banknote, Zap, X
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -79,6 +79,16 @@ export default function BillingPage() {
   const [paymentMethod, setPaymentMethod] = useState('check');
   const [paymentReference, setPaymentReference] = useState('');
 
+  // Generate Invoices Modal
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [generateMonth, setGenerateMonth] = useState(new Date().getMonth());
+  const [generateYear, setGenerateYear] = useState(new Date().getFullYear());
+  const [billableOrders, setBillableOrders] = useState([]);
+  const [skippedOrders, setSkippedOrders] = useState([]);
+  const [selectedOrders, setSelectedOrders] = useState(new Set());
+  const [loadingBillable, setLoadingBillable] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateResult, setGenerateResult] = useState(null);
   useEffect(() => {
     loadData();
   }, []);
@@ -280,6 +290,120 @@ export default function BillingPage() {
     }
   };
 
+  // ========== Generate Invoices Functions ==========
+  const openGenerateModal = () => {
+    setShowGenerateModal(true);
+    setGenerateResult(null);
+    loadBillableOrders(generateMonth, generateYear);
+  };
+
+  const loadBillableOrders = async (month, year) => {
+    setLoadingBillable(true);
+    setBillableOrders([]);
+    setSkippedOrders([]);
+    setSelectedOrders(new Set());
+    
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/billing/billable-orders?billing_month=${month}&billing_year=${year}`,
+        { headers: getAuthHeaders() }
+      );
+      
+      if (res.ok) {
+        const data = await res.json();
+        setBillableOrders(data.billable_orders || []);
+        setSkippedOrders(data.skipped_orders || []);
+        // Select all by default
+        setSelectedOrders(new Set(data.billable_orders.map(o => o.id)));
+      }
+    } catch (err) {
+      console.error('Error loading billable orders:', err);
+    } finally {
+      setLoadingBillable(false);
+    }
+  };
+
+  const handleMonthChange = (e) => {
+    const [year, month] = e.target.value.split('-').map(Number);
+    setGenerateMonth(month);
+    setGenerateYear(year);
+    loadBillableOrders(month, year);
+  };
+
+  const toggleOrderSelection = (orderId) => {
+    const newSelected = new Set(selectedOrders);
+    if (newSelected.has(orderId)) {
+      newSelected.delete(orderId);
+    } else {
+      newSelected.add(orderId);
+    }
+    setSelectedOrders(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedOrders.size === billableOrders.length) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(billableOrders.map(o => o.id)));
+    }
+  };
+
+  const handleGenerateInvoices = async () => {
+    if (selectedOrders.size === 0) {
+      alert('Please select at least one order');
+      return;
+    }
+
+    const selectedCount = selectedOrders.size;
+    const selectedTotal = billableOrders
+      .filter(o => selectedOrders.has(o.id))
+      .reduce((sum, o) => sum + o.total, 0);
+
+    if (!confirm(`Generate ${selectedCount} invoice${selectedCount > 1 ? 's' : ''} totaling ${formatCurrency(selectedTotal)}?`)) {
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/billing/generate-monthly`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          billing_month: generateMonth,
+          billing_year: generateYear,
+          order_ids: Array.from(selectedOrders)
+        })
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        setGenerateResult(result);
+        loadData(); // Refresh main invoice list
+      } else {
+        const err = await res.json();
+        alert(`Error: ${err.error}`);
+      }
+    } catch (err) {
+      console.error('Error generating invoices:', err);
+      alert('Failed to generate invoices');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const getMonthOptions = () => {
+    const options = [];
+    const now = new Date();
+    for (let i = -2; i <= 2; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      options.push({
+        value: `${d.getFullYear()}-${d.getMonth()}`,
+        label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      });
+    }
+    return options;
+  };
+
   const filteredInvoices = invoices.filter(inv => {
     const matchesSearch = !searchQuery || 
       inv.invoice_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -344,9 +468,14 @@ export default function BillingPage() {
           <DollarSign size={28} color="#1e3a8a" />
           Billing & Invoices
         </h1>
-        <button onClick={() => navigate('/billing/new')} style={{ ...styles.button, ...styles.buttonPrimary }}>
-          <Plus size={18} /> New Invoice
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={openGenerateModal} style={{ ...styles.button, ...styles.buttonSuccess }}>
+            <Zap size={18} /> Generate Invoices
+          </button>
+          <button onClick={() => navigate('/billing/new')} style={{ ...styles.button, ...styles.buttonPrimary }}>
+            <Plus size={18} /> New Invoice
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -886,6 +1015,256 @@ export default function BillingPage() {
                 {processing ? <Loader2 size={16} /> : <><CheckCircle size={16} /> Record Payment</>}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generate Invoices Modal */}
+      {showGenerateModal && (
+        <div style={styles.modal} onClick={() => !generating && setShowGenerateModal(false)}>
+          <div style={{ ...styles.modalContent, maxWidth: '900px', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '600' }}>Generate Monthly Invoices</h3>
+                <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '14px' }}>
+                  Create invoices for active orders
+                </p>
+              </div>
+              <button 
+                onClick={() => !generating && setShowGenerateModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px' }}
+              >
+                <X size={20} color="#64748b" />
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              {/* Month Selector */}
+              <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <label style={{ fontWeight: '500', color: '#374151' }}>Billing Period:</label>
+                <select
+                  value={`${generateYear}-${generateMonth}`}
+                  onChange={handleMonthChange}
+                  style={{ padding: '10px 16px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', minWidth: '200px' }}
+                  disabled={generating}
+                >
+                  {getMonthOptions().map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Results after generation */}
+              {generateResult && (
+                <div style={{ 
+                  background: '#dcfce7', 
+                  border: '1px solid #86efac', 
+                  borderRadius: '8px', 
+                  padding: '16px', 
+                  marginBottom: '20px' 
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                    <CheckCircle size={20} color="#166534" />
+                    <span style={{ fontWeight: '600', color: '#166534' }}>
+                      {generateResult.summary.created_count} invoice{generateResult.summary.created_count !== 1 ? 's' : ''} created!
+                    </span>
+                  </div>
+                  <div style={{ color: '#166534', fontSize: '14px' }}>
+                    Total: {formatCurrency(generateResult.summary.total_amount)}
+                  </div>
+                  {generateResult.errors?.length > 0 && (
+                    <div style={{ marginTop: '12px', color: '#92400e', fontSize: '13px' }}>
+                      {generateResult.errors.length} order(s) skipped due to errors
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowGenerateModal(false)}
+                    style={{ ...styles.button, ...styles.buttonPrimary, marginTop: '12px' }}
+                  >
+                    Done
+                  </button>
+                </div>
+              )}
+
+              {/* Loading state */}
+              {loadingBillable && (
+                <div style={{ textAlign: 'center', padding: '40px' }}>
+                  <Loader2 size={32} style={{ color: '#1e3a8a' }} />
+                  <p style={{ color: '#64748b', marginTop: '12px' }}>Loading billable orders...</p>
+                </div>
+              )}
+
+              {/* Orders list */}
+              {!loadingBillable && !generateResult && (
+                <>
+                  {billableOrders.length === 0 && skippedOrders.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                      <FileText size={48} color="#cbd5e1" style={{ marginBottom: '12px' }} />
+                      <p>No active orders found for this billing period</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summary */}
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(3, 1fr)', 
+                        gap: '16px', 
+                        marginBottom: '20px' 
+                      }}>
+                        <div style={{ background: '#f1f5f9', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '24px', fontWeight: '700', color: '#1e3a8a' }}>{billableOrders.length}</div>
+                          <div style={{ fontSize: '13px', color: '#64748b' }}>Orders to Invoice</div>
+                        </div>
+                        <div style={{ background: '#dcfce7', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '24px', fontWeight: '700', color: '#166534' }}>
+                            {formatCurrency(billableOrders.filter(o => selectedOrders.has(o.id)).reduce((sum, o) => sum + o.total, 0))}
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#64748b' }}>Selected Total</div>
+                        </div>
+                        <div style={{ background: '#fef3c7', padding: '16px', borderRadius: '8px', textAlign: 'center' }}>
+                          <div style={{ fontSize: '24px', fontWeight: '700', color: '#92400e' }}>{skippedOrders.length}</div>
+                          <div style={{ fontSize: '13px', color: '#64748b' }}>Already Invoiced</div>
+                        </div>
+                      </div>
+
+                      {/* Billable Orders Table */}
+                      {billableOrders.length > 0 && (
+                        <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '40px 2fr 1fr 1fr 100px', 
+                            gap: '12px', 
+                            padding: '12px 16px', 
+                            background: '#f8fafc', 
+                            fontWeight: '600', 
+                            fontSize: '12px', 
+                            color: '#64748b',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}>
+                            <div>
+                              <input
+                                type="checkbox"
+                                checked={selectedOrders.size === billableOrders.length}
+                                onChange={toggleSelectAll}
+                                style={{ cursor: 'pointer' }}
+                              />
+                            </div>
+                            <div>Client / Order</div>
+                            <div>Billing Period</div>
+                            <div>Due Date</div>
+                            <div style={{ textAlign: 'right' }}>Amount</div>
+                          </div>
+                          
+                          {billableOrders.map(order => (
+                            <div 
+                              key={order.id}
+                              style={{ 
+                                display: 'grid', 
+                                gridTemplateColumns: '40px 2fr 1fr 1fr 100px', 
+                                gap: '12px', 
+                                padding: '12px 16px', 
+                                borderTop: '1px solid #e2e8f0',
+                                background: selectedOrders.has(order.id) ? '#f0fdf4' : 'white',
+                                cursor: 'pointer'
+                              }}
+                              onClick={() => toggleOrderSelection(order.id)}
+                            >
+                              <div onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedOrders.has(order.id)}
+                                  onChange={() => toggleOrderSelection(order.id)}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: '600', color: '#1e293b' }}>{order.client_name}</div>
+                                <div style={{ fontSize: '13px', color: '#64748b' }}>
+                                  {order.order_number}
+                                  {order.is_mixed && (
+                                    <span style={{ 
+                                      marginLeft: '8px', 
+                                      background: '#fef3c7', 
+                                      color: '#92400e', 
+                                      padding: '2px 6px', 
+                                      borderRadius: '4px', 
+                                      fontSize: '11px' 
+                                    }}>
+                                      Mixed Products
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div style={{ fontSize: '13px', color: '#64748b' }}>
+                                {order.billing_period?.start && formatDate(order.billing_period.start)} - {order.billing_period?.end && formatDate(order.billing_period.end)}
+                              </div>
+                              <div style={{ fontSize: '13px' }}>
+                                {order.due_date && formatDate(order.due_date)}
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <div style={{ fontWeight: '600', color: '#1e293b' }}>{formatCurrency(order.total)}</div>
+                                {order.processing_fee > 0 && (
+                                  <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                    +{formatCurrency(order.processing_fee)} fee
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Skipped Orders */}
+                      {skippedOrders.length > 0 && (
+                        <div style={{ marginTop: '20px' }}>
+                          <div style={{ 
+                            fontSize: '14px', 
+                            fontWeight: '600', 
+                            color: '#64748b', 
+                            marginBottom: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px'
+                          }}>
+                            <AlertCircle size={16} />
+                            Already Invoiced ({skippedOrders.length})
+                          </div>
+                          <div style={{ fontSize: '13px', color: '#94a3b8' }}>
+                            {skippedOrders.slice(0, 5).map(o => o.client_name).join(', ')}
+                            {skippedOrders.length > 5 && ` and ${skippedOrders.length - 5} more...`}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            {!generateResult && billableOrders.length > 0 && (
+              <div style={styles.modalFooter}>
+                <button
+                  onClick={() => setShowGenerateModal(false)}
+                  style={{ ...styles.button, ...styles.buttonSecondary }}
+                  disabled={generating}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleGenerateInvoices}
+                  style={{ ...styles.button, ...styles.buttonSuccess }}
+                  disabled={generating || selectedOrders.size === 0}
+                >
+                  {generating ? (
+                    <><Loader2 size={16} /> Generating...</>
+                  ) : (
+                    <><Zap size={16} /> Generate {selectedOrders.size} Invoice{selectedOrders.size !== 1 ? 's' : ''}</>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

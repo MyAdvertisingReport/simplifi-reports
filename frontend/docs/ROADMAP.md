@@ -230,6 +230,26 @@
 
 ---
 
+## ⚙️ Development Preferences
+
+### File Delivery
+- **Always provide complete files** - Do NOT provide code snippets to insert
+- Claude should create the full updated file for download
+- User will replace the entire file in their project
+
+### Git Workflow
+- User uses **simple Windows cmd prompt** for git commands
+- Standard deploy workflow:
+```cmd
+cd simplifi-reports
+copy [downloaded file] backend\routes\filename.js
+git add backend/routes/filename.js
+git commit -m "Description of change"
+git push origin main
+```
+
+---
+
 ## 📅 Session History
 
 ### January 27, 2026 - Billing System Phase 1
