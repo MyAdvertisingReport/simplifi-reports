@@ -87,15 +87,22 @@ const getLastBusinessDay = (year, month) => {
 };
 
 /**
- * Determine billing period based on product categories
- * Radio/Podcast = previous month, Print/Programmatic/Events/Web = following month
+ * Determine billing period and due date based on product categories
+ * 
+ * Billing Rules:
+ * - Radio/Broadcast/Podcast: Bill for PREVIOUS month (services rendered), due at month start
+ * - Print: Bill on 15th of month BEFORE the service month (e.g., March issue billed Feb 15)
+ * - Programmatic/Events/Web: Bill for FOLLOWING month (in advance), due at month start
+ * - Mixed orders: Bill at beginning of month since at least one product needs advance billing
  */
 const determineBillingPeriod = (categoryCode, billingMonth, billingYear) => {
+  const cat = categoryCode?.toLowerCase();
   const previousMonthCategories = ['broadcast', 'podcast'];
-  const isPreviousMonth = previousMonthCategories.includes(categoryCode?.toLowerCase());
+  const isPreviousMonth = previousMonthCategories.includes(cat);
+  const isPrint = cat === 'print';
   
   if (isPreviousMonth) {
-    // Bill for PREVIOUS month
+    // Radio/Broadcast/Podcast: Bill for PREVIOUS month (services already rendered)
     let periodMonth = billingMonth - 1;
     let periodYear = billingYear;
     if (periodMonth < 0) {
@@ -104,35 +111,60 @@ const determineBillingPeriod = (categoryCode, billingMonth, billingYear) => {
     }
     return {
       start: new Date(periodYear, periodMonth, 1),
-      end: new Date(periodYear, periodMonth + 1, 0) // Last day of month
+      end: new Date(periodYear, periodMonth + 1, 0), // Last day of month
+      dueDay: null // Will use default logic (1st or last business day)
+    };
+  } else if (isPrint) {
+    // Print: Service month is the FOLLOWING month, bill on 15th of current month
+    // e.g., If billing in February, the ad runs in March issue
+    let serviceMonth = billingMonth + 1;
+    let serviceYear = billingYear;
+    if (serviceMonth > 11) {
+      serviceMonth = 0;
+      serviceYear++;
+    }
+    return {
+      start: new Date(serviceYear, serviceMonth, 1),
+      end: new Date(serviceYear, serviceMonth + 1, 0),
+      dueDay: 15 // Print always due on 15th
     };
   } else {
-    // Bill for FOLLOWING month (current month at billing time)
+    // Programmatic/Events/Web: Bill for FOLLOWING month (in advance)
     return {
       start: new Date(billingYear, billingMonth, 1),
-      end: new Date(billingYear, billingMonth + 1, 0)
+      end: new Date(billingYear, billingMonth + 1, 0),
+      dueDay: null
     };
   }
 };
 
 /**
- * Check if an order has a mix of "previous" and "following" month billing categories
+ * Check if an order has a mix of billing category types
+ * Categories have different billing timing:
+ * - "previous": broadcast, podcast (bill for previous month)
+ * - "print": print (bill on 15th for next month's issue)
+ * - "advance": programmatic, events, web_social (bill in advance for current month)
  */
 const hasMixedBillingCategories = (items) => {
   const previousMonthCategories = ['broadcast', 'podcast'];
   let hasPrevious = false;
-  let hasFollowing = false;
+  let hasPrint = false;
+  let hasAdvance = false;
   
   for (const item of items) {
     const cat = item.category_code?.toLowerCase();
     if (previousMonthCategories.includes(cat)) {
       hasPrevious = true;
+    } else if (cat === 'print') {
+      hasPrint = true;
     } else {
-      hasFollowing = true;
+      hasAdvance = true;
     }
-    if (hasPrevious && hasFollowing) return true;
   }
-  return false;
+  
+  // Mixed if more than one type
+  const types = [hasPrevious, hasPrint, hasAdvance].filter(Boolean).length;
+  return types > 1;
 };
 
 // ============================================================
@@ -1092,7 +1124,7 @@ router.get('/billable-orders', async (req, res) => {
     const month = billing_month !== undefined ? parseInt(billing_month) : now.getMonth();
     const year = billing_year !== undefined ? parseInt(billing_year) : now.getFullYear();
 
-    // Get all active orders
+    // Get all signed orders (signed = active and billable)
     const ordersQuery = `
       SELECT 
         o.id, o.order_number, o.client_id, o.monthly_total, o.billing_preference,
@@ -1104,7 +1136,7 @@ router.get('/billable-orders', async (req, res) => {
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.sales_associate_id = u.id
-      WHERE o.status = 'active'
+      WHERE o.status = 'signed'
         AND o.contract_start_date <= $1::date
         AND (o.contract_end_date IS NULL OR o.contract_end_date >= $2::date)
       ORDER BY c.business_name
@@ -1164,26 +1196,14 @@ router.get('/billable-orders', async (req, res) => {
       const items = itemsByOrder[order.id] || [];
       const isMixed = hasMixedBillingCategories(items);
       
-      // Determine billing date based on campaign start
-      const startDay = parseInt(order.start_day) || 1;
-      const billOn15th = startDay >= 10 && startDay <= 20; // Started around 15th
-      
-      // Determine due date
-      let dueDay;
-      if (billOn15th) {
-        dueDay = 15;
-      } else {
-        dueDay = getLastBusinessDay(year, month);
-      }
-      const dueDate = new Date(year, month, dueDay);
-
       // Determine billing period based on categories
       let billingPeriod;
       if (isMixed) {
         // Mixed = bill at beginning of month for current month
         billingPeriod = {
           start: new Date(year, month, 1),
-          end: new Date(year, month + 1, 0)
+          end: new Date(year, month + 1, 0),
+          dueDay: null
         };
       } else if (items.length > 0) {
         // Use first item's category to determine period
@@ -1192,9 +1212,23 @@ router.get('/billable-orders', async (req, res) => {
         // Default to current month
         billingPeriod = {
           start: new Date(year, month, 1),
-          end: new Date(year, month + 1, 0)
+          end: new Date(year, month + 1, 0),
+          dueDay: null
         };
       }
+
+      // Determine due date
+      // If billingPeriod specifies a dueDay (like Print = 15th), use it
+      // Otherwise, use campaign start date logic (15th if started mid-month, last business day otherwise)
+      let dueDay;
+      if (billingPeriod.dueDay) {
+        dueDay = billingPeriod.dueDay;
+      } else {
+        const startDay = parseInt(order.start_day) || 1;
+        const billOn15th = startDay >= 10 && startDay <= 20;
+        dueDay = billOn15th ? 15 : getLastBusinessDay(year, month);
+      }
+      const dueDate = new Date(year, month, dueDay);
 
       // Calculate totals
       const subtotal = items.reduce((sum, item) => {
@@ -1258,7 +1292,7 @@ router.post('/generate-monthly', async (req, res) => {
     const month = billing_month !== undefined ? parseInt(billing_month) : now.getMonth();
     const year = billing_year !== undefined ? parseInt(billing_year) : now.getFullYear();
 
-    // Get billable orders (either specified or all)
+    // Get billable orders (either specified or all signed)
     let ordersQuery = `
       SELECT 
         o.id, o.order_number, o.client_id, o.monthly_total, o.billing_preference,
@@ -1268,7 +1302,7 @@ router.post('/generate-monthly', async (req, res) => {
         EXTRACT(DAY FROM o.contract_start_date) as start_day
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
-      WHERE o.status = 'active'
+      WHERE o.status = 'signed'
     `;
 
     const periodStart = new Date(year, month, 1);
@@ -1338,19 +1372,26 @@ router.post('/generate-monthly', async (req, res) => {
         const items = itemsByOrder[order.id] || [];
         const isMixed = hasMixedBillingCategories(items);
         
-        // Determine billing date
-        const startDay = parseInt(order.start_day) || 1;
-        const billOn15th = startDay >= 10 && startDay <= 20;
-        let dueDay = billOn15th ? 15 : getLastBusinessDay(year, month);
-        const dueDate = new Date(year, month, dueDay);
-
         // Determine billing period
         let billingPeriod;
         if (isMixed || items.length === 0) {
-          billingPeriod = { start: periodStart, end: periodEnd };
+          billingPeriod = { start: periodStart, end: periodEnd, dueDay: null };
         } else {
           billingPeriod = determineBillingPeriod(items[0].category_code, month, year);
         }
+
+        // Determine due date
+        // If billingPeriod specifies a dueDay (like Print = 15th), use it
+        // Otherwise, use campaign start date logic
+        let dueDay;
+        if (billingPeriod.dueDay) {
+          dueDay = billingPeriod.dueDay;
+        } else {
+          const startDay = parseInt(order.start_day) || 1;
+          const billOn15th = startDay >= 10 && startDay <= 20;
+          dueDay = billOn15th ? 15 : getLastBusinessDay(year, month);
+        }
+        const dueDate = new Date(year, month, dueDay);
 
         // Calculate totals
         const subtotal = items.reduce((sum, item) => {
