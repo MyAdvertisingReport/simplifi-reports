@@ -627,8 +627,81 @@ app.get('/api/users/:id/clients', authenticateToken, requireAdmin, async (req, r
 
 app.put('/api/clients/:id', authenticateToken, async (req, res) => {
   try {
-    const client = await dbHelper.updateClient(req.params.id, req.body);
-    res.json(client);
+    const {
+      name, logoPath, primaryColor, secondaryColor,
+      monthlyBudget, campaignGoal, contactName, contactEmail, startDate,
+      // New CRM fields
+      status, tier, industry, clientSince, source, tags, website, billingTerms
+    } = req.body;
+    
+    // Build dynamic update query for new CRM fields
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+    
+    // Handle existing fields through dbHelper pattern
+    if (name !== undefined) { updates.push(`name = $${paramCount++}`); values.push(name); }
+    if (logoPath !== undefined) { updates.push(`logo_path = $${paramCount++}`); values.push(logoPath); }
+    if (primaryColor !== undefined) { updates.push(`primary_color = $${paramCount++}`); values.push(primaryColor); }
+    if (secondaryColor !== undefined) { updates.push(`secondary_color = $${paramCount++}`); values.push(secondaryColor); }
+    if (monthlyBudget !== undefined) { updates.push(`monthly_budget = $${paramCount++}`); values.push(monthlyBudget); }
+    if (campaignGoal !== undefined) { updates.push(`campaign_goal = $${paramCount++}`); values.push(campaignGoal); }
+    if (contactName !== undefined) { updates.push(`contact_name = $${paramCount++}`); values.push(contactName); }
+    if (contactEmail !== undefined) { updates.push(`contact_email = $${paramCount++}`); values.push(contactEmail); }
+    if (startDate !== undefined) { updates.push(`start_date = $${paramCount++}`); values.push(startDate); }
+    
+    // New CRM fields
+    if (status !== undefined) { updates.push(`status = $${paramCount++}`); values.push(status); }
+    if (tier !== undefined) { updates.push(`tier = $${paramCount++}`); values.push(tier); }
+    if (industry !== undefined) { updates.push(`industry = $${paramCount++}`); values.push(industry); }
+    if (clientSince !== undefined) { updates.push(`client_since = $${paramCount++}`); values.push(clientSince); }
+    if (source !== undefined) { updates.push(`source = $${paramCount++}`); values.push(source); }
+    if (tags !== undefined) { updates.push(`tags = $${paramCount++}`); values.push(tags); }
+    if (website !== undefined) { updates.push(`website = $${paramCount++}`); values.push(website); }
+    if (billingTerms !== undefined) { updates.push(`billing_terms = $${paramCount++}`); values.push(billingTerms); }
+    
+    // Always update timestamp
+    updates.push(`updated_at = NOW()`);
+    
+    // Add the id as the last parameter
+    values.push(req.params.id);
+    
+    if (updates.length === 1) {
+      // Only updated_at, nothing else changed
+      const result = await adminPool.query(
+        'SELECT * FROM advertising_clients WHERE id = $1',
+        [req.params.id]
+      );
+      return res.json(result.rows[0]);
+    }
+    
+    const query = `
+      UPDATE advertising_clients 
+      SET ${updates.join(', ')}
+      WHERE id = $${paramCount}
+      RETURNING *
+    `;
+    
+    const result = await adminPool.query(query, values);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    // Log status change activity if status changed
+    if (status !== undefined) {
+      try {
+        await adminPool.query(
+          `INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
+           VALUES ($1, $2, 'status_change', $3, $4)`,
+          [req.params.id, req.user.id, `Status changed to ${status}`, `Updated by ${req.user.name || req.user.email}`]
+        );
+      } catch (activityErr) {
+        console.log('Activity logging skipped:', activityErr.message);
+      }
+    }
+    
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Update client error:', error);
     res.status(500).json({ error: 'Failed to update client' });
@@ -1056,6 +1129,236 @@ app.delete('/api/notes/:id', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Delete note error:', error);
     res.status(500).json({ error: 'Failed to delete note' });
+  }
+});
+
+// ============================================
+// CLIENT CONTACTS ROUTES
+// ============================================
+
+// Get all contacts for a client
+app.get('/api/clients/:clientId/contacts', authenticateToken, async (req, res) => {
+  try {
+    const result = await adminPool.query(
+      `SELECT * FROM contacts 
+       WHERE client_id = $1 
+       ORDER BY is_primary DESC, created_at ASC`,
+      [req.params.clientId]
+    );
+    res.json({ contacts: result.rows });
+  } catch (error) {
+    console.error('Get contacts error:', error);
+    res.status(500).json({ error: 'Failed to get contacts' });
+  }
+});
+
+// Create a new contact for a client
+app.post('/api/clients/:clientId/contacts', authenticateToken, async (req, res) => {
+  try {
+    const { 
+      first_name, last_name, email, phone, title, 
+      role, is_primary, preferred_contact_method, notes 
+    } = req.body;
+    
+    // If this contact is primary, unset other primary contacts first
+    if (is_primary) {
+      await adminPool.query(
+        'UPDATE contacts SET is_primary = false WHERE client_id = $1',
+        [req.params.clientId]
+      );
+    }
+    
+    const result = await adminPool.query(
+      `INSERT INTO contacts (
+        client_id, first_name, last_name, email, phone, title,
+        contact_type, role, is_primary, preferred_contact_method, notes,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+      RETURNING *`,
+      [
+        req.params.clientId, first_name, last_name, email, phone, title,
+        role || 'general', role || 'general', is_primary || false, 
+        preferred_contact_method || 'email', notes
+      ]
+    );
+    
+    // If primary, update the client's primary_contact_id
+    if (is_primary) {
+      await adminPool.query(
+        'UPDATE advertising_clients SET primary_contact_id = $1, updated_at = NOW() WHERE id = $2',
+        [result.rows[0].id, req.params.clientId]
+      );
+    }
+    
+    // Log activity
+    try {
+      await adminPool.query(
+        `INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
+         VALUES ($1, $2, 'contact_added', $3, $4)`,
+        [
+          req.params.clientId, 
+          req.user.id,
+          `Contact added: ${first_name} ${last_name}`,
+          `${title || 'Contact'} - ${email || phone || 'No contact info'}`
+        ]
+      );
+    } catch (activityErr) {
+      console.log('Activity logging skipped:', activityErr.message);
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Create contact error:', error);
+    res.status(500).json({ error: 'Failed to create contact' });
+  }
+});
+
+// Update a contact
+app.put('/api/clients/:clientId/contacts/:contactId', authenticateToken, async (req, res) => {
+  try {
+    const { 
+      first_name, last_name, email, phone, title,
+      role, is_primary, preferred_contact_method, notes 
+    } = req.body;
+    
+    // If this contact is being set as primary, unset other primary contacts first
+    if (is_primary) {
+      await adminPool.query(
+        'UPDATE contacts SET is_primary = false WHERE client_id = $1 AND id != $2',
+        [req.params.clientId, req.params.contactId]
+      );
+    }
+    
+    const result = await adminPool.query(
+      `UPDATE contacts SET
+        first_name = COALESCE($1, first_name),
+        last_name = COALESCE($2, last_name),
+        email = COALESCE($3, email),
+        phone = COALESCE($4, phone),
+        title = COALESCE($5, title),
+        role = COALESCE($6, role),
+        is_primary = COALESCE($7, is_primary),
+        preferred_contact_method = COALESCE($8, preferred_contact_method),
+        notes = COALESCE($9, notes),
+        updated_at = NOW()
+      WHERE id = $10 AND client_id = $11
+      RETURNING *`,
+      [
+        first_name, last_name, email, phone, title,
+        role, is_primary, preferred_contact_method, notes,
+        req.params.contactId, req.params.clientId
+      ]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    
+    // If primary, update the client's primary_contact_id
+    if (is_primary) {
+      await adminPool.query(
+        'UPDATE advertising_clients SET primary_contact_id = $1, updated_at = NOW() WHERE id = $2',
+        [req.params.contactId, req.params.clientId]
+      );
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update contact error:', error);
+    res.status(500).json({ error: 'Failed to update contact' });
+  }
+});
+
+// Delete a contact
+app.delete('/api/clients/:clientId/contacts/:contactId', authenticateToken, async (req, res) => {
+  try {
+    // Check if this is the primary contact
+    const checkResult = await adminPool.query(
+      'SELECT is_primary FROM contacts WHERE id = $1 AND client_id = $2',
+      [req.params.contactId, req.params.clientId]
+    );
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Contact not found' });
+    }
+    
+    // If deleting primary contact, clear the client's primary_contact_id
+    if (checkResult.rows[0].is_primary) {
+      await adminPool.query(
+        'UPDATE advertising_clients SET primary_contact_id = NULL WHERE id = $1',
+        [req.params.clientId]
+      );
+    }
+    
+    await adminPool.query(
+      'DELETE FROM contacts WHERE id = $1 AND client_id = $2',
+      [req.params.contactId, req.params.clientId]
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete contact error:', error);
+    res.status(500).json({ error: 'Failed to delete contact' });
+  }
+});
+
+// ============================================
+// CLIENT ACTIVITIES ROUTES
+// ============================================
+
+// Get activities for a client
+app.get('/api/clients/:clientId/activities', authenticateToken, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 50;
+    
+    // Try to get from client_activities table
+    const result = await adminPool.query(
+      `SELECT ca.*, u.name as user_name
+       FROM client_activities ca
+       LEFT JOIN users u ON ca.user_id = u.id
+       WHERE ca.client_id = $1
+       ORDER BY ca.created_at DESC
+       LIMIT $2`,
+      [req.params.clientId, limit]
+    );
+    
+    res.json({ activities: result.rows });
+  } catch (error) {
+    // If table doesn't exist yet, return empty array
+    if (error.code === '42P01') {
+      console.log('client_activities table not found - returning empty array');
+      res.json({ activities: [] });
+    } else {
+      console.error('Get activities error:', error);
+      res.status(500).json({ error: 'Failed to get activities' });
+    }
+  }
+});
+
+// Log a manual activity
+app.post('/api/clients/:clientId/activities', authenticateToken, async (req, res) => {
+  try {
+    const { activity_type, title, description, metadata } = req.body;
+    
+    const result = await adminPool.query(
+      `INSERT INTO client_activities (
+        client_id, user_id, activity_type, title, description, metadata, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      RETURNING *`,
+      [
+        req.params.clientId,
+        req.user.id,
+        activity_type || 'other',
+        title,
+        description,
+        metadata ? JSON.stringify(metadata) : '{}'
+      ]
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Create activity error:', error);
+    res.status(500).json({ error: 'Failed to create activity' });
   }
 });
 
