@@ -1161,7 +1161,7 @@ app.post('/api/brands', authenticateToken, requireAdmin, async (req, res) => {
 
 app.get('/api/clients', authenticateToken, async (req, res) => {
   try {
-    // Single efficient query that includes order and invoice stats via JOINs
+    // Single efficient query that includes order, invoice, and activity stats via JOINs
     // This eliminates the need for hundreds of individual API calls from the frontend
     const baseQuery = `
       SELECT 
@@ -1172,9 +1172,7 @@ app.get('/api/clients', authenticateToken, async (req, res) => {
         c.industry, 
         c.website,
         c.status, 
-        c.tier, 
         c.tags, 
-        c.source, 
         c.billing_terms,
         c.client_since, 
         c.annual_contract_value, 
@@ -1189,12 +1187,15 @@ app.get('/api/clients', authenticateToken, async (req, res) => {
         c.city, 
         c.state, 
         c.zip,
-        c.primary_contact_id, 
+        c.primary_contact_id,
+        c.primary_contact_name,
         c.simpli_fi_client_id as simplifi_org_id,
         c.qbo_customer_id_wsic, 
         c.qbo_customer_id_lkn, 
         c.stripe_customer_id, 
         c.notes,
+        -- Assigned user name
+        u.name as assigned_to_name,
         -- Order stats (aggregated via subquery)
         COALESCE(order_stats.total_orders, 0) as total_orders,
         COALESCE(order_stats.active_orders, 0) as active_orders,
@@ -1202,8 +1203,12 @@ app.get('/api/clients', authenticateToken, async (req, res) => {
         -- Invoice stats (aggregated via subquery)
         COALESCE(invoice_stats.total_invoices, 0) as total_invoices,
         COALESCE(invoice_stats.open_invoices, 0) as open_invoices,
-        COALESCE(invoice_stats.open_balance, 0) as open_balance
+        COALESCE(invoice_stats.open_balance, 0) as open_balance,
+        -- Activity count
+        COALESCE(activity_stats.activity_count, 0) as activity_count
       FROM advertising_clients c
+      -- Left join assigned user
+      LEFT JOIN users u ON c.assigned_to = u.id
       -- Left join order stats
       LEFT JOIN (
         SELECT 
@@ -1224,6 +1229,14 @@ app.get('/api/clients', authenticateToken, async (req, res) => {
         FROM invoices
         GROUP BY client_id
       ) invoice_stats ON c.id = invoice_stats.client_id
+      -- Left join activity stats
+      LEFT JOIN (
+        SELECT 
+          client_id,
+          COUNT(*) as activity_count
+        FROM client_activities
+        GROUP BY client_id
+      ) activity_stats ON c.id = activity_stats.client_id
     `;
     
     let result;

@@ -2332,27 +2332,27 @@ function ClientsPage() {
             </div>
           ) : (
             <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr style={{ background: '#f9fafb', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Business</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Status</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Owner</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Source</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Last Touch</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Revenue</th>
-                    <th style={{ padding: '0.75rem 1rem', width: '120px', background: '#f9fafb' }}></th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Industry</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Last Touch</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Activities</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '100px', background: '#f9fafb' }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredClients.map(c => {
                     const orderStats = clientOrderStats[c.id] || {};
                     const statusConfig = {
-                      lead: { bg: '#fef3c7', color: '#92400e', icon: '🎯' },
-                      prospect: { bg: '#dbeafe', color: '#1e40af', icon: '👋' },
-                      active: { bg: '#dcfce7', color: '#166534', icon: '✅' },
-                      inactive: { bg: '#f3f4f6', color: '#6b7280', icon: '⏸️' },
-                      churned: { bg: '#fee2e2', color: '#991b1b', icon: '❌' }
+                      lead: { bg: '#fef3c7', color: '#92400e', icon: '🎯', dot: '#f59e0b' },
+                      prospect: { bg: '#e0e7ff', color: '#3730a3', icon: '👋', dot: '#6366f1' },
+                      active: { bg: '#dcfce7', color: '#166534', icon: '✅', dot: '#22c55e' },
+                      inactive: { bg: '#f3f4f6', color: '#6b7280', icon: '⏸️', dot: '#9ca3af' },
+                      churned: { bg: '#fee2e2', color: '#991b1b', icon: '❌', dot: '#ef4444' }
                     };
                     const status = statusConfig[c.status] || statusConfig.prospect;
                     const isOpen = !c.assigned_to;
@@ -2363,6 +2363,9 @@ function ClientsPage() {
                     const daysSince = lastActivity ? Math.floor((Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)) : null;
                     const touchStatus = daysSince === null ? 'unknown' : daysSince <= 7 ? 'hot' : daysSince <= 30 ? 'warm' : 'cold';
                     
+                    // Activity count (from stats if available)
+                    const activityCount = c.activity_count || 0;
+                    
                     return (
                       <tr key={c.id} style={{ 
                         borderBottom: '1px solid #f3f4f6',
@@ -2370,32 +2373,25 @@ function ClientsPage() {
                       }}>
                         <td style={{ padding: '0.75rem 1rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {/* Status dot instead of avatar */}
                             <div style={{ 
-                              width: 40, height: 40, borderRadius: '0.5rem', 
-                              background: c.primary_color || (isOpen ? '#f59e0b' : isMine ? '#3b82f6' : '#6b7280'), 
-                              display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                              color: 'white', fontWeight: 600, fontSize: '0.9375rem' 
-                            }}>
-                              {(() => {
-                                const name = c.business_name || c.name || '?';
-                                const firstChar = name.charAt(0).toUpperCase();
-                                // If starts with number, show the number
-                                return firstChar;
-                              })()}
-                            </div>
+                              width: 10, height: 10, borderRadius: '50%', 
+                              background: status.dot,
+                              flexShrink: 0
+                            }} />
                             <div>
                               <div style={{ fontWeight: 500, color: '#111827' }}>{c.business_name || c.name}</div>
-                              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-                                {c.primary_contact_name || c.industry || '—'}
-                              </div>
+                              {c.primary_contact_name && (
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                  {c.primary_contact_name}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                           <span style={{ 
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
+                            display: 'inline-block',
                             padding: '0.25rem 0.625rem', 
                             background: status.bg, 
                             color: status.color,
@@ -2404,47 +2400,36 @@ function ClientsPage() {
                             fontWeight: 500,
                             textTransform: 'capitalize'
                           }}>
-                            {status.icon} {c.status || 'prospect'}
+                            {c.status || 'prospect'}
                           </span>
                         </td>
                         <td style={{ padding: '0.75rem 1rem' }}>
                           {isOpen ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ 
-                                padding: '0.25rem 0.5rem', 
-                                background: '#fef3c7', 
-                                color: '#92400e',
-                                borderRadius: '0.375rem', 
+                            <button
+                              onClick={(e) => { e.stopPropagation(); claimAccount(c.id); }}
+                              disabled={claimingId === c.id}
+                              style={{
+                                padding: '0.375rem 0.75rem',
+                                background: '#f59e0b',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.375rem',
                                 fontSize: '0.75rem',
-                                fontWeight: 500
-                              }}>
-                                🟡 Open
-                              </span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); claimAccount(c.id); }}
-                                disabled={claimingId === c.id}
-                                style={{
-                                  padding: '0.25rem 0.5rem',
-                                  background: '#3b82f6',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '0.375rem',
-                                  fontSize: '0.6875rem',
-                                  fontWeight: 500,
-                                  cursor: claimingId === c.id ? 'wait' : 'pointer',
-                                  opacity: claimingId === c.id ? 0.7 : 1
-                                }}
-                              >
-                                {claimingId === c.id ? '...' : 'Claim'}
-                              </button>
-                            </div>
+                                fontWeight: 600,
+                                cursor: claimingId === c.id ? 'wait' : 'pointer',
+                                opacity: claimingId === c.id ? 0.7 : 1
+                              }}
+                            >
+                              {claimingId === c.id ? 'Claiming...' : '+ Claim'}
+                            </button>
                           ) : (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <div style={{ 
                                 width: 24, height: 24, borderRadius: '50%', 
-                                background: isMine ? '#3b82f6' : '#6b7280', 
+                                background: isMine ? '#3b82f6' : '#e5e7eb', 
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                                color: 'white', fontWeight: 600, fontSize: '0.625rem' 
+                                color: isMine ? 'white' : '#6b7280', 
+                                fontWeight: 600, fontSize: '0.625rem' 
                               }}>
                                 {c.assigned_to_name?.charAt(0) || '?'}
                               </div>
@@ -2453,35 +2438,40 @@ function ClientsPage() {
                                 fontWeight: isMine ? 600 : 400,
                                 color: isMine ? '#1e40af' : '#374151'
                               }}>
-                                {isMine ? 'You' : c.assigned_to_name || 'Unknown'}
+                                {isMine ? 'You' : (c.assigned_to_name?.split(' ')[0] || 'Unknown')}
                               </span>
                             </div>
                           )}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: '#6b7280' }}>
-                          {c.source || c.previous_owner || '—'}
+                          {c.industry || '—'}
                         </td>
-                        <td style={{ padding: '0.75rem 1rem' }}>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                           {daysSince !== null ? (
                             <span style={{ 
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.25rem',
+                              gap: '0.375rem',
                               fontSize: '0.8125rem',
-                              color: touchStatus === 'hot' ? '#059669' : touchStatus === 'warm' ? '#d97706' : '#dc2626'
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '0.375rem',
+                              background: touchStatus === 'hot' ? '#dcfce7' : touchStatus === 'warm' ? '#fef3c7' : '#fee2e2',
+                              color: touchStatus === 'hot' ? '#166534' : touchStatus === 'warm' ? '#92400e' : '#991b1b'
                             }}>
-                              <span style={{
-                                width: 8, height: 8, borderRadius: '50%',
-                                background: touchStatus === 'hot' ? '#10b981' : touchStatus === 'warm' ? '#f59e0b' : '#ef4444'
-                              }} />
-                              {daysSince === 0 ? 'Today' : daysSince === 1 ? '1 day' : `${daysSince} days`}
+                              {daysSince === 0 ? 'Today' : daysSince === 1 ? '1d' : `${daysSince}d`}
                             </span>
                           ) : (
                             <span style={{ fontSize: '0.8125rem', color: '#9ca3af' }}>—</span>
                           )}
                         </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 600, color: orderStats.totalRevenue > 0 ? '#059669' : '#9ca3af' }}>
-                          {orderStats.totalRevenue ? formatCurrency(orderStats.totalRevenue) : '—'}
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <span style={{ 
+                            fontSize: '0.875rem', 
+                            fontWeight: activityCount > 0 ? 600 : 400,
+                            color: activityCount > 0 ? '#3b82f6' : '#9ca3af'
+                          }}>
+                            {activityCount || '—'}
+                          </span>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                           <Link 
@@ -2508,24 +2498,20 @@ function ClientsPage() {
                 </tbody>
                 {/* CRM Totals Footer */}
                 <tfoot>
-                  <tr style={{ background: 'linear-gradient(135deg, #ede9fe 0%, #dbeafe 100%)', borderTop: '2px solid #c4b5fd' }}>
-                    <td style={{ padding: '1rem', fontWeight: 600, color: '#5b21b6' }}>
+                  <tr style={{ background: 'linear-gradient(135deg, #f0f9ff 0%, #e0e7ff 100%)', borderTop: '2px solid #c7d2fe' }}>
+                    <td style={{ padding: '1rem', fontWeight: 600, color: '#3730a3' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Users size={18} color="#7c3aed" />
-                        <span>Total ({filteredClients.length} accounts)</span>
+                        <Users size={18} color="#6366f1" />
+                        <span>{filteredClients.length} accounts</span>
                       </div>
                     </td>
                     <td style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: '#6b7280' }}>
-                      {statusCounts.active} active
+                      {filteredClients.filter(c => c.status === 'active').length} active
                     </td>
                     <td style={{ padding: '1rem', fontSize: '0.75rem', color: '#6b7280' }}>
-                      {ownerCounts.open} open
+                      {filteredClients.filter(c => !c.assigned_to).length} open
                     </td>
-                    <td colSpan={2} style={{ padding: '1rem' }}></td>
-                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#059669' }}>
-                      {formatCurrency(filteredClients.reduce((sum, c) => sum + (clientOrderStats[c.id]?.totalRevenue || 0), 0))}
-                    </td>
-                    <td style={{ padding: '1rem' }}></td>
+                    <td colSpan={4} style={{ padding: '1rem' }}></td>
                   </tr>
                 </tfoot>
               </table>
