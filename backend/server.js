@@ -507,16 +507,44 @@ app.post('/api/brands', authenticateToken, requireAdmin, async (req, res) => {
 app.get('/api/clients', authenticateToken, async (req, res) => {
   try {
     let clients;
-    // Admins and sales managers see all clients, sales associates only see assigned clients
+    // Use direct query to get all CRM fields
+    const query = `
+      SELECT 
+        id, business_name as name, business_name, slug, industry, website,
+        status, tier, tags, source, billing_terms,
+        client_since, annual_contract_value, last_activity_at,
+        assigned_to, created_by, created_at, updated_at,
+        phone, address_line1, address_line2, city, state, zip,
+        primary_contact_id, simpli_fi_client_id as simplifi_org_id,
+        qbo_customer_id_wsic, qbo_customer_id_lkn, stripe_customer_id, notes
+      FROM advertising_clients
+      ORDER BY business_name ASC
+    `;
+    
     if (req.user.role === 'admin' || req.user.role === 'sales_manager') {
-      clients = await dbHelper.getAllClients();
+      const result = await adminPool.query(query);
+      clients = result.rows;
     } else {
-      clients = await dbHelper.getClientsByUserId(req.user.id);
+      // Sales associates only see assigned clients
+      const assignedQuery = query.replace('ORDER BY', 'WHERE assigned_to = $1 ORDER BY');
+      const result = await adminPool.query(assignedQuery, [req.user.id]);
+      clients = result.rows;
     }
     res.json(clients);
   } catch (error) {
     console.error('Get clients error:', error);
-    res.status(500).json({ error: 'Failed to get clients' });
+    // Fallback to dbHelper if direct query fails
+    try {
+      let clients;
+      if (req.user.role === 'admin' || req.user.role === 'sales_manager') {
+        clients = await dbHelper.getAllClients();
+      } else {
+        clients = await dbHelper.getClientsByUserId(req.user.id);
+      }
+      res.json(clients);
+    } catch (fallbackError) {
+      res.status(500).json({ error: 'Failed to get clients' });
+    }
   }
 });
 
