@@ -1776,9 +1776,10 @@ function ClientsPage() {
   const { isMobile } = useResponsive();
   
   // View mode and filters
-  const [viewMode, setViewMode] = useState(() => localStorage.getItem('clientsViewMode') || 'crm'); // 'campaign' or 'crm'
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('clientsViewMode') || 'crm'); // 'client' or 'crm'
   const [statusFilter, setStatusFilter] = useState('all');
   const [tierFilter, setTierFilter] = useState('all');
+  const [brandFilter, setBrandFilter] = useState('all'); // 'all', 'WSIC', 'LKNW', 'multi'
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -2004,19 +2005,37 @@ function ClientsPage() {
 
   // Filter clients based on current filters
   const filteredClients = clients.filter(c => {
-    // Search filter
+    // Search filter - also search tags
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
+      const tagsMatch = c.tags?.some(t => t.toLowerCase().includes(query));
       if (!c.name?.toLowerCase().includes(query) && 
           !c.business_name?.toLowerCase().includes(query) &&
-          !c.industry?.toLowerCase().includes(query)) {
+          !c.industry?.toLowerCase().includes(query) &&
+          !c.source?.toLowerCase().includes(query) &&
+          !tagsMatch) {
         return false;
       }
     }
-    // Status filter
-    if (statusFilter !== 'all' && c.status !== statusFilter) return false;
-    // Tier filter
-    if (tierFilter !== 'all' && c.tier !== tierFilter) return false;
+    // Status filter (CRM view)
+    if (viewMode === 'crm' && statusFilter !== 'all' && c.status !== statusFilter) return false;
+    // Tier filter (CRM view)
+    if (viewMode === 'crm' && tierFilter !== 'all' && c.tier !== tierFilter) return false;
+    // Brand filter (Client view) - check tags for WSIC/LKNW
+    if (viewMode === 'client' && brandFilter !== 'all') {
+      const hasWSIC = c.tags?.includes('WSIC') || c.source?.includes('WSIC');
+      const hasLKNW = c.tags?.includes('LKNW') || c.source?.includes('Lake Norman');
+      if (brandFilter === 'WSIC' && !hasWSIC) return false;
+      if (brandFilter === 'LKNW' && !hasLKNW) return false;
+      if (brandFilter === 'multi' && !(hasWSIC && hasLKNW)) return false;
+    }
+    // Client view only shows active clients (has orders or status = active)
+    if (viewMode === 'client') {
+      const orderStats = clientOrderStats[c.id];
+      const hasOrders = orderStats?.totalOrders > 0;
+      const isActive = c.status === 'active';
+      if (!hasOrders && !isActive) return false;
+    }
     return true;
   });
 
@@ -2028,6 +2047,14 @@ function ClientsPage() {
     active: clients.filter(c => c.status === 'active').length,
     inactive: clients.filter(c => c.status === 'inactive').length,
     churned: clients.filter(c => c.status === 'churned').length
+  };
+
+  // Brand counts for Client view
+  const brandCounts = {
+    all: clients.filter(c => c.status === 'active' || clientOrderStats[c.id]?.totalOrders > 0).length,
+    WSIC: clients.filter(c => (c.status === 'active' || clientOrderStats[c.id]?.totalOrders > 0) && (c.tags?.includes('WSIC') || c.source?.includes('WSIC'))).length,
+    LKNW: clients.filter(c => (c.status === 'active' || clientOrderStats[c.id]?.totalOrders > 0) && (c.tags?.includes('LKNW') || c.source?.includes('Lake Norman'))).length,
+    multi: clients.filter(c => (c.status === 'active' || clientOrderStats[c.id]?.totalOrders > 0) && (c.tags?.includes('WSIC') || c.source?.includes('WSIC')) && (c.tags?.includes('LKNW') || c.source?.includes('Lake Norman'))).length
   };
 
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
@@ -2110,7 +2137,7 @@ function ClientsPage() {
             <Users size={16} /> CRM View
           </button>
           <button
-            onClick={() => setViewMode('campaign')}
+            onClick={() => setViewMode('client')}
             style={{
               padding: '0.5rem 1rem',
               border: 'none',
@@ -2121,12 +2148,12 @@ function ClientsPage() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.375rem',
-              background: viewMode === 'campaign' ? 'white' : 'transparent',
-              color: viewMode === 'campaign' ? '#1e3a8a' : '#6b7280',
-              boxShadow: viewMode === 'campaign' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+              background: viewMode === 'client' ? 'white' : 'transparent',
+              color: viewMode === 'client' ? '#1e3a8a' : '#6b7280',
+              boxShadow: viewMode === 'client' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
             }}
           >
-            <BarChart3 size={16} /> Campaign View
+            <Building2 size={16} /> Client View
           </button>
         </div>
 
@@ -2187,6 +2214,27 @@ function ClientsPage() {
               <option value="gold">🥇 Gold</option>
               <option value="silver">🥈 Silver</option>
               <option value="bronze">🥉 Bronze</option>
+            </select>
+          </div>
+        )}
+        {viewMode === 'client' && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <select
+              value={brandFilter}
+              onChange={(e) => setBrandFilter(e.target.value)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                background: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="all">All Brands ({brandCounts.all})</option>
+              <option value="WSIC">📻 WSIC Radio ({brandCounts.WSIC})</option>
+              <option value="LKNW">📰 Lake Norman Woman ({brandCounts.LKNW})</option>
+              <option value="multi">🌐 Multi-Platform ({brandCounts.multi})</option>
             </select>
           </div>
         )}
@@ -2378,322 +2426,178 @@ function ClientsPage() {
         </div>
       )}
 
-      {/* Campaign View (Original) */}
-      {viewMode === 'campaign' && (
-      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
-        {filteredClients.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center' }}>
-            <Building2 size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
-            <p style={{ color: '#6b7280' }}>No clients yet.</p>
-            {user?.role === 'admin' && (
-              <button 
-                onClick={openSyncModal}
-                style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#0d9488', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
-              >
-                Sync from Simpli.fi
-              </button>
-            )}
-          </div>
-        ) : isMobile ? (
-          /* Mobile: Card layout with all data visible */
-          <div>
-            {filteredClients.map((c, idx) => {
-              const stats = clientStats[c.id];
-              const status = getStatusIndicator(stats);
-              return (
-                <div key={c.id} style={{ 
-                  padding: '1rem', 
-                  borderBottom: idx < clients.length - 1 ? '1px solid #f3f4f6' : 'none'
-                }}>
-                  {/* Row 1: Logo, Name, Status Badge */}
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                    {c.logo_path ? (
-                      <img src={c.logo_path} alt={c.name} style={{ width: 36, height: 36, borderRadius: '0.5rem', objectFit: 'contain', flexShrink: 0 }} onError={(e) => { e.target.style.display = 'none'; }} />
-                    ) : (
-                      <div style={{ width: 36, height: 36, borderRadius: '0.5rem', background: c.primary_color || '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: '0.875rem', flexShrink: 0 }}>{c.name.charAt(0)}</div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                        <div style={{ fontWeight: 500, fontSize: '0.9375rem' }}>{c.name}</div>
-                        <span style={{ 
-                          padding: '0.25rem 0.5rem', 
-                          background: status.bg, 
-                          color: status.color,
-                          borderRadius: '9999px', 
-                          fontSize: '0.6875rem',
-                          fontWeight: 500,
-                          flexShrink: 0
-                        }}>
-                          {status.label}
-                        </span>
-                      </div>
-                      {/* Strategy Tags */}
-                      {stats && !stats.error && stats.strategies && stats.strategies.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                          {stats.strategies.map(strategy => (
-                            <span key={strategy} style={{ 
-                              padding: '0.125rem 0.375rem', 
-                              background: '#f3f4f6', 
-                              borderRadius: '0.25rem', 
-                              fontSize: '0.625rem',
-                              color: '#6b7280',
-                              fontWeight: 500
-                            }}>
-                              {strategy}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Row 2: Stats Grid */}
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(4, 1fr)', 
-                    gap: '0.5rem',
-                    background: '#f9fafb',
-                    padding: '0.75rem',
-                    borderRadius: '0.5rem',
-                    marginBottom: '0.5rem'
-                  }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Campaigns</div>
-                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: stats?.activeCampaigns > 0 ? '#10b981' : '#9ca3af' }}>
-                        {stats && !stats.error ? stats.activeCampaigns : '—'}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Impr</div>
-                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#374151' }}>
-                        {stats && !stats.error ? formatNumber(stats.impressions) : '—'}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Clicks</div>
-                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#374151' }}>
-                        {stats && !stats.error ? formatNumber(stats.clicks) : '—'}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: '0.5625rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.025em' }}>Spend</div>
-                      <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#374151' }}>
-                        {stats && !stats.error ? formatCurrency(stats.spend) : '—'}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Row 3: View Button */}
-                  <Link 
-                    to={`/client/${c.slug}`} 
-                    style={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.25rem',
-                      padding: '0.5rem',
-                      background: '#f3f4f6',
-                      color: '#374151',
-                      borderRadius: '0.375rem',
-                      fontSize: '0.8125rem',
-                      textDecoration: 'none',
-                      fontWeight: 500
-                    }}
-                  >
-                    View Report <ChevronRight size={14} />
-                  </Link>
-                </div>
-              );
-            })}
-            
-            {/* Mobile Totals */}
-            <div style={{ 
-              padding: '1rem', 
-              background: 'linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%)',
-              borderTop: '2px solid #a7f3d0'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                <BarChart3 size={16} color="#059669" />
-                <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.875rem' }}>Total ({filteredClients.length} clients) - Past 30 Days</span>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Campaigns</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
-                    {Object.values(clientStats).reduce((sum, s) => sum + (s?.activeCampaigns || 0), 0)}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Impr</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
-                    {formatNumber(Object.values(clientStats).reduce((sum, s) => sum + (s?.impressions || 0), 0))}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Clicks</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
-                    {formatNumber(Object.values(clientStats).reduce((sum, s) => sum + (s?.clicks || 0), 0))}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '0.5625rem', color: '#065f46', textTransform: 'uppercase' }}>Spend</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: '#059669' }}>
-                    {formatCurrency(Object.values(clientStats).reduce((sum, s) => sum + (s?.spend || 0), 0))}
-                  </div>
-                </div>
-              </div>
+      {/* Client View - Active clients organized by brand */}
+      {viewMode === 'client' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+          {filteredClients.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <Building2 size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
+              <p style={{ color: '#6b7280' }}>No active clients found.</p>
+              <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Clients appear here when they have active orders or are marked as active.</p>
             </div>
-          </div>
-        ) : (
-          /* Desktop: Original table layout */
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={{ padding: '0.5rem 1rem 0', textAlign: 'left' }}></th>
-                <th style={{ padding: '0.5rem 1rem 0', textAlign: 'center' }}></th>
-                <th style={{ padding: '0.5rem 1rem 0', textAlign: 'center' }}></th>
-                <th colSpan={3} style={{ padding: '0.5rem 1rem 0', textAlign: 'center', fontSize: '0.625rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <div style={{ borderBottom: '1px solid #d1d5db', paddingBottom: '0.375rem', marginBottom: '0.375rem' }}>Past 30 Days</div>
-                </th>
-                <th style={{ padding: '0.5rem 1rem 0' }}></th>
-              </tr>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={{ padding: '0 1rem 0.75rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Client</th>
-                <th style={{ padding: '0 1rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
-                <th style={{ padding: '0 1rem 0.75rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Campaigns</th>
-                <th style={{ padding: '0 1rem 0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Impressions</th>
-                <th style={{ padding: '0 1rem 0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Clicks</th>
-                <th style={{ padding: '0 1rem 0.75rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Spend</th>
-                <th style={{ padding: '0 1rem 0.75rem', width: '80px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredClients.map(c => {
-                const stats = clientStats[c.id];
-                const status = getStatusIndicator(stats);
-                return (
-                  <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        {c.logo_path ? (
-                          <img src={c.logo_path} alt={c.name} style={{ width: 36, height: 36, borderRadius: '0.5rem', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
-                        ) : (
-                          <div style={{ width: 36, height: 36, borderRadius: '0.5rem', background: c.primary_color || '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>{c.name.charAt(0)}</div>
-                        )}
-                        <div>
-                          <div style={{ fontWeight: 500 }}>{c.name}</div>
-                          {stats && !stats.error && stats.strategies && stats.strategies.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.25rem' }}>
-                              {stats.strategies.map(strategy => (
-                                <span key={strategy} style={{ 
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Client</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Brand</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Products</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Revenue</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Orders</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Balance</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '80px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredClients.map(c => {
+                    const orderStats = clientOrderStats[c.id] || {};
+                    const hasWSIC = c.tags?.includes('WSIC') || c.source?.includes('WSIC');
+                    const hasLKNW = c.tags?.includes('LKNW') || c.source?.includes('Lake Norman');
+                    
+                    // Get product tags (inventory types from import)
+                    const productTags = c.tags?.filter(t => 
+                      !['WSIC', 'LKNW', 'LWP', 'Trade/Barter', 'Internal', 'Programmatic'].includes(t)
+                    ) || [];
+                    
+                    return (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ 
+                              width: 36, height: 36, borderRadius: '0.5rem', 
+                              background: hasWSIC && hasLKNW ? 'linear-gradient(135deg, #1e3a8a 50%, #be185d 50%)' : 
+                                         hasWSIC ? '#1e3a8a' : '#be185d',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                              color: 'white', fontWeight: 600, fontSize: '0.875rem' 
+                            }}>
+                              {(c.business_name || c.name || '?').charAt(0)}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 500 }}>{c.business_name || c.name}</div>
+                              {c.tags?.includes('Trade/Barter') && (
+                                <span style={{ 
                                   padding: '0.125rem 0.375rem', 
-                                  background: '#f3f4f6', 
+                                  background: '#fef3c7', 
+                                  color: '#92400e',
                                   borderRadius: '0.25rem', 
                                   fontSize: '0.625rem',
-                                  color: '#6b7280',
                                   fontWeight: 500
                                 }}>
-                                  {strategy}
+                                  Trade/Barter
                                 </span>
-                              ))}
+                              )}
                             </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                            {hasWSIC && (
+                              <span style={{ 
+                                padding: '0.25rem 0.5rem', 
+                                background: '#dbeafe', 
+                                color: '#1e40af',
+                                borderRadius: '0.25rem', 
+                                fontSize: '0.6875rem',
+                                fontWeight: 500
+                              }}>
+                                📻 WSIC
+                              </span>
+                            )}
+                            {hasLKNW && (
+                              <span style={{ 
+                                padding: '0.25rem 0.5rem', 
+                                background: '#fce7f3', 
+                                color: '#9d174d',
+                                borderRadius: '0.25rem', 
+                                fontSize: '0.6875rem',
+                                fontWeight: 500
+                              }}>
+                                📰 LKNW
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                            {productTags.slice(0, 3).map((tag, i) => (
+                              <span key={i} style={{ 
+                                padding: '0.125rem 0.375rem', 
+                                background: '#f3f4f6', 
+                                color: '#374151',
+                                borderRadius: '0.25rem', 
+                                fontSize: '0.625rem',
+                                fontWeight: 500
+                              }}>
+                                {tag}
+                              </span>
+                            ))}
+                            {productTags.length > 3 && (
+                              <span style={{ fontSize: '0.625rem', color: '#6b7280' }}>+{productTags.length - 3}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 600, color: '#059669' }}>
+                          {orderStats.totalRevenue ? formatCurrency(orderStats.totalRevenue) : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <span style={{ fontWeight: 600, color: orderStats.activeOrders > 0 ? '#059669' : '#9ca3af' }}>
+                            {orderStats.activeOrders ?? 0}
+                          </span>
+                          {orderStats.totalOrders > 0 && orderStats.totalOrders !== orderStats.activeOrders && (
+                            <span style={{ color: '#9ca3af', fontSize: '0.75rem' }}> / {orderStats.totalOrders}</span>
                           )}
-                        </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', color: orderStats.openBalance > 0 ? '#dc2626' : '#6b7280' }}>
+                          {orderStats.openBalance ? formatCurrency(orderStats.openBalance) : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <Link 
+                            to={`/client/${c.slug}`} 
+                            style={{ 
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              padding: '0.375rem 0.75rem',
+                              background: '#f3f4f6',
+                              color: '#374151',
+                              borderRadius: '0.375rem',
+                              fontSize: '0.8125rem',
+                              textDecoration: 'none',
+                              fontWeight: 500
+                            }}
+                          >
+                            View <ChevronRight size={14} />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #fce7f3 100%)', borderTop: '2px solid #93c5fd' }}>
+                    <td style={{ padding: '1rem', fontWeight: 600, color: '#1e40af' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Building2 size={18} color="#2563eb" />
+                        <span>Total ({filteredClients.length} active clients)</span>
                       </div>
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                      <span style={{ 
-                        display: 'inline-block',
-                        padding: '0.25rem 0.625rem', 
-                        background: status.bg, 
-                        color: status.color,
-                        borderRadius: '9999px', 
-                        fontSize: '0.75rem',
-                        fontWeight: 500
-                      }}>
-                        {status.label}
-                      </span>
+                    <td colSpan={2} style={{ padding: '1rem' }}></td>
+                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#059669' }}>
+                      {formatCurrency(filteredClients.reduce((sum, c) => sum + (clientOrderStats[c.id]?.totalRevenue || 0), 0))}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                      {stats && !stats.error ? (
-                        <span style={{ fontWeight: 600, color: stats.activeCampaigns > 0 ? '#10b981' : '#9ca3af' }}>
-                          {stats.activeCampaigns}
-                        </span>
-                      ) : (
-                        <span style={{ color: '#9ca3af' }}>—</span>
-                      )}
+                    <td style={{ padding: '1rem', textAlign: 'center', fontWeight: 700, color: '#059669' }}>
+                      {filteredClients.reduce((sum, c) => sum + (clientOrderStats[c.id]?.activeOrders || 0), 0)}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                      {stats && !stats.error ? formatNumber(stats.impressions) : '—'}
+                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#dc2626' }}>
+                      {formatCurrency(filteredClients.reduce((sum, c) => sum + (clientOrderStats[c.id]?.openBalance || 0), 0))}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                      {stats && !stats.error ? formatNumber(stats.clicks) : '—'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                      {stats && !stats.error ? formatCurrency(stats.spend) : '—'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                      <Link 
-                        to={`/client/${c.slug}`} 
-                        style={{ 
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          padding: '0.375rem 0.75rem',
-                          background: '#f3f4f6',
-                          color: '#374151',
-                          borderRadius: '0.375rem',
-                          fontSize: '0.8125rem',
-                          textDecoration: 'none',
-                          fontWeight: 500
-                        }}
-                      >
-                        View <ChevronRight size={14} />
-                      </Link>
-                    </td>
+                    <td style={{ padding: '1rem' }}></td>
                   </tr>
-                );
-              })}
-            </tbody>
-            {/* Totals Footer Row */}
-            <tfoot>
-              <tr style={{ background: 'linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%)', borderTop: '2px solid #a7f3d0' }}>
-                <td style={{ padding: '1rem', fontWeight: 600, color: '#065f46' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <BarChart3 size={18} color="#059669" />
-                    <span>Total ({filteredClients.length} clients)</span>
-                  </div>
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'center' }}></td>
-                <td style={{ padding: '1rem', textAlign: 'center', fontWeight: 700, color: '#059669' }}>
-                  {Object.values(clientStats).reduce((sum, s) => sum + (s?.activeCampaigns || 0), 0)}
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#0d9488' }}>
-                  {formatNumber(Object.values(clientStats).reduce((sum, s) => sum + (s?.impressions || 0), 0))}
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#3b82f6' }}>
-                  {formatNumber(Object.values(clientStats).reduce((sum, s) => sum + (s?.clicks || 0), 0))}
-                </td>
-                <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#059669' }}>
-                  {formatCurrency(Object.values(clientStats).reduce((sum, s) => sum + (s?.spend || 0), 0))}
-                </td>
-                <td style={{ padding: '1rem' }}></td>
-              </tr>
-            </tfoot>
-          </table>
-        )}
-      </div>
-      )}
-
-      {/* Date range indicator - only show for campaign view */}
-      {viewMode === 'campaign' && filteredClients.length > 0 && (
-        <div style={{ marginTop: '1rem', textAlign: 'right', fontSize: '0.75rem', color: '#9ca3af' }}>
-          Campaign stats shown for {(() => {
-            const now = new Date();
-            const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-            return `${formatDate(thirtyDaysAgo)} – ${formatDate(now)}`;
-          })()}
+                </tfoot>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
