@@ -506,43 +506,104 @@ app.post('/api/brands', authenticateToken, requireAdmin, async (req, res) => {
 
 app.get('/api/clients', authenticateToken, async (req, res) => {
   try {
-    let clients;
-    // Use direct query to get all CRM fields
-    const query = `
+    // Single efficient query that includes order and invoice stats via JOINs
+    // This eliminates the need for hundreds of individual API calls from the frontend
+    const baseQuery = `
       SELECT 
-        id, business_name as name, business_name, slug, industry, website,
-        status, tier, tags, source, billing_terms,
-        client_since, annual_contract_value, last_activity_at,
-        assigned_to, created_by, created_at, updated_at,
-        phone, address_line1, address_line2, city, state, zip,
-        primary_contact_id, simpli_fi_client_id as simplifi_org_id,
-        qbo_customer_id_wsic, qbo_customer_id_lkn, stripe_customer_id, notes
-      FROM advertising_clients
-      ORDER BY business_name ASC
+        c.id, 
+        c.business_name as name, 
+        c.business_name, 
+        c.slug, 
+        c.industry, 
+        c.website,
+        c.status, 
+        c.tier, 
+        c.tags, 
+        c.source, 
+        c.billing_terms,
+        c.client_since, 
+        c.annual_contract_value, 
+        c.last_activity_at,
+        c.assigned_to, 
+        c.created_by, 
+        c.created_at, 
+        c.updated_at,
+        c.phone, 
+        c.address_line1, 
+        c.address_line2, 
+        c.city, 
+        c.state, 
+        c.zip,
+        c.primary_contact_id, 
+        c.simpli_fi_client_id as simplifi_org_id,
+        c.qbo_customer_id_wsic, 
+        c.qbo_customer_id_lkn, 
+        c.stripe_customer_id, 
+        c.notes,
+        -- Order stats (aggregated via subquery)
+        COALESCE(order_stats.total_orders, 0) as total_orders,
+        COALESCE(order_stats.active_orders, 0) as active_orders,
+        COALESCE(order_stats.total_revenue, 0) as total_revenue,
+        -- Invoice stats (aggregated via subquery)
+        COALESCE(invoice_stats.total_invoices, 0) as total_invoices,
+        COALESCE(invoice_stats.open_invoices, 0) as open_invoices,
+        COALESCE(invoice_stats.open_balance, 0) as open_balance
+      FROM advertising_clients c
+      -- Left join order stats
+      LEFT JOIN (
+        SELECT 
+          client_id,
+          COUNT(*) as total_orders,
+          COUNT(*) FILTER (WHERE status IN ('signed', 'active')) as active_orders,
+          COALESCE(SUM(contract_total) FILTER (WHERE status IN ('signed', 'active', 'completed')), 0) as total_revenue
+        FROM orders
+        GROUP BY client_id
+      ) order_stats ON c.id = order_stats.client_id
+      -- Left join invoice stats
+      LEFT JOIN (
+        SELECT 
+          client_id,
+          COUNT(*) as total_invoices,
+          COUNT(*) FILTER (WHERE status IN ('sent', 'approved')) as open_invoices,
+          COALESCE(SUM(balance_due) FILTER (WHERE status IN ('sent', 'approved')), 0) as open_balance
+        FROM invoices
+        GROUP BY client_id
+      ) invoice_stats ON c.id = invoice_stats.client_id
     `;
     
+    let result;
     if (req.user.role === 'admin' || req.user.role === 'sales_manager') {
-      const result = await adminPool.query(query);
-      clients = result.rows;
+      const query = baseQuery + ' ORDER BY c.business_name ASC';
+      result = await adminPool.query(query);
     } else {
       // Sales associates only see assigned clients
-      const assignedQuery = query.replace('ORDER BY', 'WHERE assigned_to = $1 ORDER BY');
-      const result = await adminPool.query(assignedQuery, [req.user.id]);
-      clients = result.rows;
+      const query = baseQuery + ' WHERE c.assigned_to = $1 ORDER BY c.business_name ASC';
+      result = await adminPool.query(query, [req.user.id]);
     }
-    res.json(clients);
+    
+    res.json(result.rows);
   } catch (error) {
     console.error('Get clients error:', error);
-    // Fallback to dbHelper if direct query fails
+    // Fallback to simple query without stats if JOINs fail
     try {
-      let clients;
-      if (req.user.role === 'admin' || req.user.role === 'sales_manager') {
-        clients = await dbHelper.getAllClients();
-      } else {
-        clients = await dbHelper.getClientsByUserId(req.user.id);
-      }
-      res.json(clients);
+      const fallbackQuery = `
+        SELECT 
+          id, business_name as name, business_name, slug, industry, website,
+          status, tier, tags, source, billing_terms,
+          client_since, annual_contract_value, last_activity_at,
+          assigned_to, created_by, created_at, updated_at,
+          phone, address_line1, address_line2, city, state, zip,
+          primary_contact_id, simpli_fi_client_id as simplifi_org_id,
+          qbo_customer_id_wsic, qbo_customer_id_lkn, stripe_customer_id, notes,
+          0 as total_orders, 0 as active_orders, 0 as total_revenue,
+          0 as total_invoices, 0 as open_invoices, 0 as open_balance
+        FROM advertising_clients
+        ORDER BY business_name ASC
+      `;
+      const result = await adminPool.query(fallbackQuery);
+      res.json(result.rows);
     } catch (fallbackError) {
+      console.error('Fallback query error:', fallbackError);
       res.status(500).json({ error: 'Failed to get clients' });
     }
   }

@@ -1798,41 +1798,20 @@ function ClientsPage() {
       setBrands(b);
       if (b.length) setNewClient(prev => ({ ...prev, brandId: b[0].id }));
       
-      // Load CRM stats (orders/invoices) for each client
-      const orderStatsPromises = c.map(async (client) => {
-        try {
-          const [ordersRes, invoicesRes] = await Promise.all([
-            api.get(`/api/orders?clientId=${client.id}`).catch(() => ({ orders: [] })),
-            api.get(`/api/billing/invoices?client_id=${client.id}`).catch(() => ({ invoices: [] }))
-          ]);
-          
-          const orders = ordersRes.orders || ordersRes || [];
-          const invoices = invoicesRes.invoices || invoicesRes || [];
-          
-          const activeOrders = orders.filter(o => o.status === 'signed' || o.status === 'active');
-          const totalRevenue = orders
-            .filter(o => o.status === 'signed' || o.status === 'active' || o.status === 'completed')
-            .reduce((sum, o) => sum + (parseFloat(o.contract_total) || 0), 0);
-          const openInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'approved');
-          const openBalance = openInvoices.reduce((sum, i) => sum + (parseFloat(i.balance_due) || 0), 0);
-          
-          return {
-            clientId: client.id,
-            totalOrders: orders.length,
-            activeOrders: activeOrders.length,
-            totalRevenue,
-            totalInvoices: invoices.length,
-            openInvoices: openInvoices.length,
-            openBalance
-          };
-        } catch (err) {
-          return { clientId: client.id, error: true };
-        }
-      });
-      
-      const allOrderStats = await Promise.all(orderStatsPromises);
+      // Stats are now included in the /api/clients response - no individual calls needed!
+      // Build the stats map from the client data
       const orderStatsMap = {};
-      allOrderStats.forEach(s => { orderStatsMap[s.clientId] = s; });
+      c.forEach(client => {
+        orderStatsMap[client.id] = {
+          clientId: client.id,
+          totalOrders: parseInt(client.total_orders) || 0,
+          activeOrders: parseInt(client.active_orders) || 0,
+          totalRevenue: parseFloat(client.total_revenue) || 0,
+          totalInvoices: parseInt(client.total_invoices) || 0,
+          openInvoices: parseInt(client.open_invoices) || 0,
+          openBalance: parseFloat(client.open_balance) || 0
+        };
+      });
       setClientOrderStats(orderStatsMap);
       
       // Load Simpli.fi stats for campaign view (past 30 days)
