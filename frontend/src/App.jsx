@@ -1803,7 +1803,7 @@ function ClientsPage() {
         try {
           const [ordersRes, invoicesRes] = await Promise.all([
             api.get(`/api/orders?clientId=${client.id}`).catch(() => ({ orders: [] })),
-            api.get(`/api/billing/invoices?clientId=${client.id}`).catch(() => ({ invoices: [] }))
+            api.get(`/api/billing/invoices?client_id=${client.id}`).catch(() => ({ invoices: [] }))
           ]);
           
           const orders = ordersRes.orders || ordersRes || [];
@@ -2259,19 +2259,19 @@ function ClientsPage() {
               )}
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
-                <thead>
-                  <tr style={{ background: '#f9fafb' }}>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Client</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Tier</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Industry</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Total Revenue</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Active Orders</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Open Balance</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Last Activity</th>
-                    <th style={{ padding: '0.75rem 1rem', width: '80px' }}></th>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: '#f9fafb', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Client</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Status</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Tier</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Industry</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Total Revenue</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Active Orders</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Open Balance</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Last Activity</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '80px', background: '#f9fafb' }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2366,7 +2366,7 @@ function ClientsPage() {
                           </span>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', color: orderStats.openBalance > 0 ? '#dc2626' : '#6b7280' }}>
-                          {orderStats.openBalance ? formatCurrency(orderStats.openBalance) : '—'}
+                          {orderStats.totalInvoices > 0 ? (orderStats.openBalance > 0 ? formatCurrency(orderStats.openBalance) : '$0') : '—'}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: '#6b7280' }}>
                           {c.last_activity_at ? (
@@ -2436,17 +2436,17 @@ function ClientsPage() {
               <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Clients appear here when they have active orders or are marked as active.</p>
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '800px' }}>
-                <thead>
-                  <tr style={{ background: '#f9fafb' }}>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Client</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Brand</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Products</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Revenue</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Orders</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Balance</th>
-                    <th style={{ padding: '0.75rem 1rem', width: '80px' }}></th>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <tr style={{ background: '#f9fafb', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Client</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Brand</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Products</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Revenue</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Orders</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Balance</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '80px', background: '#f9fafb' }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2549,7 +2549,7 @@ function ClientsPage() {
                           )}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', color: orderStats.openBalance > 0 ? '#dc2626' : '#6b7280' }}>
-                          {orderStats.openBalance ? formatCurrency(orderStats.openBalance) : '—'}
+                          {orderStats.totalInvoices > 0 ? (orderStats.openBalance > 0 ? formatCurrency(orderStats.openBalance) : '$0') : '—'}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                           <Link 
