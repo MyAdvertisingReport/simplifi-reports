@@ -2898,6 +2898,13 @@ function ClientDetailPage({ publicMode = false }) {
     }
   }, [activeTab, client?.id]);
 
+  // Load activities for Activity tab (full list)
+  useEffect(() => {
+    if (activeTab === 'activity' && client?.id && !publicMode) {
+      loadClientActivities(100); // Load more for full activity tab
+    }
+  }, [activeTab, client?.id]);
+
   const loadClientOrders = async () => {
     if (!client?.id) return;
     setOrdersLoading(true);
@@ -2946,11 +2953,11 @@ function ClientDetailPage({ publicMode = false }) {
     setDocumentsLoading(false);
   };
 
-  const loadClientActivities = async () => {
+  const loadClientActivities = async (limit = 50) => {
     if (!client?.id) return;
     setActivitiesLoading(true);
     try {
-      const data = await api.get(`/api/clients/${client.id}/activities`);
+      const data = await api.get(`/api/clients/${client.id}/activities?limit=${limit}`);
       setClientActivities(data.activities || data || []);
     } catch (err) {
       console.error('Failed to load activities:', err);
@@ -3529,6 +3536,7 @@ function ClientDetailPage({ publicMode = false }) {
           }}>
             {[
               { id: 'overview', label: 'Overview', icon: Building2 },
+              { id: 'activity', label: 'Activity', icon: History },
               { id: 'orders', label: 'Orders', icon: FileText },
               { id: 'invoices', label: 'Invoices', icon: DollarSign },
               { id: 'contacts', label: 'Contacts', icon: Users },
@@ -4548,6 +4556,14 @@ function ClientDetailPage({ publicMode = false }) {
                         note_added: { icon: MessageSquare, bg: '#f3e8ff', color: '#7c3aed' },
                         contact_added: { icon: Users, bg: '#e0e7ff', color: '#3730a3' },
                         status_change: { icon: Flag, bg: '#fef3c7', color: '#92400e' },
+                        call_logged: { icon: Smartphone, bg: '#dcfce7', color: '#166534' },
+                        email_sent: { icon: MessageSquare, bg: '#dbeafe', color: '#1e40af' },
+                        meeting_scheduled: { icon: Calendar, bg: '#fef3c7', color: '#92400e' },
+                        document_uploaded: { icon: FileText, bg: '#e0e7ff', color: '#3730a3' },
+                        payment_received: { icon: DollarSign, bg: '#dcfce7', color: '#166534' },
+                        tier_change: { icon: TrendingUp, bg: '#fef3c7', color: '#92400e' },
+                        assigned_change: { icon: Users, bg: '#e0e7ff', color: '#3730a3' },
+                        other: { icon: Clock, bg: '#f3f4f6', color: '#6b7280' },
                         default: { icon: Clock, bg: '#f3f4f6', color: '#6b7280' }
                       };
                       const config = activityIcons[activity.activity_type] || activityIcons.default;
@@ -4686,6 +4702,126 @@ function ClientDetailPage({ publicMode = false }) {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Tab Content */}
+      {!publicMode && activeTab === 'activity' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Activity History</h3>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
+                All activity for {client?.business_name || client?.name}
+              </p>
+            </div>
+            <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+              {clientActivities.length} activities
+            </div>
+          </div>
+          <div style={{ padding: '1.5rem', maxHeight: '70vh', overflowY: 'auto' }}>
+            {activitiesLoading ? (
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <div className="spinner" />
+                <p style={{ marginTop: '1rem', color: '#6b7280' }}>Loading activities...</p>
+              </div>
+            ) : clientActivities.length > 0 ? (
+              <div style={{ position: 'relative' }}>
+                {/* Timeline line */}
+                <div style={{ position: 'absolute', left: '15px', top: '12px', bottom: '12px', width: '2px', background: '#e5e7eb' }} />
+                
+                {clientActivities.map((activity, i) => {
+                  const activityIcons = {
+                    order_created: { icon: FileText, bg: '#dbeafe', color: '#1e40af', label: 'Order Created' },
+                    order_signed: { icon: CheckCircle, bg: '#dcfce7', color: '#166534', label: 'Order Signed' },
+                    invoice_sent: { icon: DollarSign, bg: '#fef3c7', color: '#92400e', label: 'Invoice Sent' },
+                    invoice_paid: { icon: CheckCircle, bg: '#dcfce7', color: '#166534', label: 'Invoice Paid' },
+                    note_added: { icon: MessageSquare, bg: '#f3e8ff', color: '#7c3aed', label: 'Note' },
+                    contact_added: { icon: Users, bg: '#e0e7ff', color: '#3730a3', label: 'Contact Added' },
+                    status_change: { icon: Flag, bg: '#fef3c7', color: '#92400e', label: 'Status Change' },
+                    call_logged: { icon: Smartphone, bg: '#dcfce7', color: '#166534', label: 'Call' },
+                    email_sent: { icon: MessageSquare, bg: '#dbeafe', color: '#1e40af', label: 'Email' },
+                    meeting_scheduled: { icon: Calendar, bg: '#fef3c7', color: '#92400e', label: 'Meeting' },
+                    document_uploaded: { icon: FileText, bg: '#e0e7ff', color: '#3730a3', label: 'Document' },
+                    payment_received: { icon: DollarSign, bg: '#dcfce7', color: '#166534', label: 'Payment' },
+                    tier_change: { icon: TrendingUp, bg: '#fef3c7', color: '#92400e', label: 'Tier Change' },
+                    assigned_change: { icon: Users, bg: '#e0e7ff', color: '#3730a3', label: 'Assignment' },
+                    other: { icon: Clock, bg: '#f3f4f6', color: '#6b7280', label: 'Activity' },
+                    default: { icon: Clock, bg: '#f3f4f6', color: '#6b7280', label: 'Activity' }
+                  };
+                  const config = activityIcons[activity.activity_type] || activityIcons.default;
+                  const IconComponent = config.icon;
+                  
+                  return (
+                    <div key={activity.id || i} style={{ 
+                      display: 'flex', 
+                      gap: '1rem', 
+                      marginBottom: '1.5rem', 
+                      position: 'relative',
+                      paddingBottom: i === clientActivities.length - 1 ? 0 : '0.5rem'
+                    }}>
+                      <div style={{ 
+                        width: '32px', height: '32px', borderRadius: '50%', 
+                        background: config.bg, 
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0, zIndex: 1,
+                        border: '2px solid white',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }}>
+                        <IconComponent size={14} color={config.color} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0, paddingTop: '0.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+                          <div>
+                            <span style={{ 
+                              fontSize: '0.75rem', 
+                              fontWeight: 500, 
+                              color: config.color,
+                              background: config.bg,
+                              padding: '0.125rem 0.5rem',
+                              borderRadius: '9999px',
+                              marginRight: '0.5rem'
+                            }}>
+                              {config.label}
+                            </span>
+                            <span style={{ fontSize: '0.9375rem', fontWeight: 500, color: '#111827' }}>
+                              {activity.title}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                            {activity.created_at ? new Date(activity.created_at).toLocaleDateString('en-US', { 
+                              month: 'short', day: 'numeric', year: 'numeric'
+                            }) : ''}
+                          </div>
+                        </div>
+                        {activity.description && (
+                          <div style={{ 
+                            fontSize: '0.875rem', 
+                            color: '#6b7280', 
+                            marginTop: '0.375rem',
+                            lineHeight: 1.5
+                          }}>
+                            {activity.description}
+                          </div>
+                        )}
+                        {activity.user_name && (
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.375rem' }}>
+                            by {activity.user_name}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                <History size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
+                <p style={{ margin: 0, fontSize: '1rem' }}>No activity recorded yet</p>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}>Activities will appear here as you interact with this client</p>
+              </div>
+            )}
           </div>
         </div>
       )}
