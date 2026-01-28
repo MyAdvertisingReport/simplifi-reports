@@ -2044,25 +2044,10 @@ function ClientsPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h1 style={{ margin: 0 }}>Clients</h1>
-          <p style={{ color: '#6b7280', margin: '0.25rem 0 0' }}>Manage your advertising clients</p>
+          <p style={{ color: '#6b7280', margin: '0.25rem 0 0' }}>Manage your advertising clients and prospects</p>
         </div>
         {user?.role === 'admin' && (
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button 
-              onClick={openSyncModal} 
-              style={{ 
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-                padding: '0.625rem 1.25rem', 
-                background: '#0d9488', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '0.5rem', 
-                fontWeight: 500, 
-                cursor: 'pointer' 
-              }}
-            >
-              <Download size={18} /> Sync from Simpli.fi
-            </button>
             <button 
               onClick={() => setShowModal(true)} 
               style={{ 
@@ -3331,11 +3316,11 @@ function ClientDetailPage({ publicMode = false }) {
                   fontSize: isMobile ? '1.125rem' : '1.25rem',
                   fontWeight: 700
                 }}>
-                  {client?.name?.charAt(0) || '?'}
+                  {(client?.business_name || client?.name)?.charAt(0) || '?'}
                 </div>
               )}
               <div style={{ minWidth: 0 }}>
-                <h2 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '1.5rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{client?.name}</h2>
+                <h2 style={{ margin: 0, fontSize: isMobile ? '1.125rem' : '1.5rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{client?.business_name || client?.name}</h2>
               </div>
             </div>
             
@@ -4115,7 +4100,7 @@ function ClientDetailPage({ publicMode = false }) {
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Order History</h3>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>All orders for {client?.name}</p>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>All orders for {client?.business_name || client?.name}</p>
             </div>
             <Link 
               to={`/orders/new?clientId=${client?.id}`}
@@ -4837,7 +4822,7 @@ function ClientDetailPage({ publicMode = false }) {
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Contacts</h3>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>People associated with {client?.name}</p>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>People associated with {client?.business_name || client?.name}</p>
             </div>
             <button
               onClick={() => setShowAddContactModal(true)}
@@ -5186,7 +5171,7 @@ function ClientDetailPage({ publicMode = false }) {
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Invoice History</h3>
-              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>All invoices for {client?.name}</p>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>All invoices for {client?.business_name || client?.name}</p>
             </div>
             <Link 
               to={`/billing/invoices/new?clientId=${client?.id}`}
