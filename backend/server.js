@@ -10,6 +10,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
@@ -374,7 +375,7 @@ app.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'All fields required' });
     }
 
-    if (!['admin', 'sales', 'sales_associate', 'sales_manager'].includes(role)) {
+    if (!['admin', 'sales', 'sales_associate', 'sales_manager', 'staff'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -431,7 +432,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
     const updates = {};
     if (email) updates.email = email;
     if (name) updates.name = name;
-    if (role && ['admin', 'sales', 'sales_associate', 'sales_manager'].includes(role)) updates.role = role;
+    if (role && ['admin', 'sales', 'sales_associate', 'sales_manager', 'staff'].includes(role)) updates.role = role;
     if (password) updates.password = await bcrypt.hash(password, 10);
     
     const updatedUser = await dbHelper.updateUser(userId, updates);
@@ -473,6 +474,660 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Change password error:', error);
     res.status(500).json({ error: 'Failed to change password' });
+  }
+});
+
+// ============================================
+// ENHANCED USER MANAGEMENT ROUTES
+// ============================================
+
+// Get all users with extended info (Admin only)
+app.get('/api/users/extended', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      SELECT 
+        u.id, 
+        u.email, 
+        u.name, 
+        u.role, 
+        u.is_sales,
+        u.title,
+        u.rab_name,
+        u.is_active,
+        u.last_login,
+        u.created_at,
+        COUNT(DISTINCT c.id) as client_count
+      FROM users u
+      LEFT JOIN advertising_clients c ON c.assigned_to = u.id
+      GROUP BY u.id
+      ORDER BY u.name ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get extended users error:', error);
+    res.status(500).json({ error: 'Failed to get users' });
+  }
+});
+
+// Get sales users only (for assignment dropdowns)
+app.get('/api/users/sales', authenticateToken, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      SELECT id, name, email, role, title
+      FROM users 
+      WHERE is_sales = true AND is_active = true
+      ORDER BY name ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get sales users error:', error);
+    res.status(500).json({ error: 'Failed to get sales users' });
+  }
+});
+
+// Create user with optional password (sends invite email if no password)
+app.post('/api/users/invite', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { email, name, role, title, is_sales, sendInvite } = req.body;
+    
+    if (!email || !name || !role) {
+      return res.status(400).json({ error: 'Email, name, and role are required' });
+    }
+
+    if (!['admin', 'sales_manager', 'sales_associate', 'staff'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    // Check if user already exists
+    const existingUser = await dbHelper.getUserByEmail(email);
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    // Generate password reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+    // Create user without password (they'll set it via invite link)
+    const result = await adminPool.query(`
+      INSERT INTO users (
+        id, email, name, role, is_sales, title, 
+        password_hash, password_reset_token, password_reset_expires,
+        is_active, created_at
+      )
+      VALUES (
+        gen_random_uuid(), $1, $2, $3, $4, $5,
+        '', $6, $7,
+        true, NOW()
+      )
+      RETURNING id, email, name, role, is_sales, title, created_at
+    `, [
+      email.toLowerCase().trim(), 
+      name.trim(), 
+      role, 
+      is_sales || false,
+      title || null,
+      resetToken,
+      resetExpires
+    ]);
+
+    const user = result.rows[0];
+
+    // Send invite email if requested
+    if (sendInvite !== false) {
+      const inviteUrl = `${process.env.BASE_URL || 'https://myadvertisingreport.com'}/set-password/${resetToken}`;
+      
+      try {
+        await emailService.sendEmail({
+          to: email,
+          subject: 'Welcome to WSIC Advertising Platform - Set Your Password',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 30px; text-align: center;">
+                <h1 style="color: white; margin: 0;">Welcome to the Team!</h1>
+              </div>
+              
+              <div style="padding: 30px; background: #f9fafb;">
+                <p style="font-size: 16px; color: #374151;">Hi ${name},</p>
+                
+                <p style="font-size: 16px; color: #374151;">
+                  You've been invited to join the WSIC Advertising Platform. 
+                  Click the button below to set your password and access your account.
+                </p>
+                
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${inviteUrl}" 
+                     style="background: #2563eb; color: white; padding: 14px 28px; 
+                            text-decoration: none; border-radius: 8px; font-weight: bold;
+                            display: inline-block;">
+                    Set Your Password
+                  </a>
+                </div>
+                
+                <p style="font-size: 14px; color: #6b7280;">
+                  This link will expire in 48 hours. If you didn't expect this invitation, 
+                  please contact your administrator.
+                </p>
+                
+                <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                
+                <p style="font-size: 12px; color: #9ca3af;">
+                  If the button doesn't work, copy and paste this link into your browser:<br>
+                  <a href="${inviteUrl}" style="color: #2563eb;">${inviteUrl}</a>
+                </p>
+              </div>
+            </div>
+          `
+        });
+        
+        user.invite_sent = true;
+      } catch (emailError) {
+        console.error('Failed to send invite email:', emailError);
+        user.invite_sent = false;
+        user.invite_error = 'Email could not be sent';
+      }
+    }
+
+    res.json(user);
+  } catch (error) {
+    console.error('Create user with invite error:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Resend invite email
+app.post('/api/users/:id/resend-invite', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Get user
+    const userResult = await adminPool.query(
+      'SELECT * FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Generate new token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    
+    // Update user with new token
+    await adminPool.query(`
+      UPDATE users 
+      SET password_reset_token = $1, password_reset_expires = $2
+      WHERE id = $3
+    `, [resetToken, resetExpires, userId]);
+    
+    // Send invite email
+    const inviteUrl = `${process.env.BASE_URL || 'https://myadvertisingreport.com'}/set-password/${resetToken}`;
+    
+    await emailService.sendEmail({
+      to: user.email,
+      subject: 'WSIC Advertising Platform - Set Your Password',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 30px; text-align: center;">
+            <h1 style="color: white; margin: 0;">Set Your Password</h1>
+          </div>
+          
+          <div style="padding: 30px; background: #f9fafb;">
+            <p style="font-size: 16px; color: #374151;">Hi ${user.name},</p>
+            
+            <p style="font-size: 16px; color: #374151;">
+              Click the button below to set your password for the WSIC Advertising Platform.
+            </p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${inviteUrl}" 
+                 style="background: #2563eb; color: white; padding: 14px 28px; 
+                        text-decoration: none; border-radius: 8px; font-weight: bold;
+                        display: inline-block;">
+                Set Your Password
+              </a>
+            </div>
+            
+            <p style="font-size: 14px; color: #6b7280;">
+              This link will expire in 48 hours.
+            </p>
+          </div>
+        </div>
+      `
+    });
+    
+    res.json({ success: true, message: 'Invite email sent' });
+  } catch (error) {
+    console.error('Resend invite error:', error);
+    res.status(500).json({ error: 'Failed to resend invite' });
+  }
+});
+
+// ============================================
+// PASSWORD RESET ROUTES (Public - no auth required)
+// ============================================
+
+// Validate password reset token
+app.get('/api/auth/reset-password/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    
+    const result = await adminPool.query(`
+      SELECT id, email, name 
+      FROM users 
+      WHERE password_reset_token = $1 
+        AND password_reset_expires > NOW()
+        AND is_active = true
+    `, [token]);
+    
+    if (result.rows.length === 0) {
+      return res.status(400).json({ 
+        error: 'Invalid or expired token',
+        message: 'This password reset link is invalid or has expired. Please request a new one.'
+      });
+    }
+    
+    const user = result.rows[0];
+    res.json({ 
+      valid: true, 
+      email: user.email,
+      name: user.name
+    });
+  } catch (error) {
+    console.error('Validate reset token error:', error);
+    res.status(500).json({ error: 'Failed to validate token' });
+  }
+});
+
+// Set password using reset token
+app.post('/api/auth/set-password', async (req, res) => {
+  try {
+    const { token, password } = req.body;
+    
+    if (!token || !password) {
+      return res.status(400).json({ error: 'Token and password are required' });
+    }
+    
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    
+    // Find user by token
+    const userResult = await adminPool.query(`
+      SELECT id, email, name, role 
+      FROM users 
+      WHERE password_reset_token = $1 
+        AND password_reset_expires > NOW()
+        AND is_active = true
+    `, [token]);
+    
+    if (userResult.rows.length === 0) {
+      return res.status(400).json({ 
+        error: 'Invalid or expired token',
+        message: 'This password reset link is invalid or has expired. Please request a new one.'
+      });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Update password and clear reset token
+    await adminPool.query(`
+      UPDATE users 
+      SET password_hash = $1, 
+          password_reset_token = NULL, 
+          password_reset_expires = NULL,
+          updated_at = NOW()
+      WHERE id = $2
+    `, [hashedPassword, user.id]);
+    
+    // Generate login token
+    const loginToken = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, name: user.name },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    
+    res.json({
+      success: true,
+      message: 'Password set successfully',
+      token: loginToken,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role }
+    });
+  } catch (error) {
+    console.error('Set password error:', error);
+    res.status(500).json({ error: 'Failed to set password' });
+  }
+});
+
+// Request password reset (for existing users who forgot password)
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    // Find user by email
+    const userResult = await adminPool.query(
+      'SELECT id, email, name FROM users WHERE email = $1 AND is_active = true',
+      [email.toLowerCase().trim()]
+    );
+    
+    // Always return success to prevent email enumeration
+    if (userResult.rows.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'If an account exists with this email, a password reset link has been sent.' 
+      });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hour for forgot password
+    
+    // Save token
+    await adminPool.query(`
+      UPDATE users 
+      SET password_reset_token = $1, password_reset_expires = $2
+      WHERE id = $3
+    `, [resetToken, resetExpires, user.id]);
+    
+    // Send reset email
+    const resetUrl = `${process.env.BASE_URL || 'https://myadvertisingreport.com'}/set-password/${resetToken}`;
+    
+    await emailService.sendEmail({
+      to: user.email,
+      subject: 'WSIC Advertising Platform - Password Reset',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); padding: 30px; text-align: center;">
+            <h1 style="color: white; margin: 0;">Password Reset</h1>
+          </div>
+          
+          <div style="padding: 30px; background: #f9fafb;">
+            <p style="font-size: 16px; color: #374151;">Hi ${user.name},</p>
+            
+            <p style="font-size: 16px; color: #374151;">
+              We received a request to reset your password. Click the button below to choose a new password.
+            </p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetUrl}" 
+                 style="background: #dc2626; color: white; padding: 14px 28px; 
+                        text-decoration: none; border-radius: 8px; font-weight: bold;
+                        display: inline-block;">
+                Reset Password
+              </a>
+            </div>
+            
+            <p style="font-size: 14px; color: #6b7280;">
+              This link will expire in 1 hour. If you didn't request this reset, 
+              you can safely ignore this email.
+            </p>
+          </div>
+        </div>
+      `
+    });
+    
+    res.json({ 
+      success: true, 
+      message: 'If an account exists with this email, a password reset link has been sent.' 
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Failed to process request' });
+  }
+});
+
+// ============================================
+// CLIENT ASSIGNMENT / CLAIM ROUTES
+// ============================================
+
+// Claim an open account (Sales associates)
+app.post('/api/clients/:id/claim', authenticateToken, async (req, res) => {
+  try {
+    const clientId = req.params.id;
+    const userId = req.user.id;
+    
+    // Check if user is a sales user
+    const userResult = await adminPool.query(
+      'SELECT is_sales FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0 || !userResult.rows[0].is_sales) {
+      return res.status(403).json({ error: 'Only sales users can claim accounts' });
+    }
+    
+    // Check if account is open (unassigned)
+    const clientResult = await adminPool.query(
+      'SELECT id, business_name, assigned_to FROM advertising_clients WHERE id = $1',
+      [clientId]
+    );
+    
+    if (clientResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    const client = clientResult.rows[0];
+    
+    if (client.assigned_to) {
+      return res.status(400).json({ error: 'This account is already assigned to another user' });
+    }
+    
+    // Claim the account
+    await adminPool.query(`
+      UPDATE advertising_clients 
+      SET assigned_to = $1, 
+          date_reassigned = NOW(),
+          updated_at = NOW()
+      WHERE id = $2
+    `, [userId, clientId]);
+    
+    // Log activity
+    try {
+      await adminPool.query(`
+        INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
+        VALUES ($1, $2, 'assignment_change', 'Account Claimed', $3)
+      `, [clientId, userId, `Claimed by ${req.user.name}`]);
+    } catch (actErr) {
+      console.log('Activity logging skipped:', actErr.message);
+    }
+    
+    res.json({ success: true, message: `Successfully claimed ${client.business_name}` });
+  } catch (error) {
+    console.error('Claim client error:', error);
+    res.status(500).json({ error: 'Failed to claim account' });
+  }
+});
+
+// Release an account back to open (owner or admin)
+app.post('/api/clients/:id/release', authenticateToken, async (req, res) => {
+  try {
+    const clientId = req.params.id;
+    const userId = req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    
+    // Get client
+    const clientResult = await adminPool.query(
+      'SELECT id, business_name, assigned_to FROM advertising_clients WHERE id = $1',
+      [clientId]
+    );
+    
+    if (clientResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    const client = clientResult.rows[0];
+    
+    // Check permission - must be owner or admin
+    if (!isAdmin && client.assigned_to !== userId) {
+      return res.status(403).json({ error: 'Only the assigned user or an admin can release this account' });
+    }
+    
+    // Get current owner name for history
+    let previousOwnerName = 'Unknown';
+    if (client.assigned_to) {
+      const ownerResult = await adminPool.query(
+        'SELECT name FROM users WHERE id = $1',
+        [client.assigned_to]
+      );
+      if (ownerResult.rows.length > 0) {
+        previousOwnerName = ownerResult.rows[0].name;
+      }
+    }
+    
+    // Release the account
+    await adminPool.query(`
+      UPDATE advertising_clients 
+      SET assigned_to = NULL,
+          previous_owner = $1,
+          date_reassigned = NOW(),
+          updated_at = NOW()
+      WHERE id = $2
+    `, [previousOwnerName, clientId]);
+    
+    // Log activity
+    try {
+      await adminPool.query(`
+        INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
+        VALUES ($1, $2, 'assignment_change', 'Account Released', $3)
+      `, [clientId, userId, `Released by ${req.user.name} (previously: ${previousOwnerName})`]);
+    } catch (actErr) {
+      console.log('Activity logging skipped:', actErr.message);
+    }
+    
+    res.json({ success: true, message: `${client.business_name} is now an open account` });
+  } catch (error) {
+    console.error('Release client error:', error);
+    res.status(500).json({ error: 'Failed to release account' });
+  }
+});
+
+// Reassign account (Admin only)
+app.post('/api/clients/:id/reassign', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const clientId = req.params.id;
+    const { newOwnerId } = req.body;
+    
+    if (!newOwnerId) {
+      return res.status(400).json({ error: 'New owner ID is required' });
+    }
+    
+    // Get client
+    const clientResult = await adminPool.query(
+      'SELECT id, business_name, assigned_to FROM advertising_clients WHERE id = $1',
+      [clientId]
+    );
+    
+    if (clientResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    const client = clientResult.rows[0];
+    
+    // Get new owner
+    const newOwnerResult = await adminPool.query(
+      'SELECT id, name, is_sales FROM users WHERE id = $1 AND is_active = true',
+      [newOwnerId]
+    );
+    
+    if (newOwnerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'New owner not found' });
+    }
+    
+    const newOwner = newOwnerResult.rows[0];
+    
+    if (!newOwner.is_sales) {
+      return res.status(400).json({ error: 'New owner must be a sales user' });
+    }
+    
+    // Get previous owner name
+    let previousOwnerName = 'Open Account';
+    if (client.assigned_to) {
+      const prevOwnerResult = await adminPool.query(
+        'SELECT name FROM users WHERE id = $1',
+        [client.assigned_to]
+      );
+      if (prevOwnerResult.rows.length > 0) {
+        previousOwnerName = prevOwnerResult.rows[0].name;
+      }
+    }
+    
+    // Reassign
+    await adminPool.query(`
+      UPDATE advertising_clients 
+      SET assigned_to = $1,
+          previous_owner = $2,
+          date_reassigned = NOW(),
+          updated_at = NOW()
+      WHERE id = $3
+    `, [newOwnerId, previousOwnerName, clientId]);
+    
+    // Log activity
+    try {
+      await adminPool.query(`
+        INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
+        VALUES ($1, $2, 'assignment_change', 'Account Reassigned', $3)
+      `, [clientId, req.user.id, `Reassigned from ${previousOwnerName} to ${newOwner.name} by ${req.user.name}`]);
+    } catch (actErr) {
+      console.log('Activity logging skipped:', actErr.message);
+    }
+    
+    res.json({ 
+      success: true, 
+      message: `${client.business_name} reassigned to ${newOwner.name}` 
+    });
+  } catch (error) {
+    console.error('Reassign client error:', error);
+    res.status(500).json({ error: 'Failed to reassign account' });
+  }
+});
+
+// ============================================
+// MASTER LIST ROUTE (Read-only view for all)
+// ============================================
+
+// Get master list (all clients, limited fields for non-owners)
+app.get('/api/clients/master-list', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'sales_manager';
+    
+    const result = await adminPool.query(`
+      SELECT 
+        c.id,
+        c.business_name,
+        c.status,
+        c.contact_type,
+        c.tags,
+        c.source,
+        c.primary_contact_name,
+        c.primary_contact_email,
+        c.primary_contact_phone,
+        c.assigned_to,
+        c.previous_owner,
+        u.name as assigned_to_name,
+        CASE WHEN c.assigned_to = $1 THEN true ELSE false END as is_mine,
+        CASE WHEN c.assigned_to IS NULL THEN true ELSE false END as is_open
+      FROM advertising_clients c
+      LEFT JOIN users u ON c.assigned_to = u.id
+      ORDER BY c.business_name ASC
+    `, [userId]);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get master list error:', error);
+    res.status(500).json({ error: 'Failed to get master list' });
   }
 });
 
