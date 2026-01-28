@@ -2514,7 +2514,7 @@ function ClientsPage() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                 <BarChart3 size={16} color="#059669" />
-                <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.875rem' }}>Total ({filteredClients.length clients) - Past 30 Days</span>
+                <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.875rem' }}>Total ({filteredClients.length} clients) - Past 30 Days</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
                 <div style={{ textAlign: 'center' }}>
@@ -2661,7 +2661,7 @@ function ClientsPage() {
                 <td style={{ padding: '1rem', fontWeight: 600, color: '#065f46' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <BarChart3 size={18} color="#059669" />
-                    <span>Total ({filteredClients.length clients)</span>
+                    <span>Total ({filteredClients.length} clients)</span>
                   </div>
                 </td>
                 <td style={{ padding: '1rem', textAlign: 'center' }}></td>
