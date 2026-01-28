@@ -1295,10 +1295,22 @@ app.post('/api/clients', authenticateToken, async (req, res) => {
 // Get client by slug (authenticated - returns full data)
 app.get('/api/clients/slug/:slug', authenticateToken, async (req, res) => {
   try {
-    const client = await dbHelper.getClientBySlug(req.params.slug);
-    if (!client) {
+    // Query advertising_clients directly
+    const result = await adminPool.query(
+      `SELECT ac.*, u.name as assigned_to_name
+       FROM advertising_clients ac
+       LEFT JOIN users u ON ac.assigned_to = u.id
+       WHERE ac.slug = $1`,
+      [req.params.slug]
+    );
+    
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Client not found' });
     }
+    
+    const client = result.rows[0];
+    // Map business_name to name for frontend compatibility
+    client.name = client.business_name || client.name;
     res.json(client);
   } catch (error) {
     console.error('Get client by slug error:', error);
@@ -1511,14 +1523,21 @@ app.get('/api/public/client/:token', async (req, res) => {
 // Get client by slug (new permanent URLs)
 app.get('/api/public/client/slug/:slug', async (req, res) => {
   try {
-    const client = await dbHelper.getClientBySlug(req.params.slug);
-    if (!client) {
+    const result = await adminPool.query(
+      'SELECT * FROM advertising_clients WHERE slug = $1',
+      [req.params.slug]
+    );
+    
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Client not found' });
     }
+    
+    const client = result.rows[0];
     // Return limited public info
     res.json({
       id: client.id,
-      name: client.name,
+      name: client.business_name || client.name,
+      business_name: client.business_name,
       slug: client.slug,
       simplifi_org_id: client.simplifi_org_id,
       primary_color: client.primary_color,
@@ -1563,9 +1582,18 @@ app.get('/api/public/client/:token/stats', async (req, res) => {
 // Get public stats by slug (new permanent URLs)
 app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
   try {
-    const client = await dbHelper.getClientBySlug(req.params.slug);
-    if (!client || !client.simplifi_org_id) {
+    const result = await adminPool.query(
+      'SELECT * FROM advertising_clients WHERE slug = $1',
+      [req.params.slug]
+    );
+    
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Client not found' });
+    }
+    
+    const client = result.rows[0];
+    if (!client.simplifi_org_id) {
+      return res.status(404).json({ error: 'Client has no Simpli.fi integration' });
     }
 
     const { startDate, endDate } = req.query;
