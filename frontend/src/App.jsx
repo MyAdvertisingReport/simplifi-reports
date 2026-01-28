@@ -1766,11 +1766,13 @@ function ClientsPage() {
   const [clientOrderStats, setClientOrderStats] = useState({}); // For CRM view
   const [brands, setBrands] = useState([]);
   const [organizations, setOrganizations] = useState([]);
+  const [salesUsers, setSalesUsers] = useState([]); // Sales team for assignment
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResults, setSyncResults] = useState(null);
+  const [claimingId, setClaimingId] = useState(null); // Track which client is being claimed
   const [newClient, setNewClient] = useState({ name: '', brandId: '', primaryColor: '#1e3a8a', secondaryColor: '#64748b' });
   const { user } = useAuth();
   const { isMobile } = useResponsive();
@@ -1778,6 +1780,7 @@ function ClientsPage() {
   // View mode and filters
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('clientsViewMode') || 'crm'); // 'client' or 'crm'
   const [statusFilter, setStatusFilter] = useState('all');
+  const [ownerFilter, setOwnerFilter] = useState('all'); // 'all', 'mine', 'open', or a specific user ID
   const [tierFilter, setTierFilter] = useState('all');
   const [brandFilter, setBrandFilter] = useState('all'); // 'all', 'WSIC', 'LKNW', 'multi'
   const [searchQuery, setSearchQuery] = useState('');
@@ -1793,9 +1796,14 @@ function ClientsPage() {
 
   const loadData = async () => {
     try {
-      const [c, b] = await Promise.all([api.get('/api/clients'), api.get('/api/brands')]);
+      const [c, b, sales] = await Promise.all([
+        api.get('/api/clients'), 
+        api.get('/api/brands'),
+        api.get('/api/users/sales').catch(() => []) // Get sales users for owner filter
+      ]);
       setClients(c);
       setBrands(b);
+      setSalesUsers(sales || []);
       if (b.length) setNewClient(prev => ({ ...prev, brandId: b[0].id }));
       
       // Stats are now included in the /api/clients response - no individual calls needed!
@@ -1881,6 +1889,21 @@ function ClientsPage() {
       console.error(err);
     }
     setLoading(false);
+  };
+
+  // Claim an open account
+  const claimAccount = async (clientId) => {
+    setClaimingId(clientId);
+    try {
+      await api.post(`/api/clients/${clientId}/claim`);
+      // Refresh clients to show updated ownership
+      const updatedClients = await api.get('/api/clients');
+      setClients(updatedClients);
+    } catch (err) {
+      console.error('Failed to claim account:', err);
+      alert('Failed to claim account: ' + (err.message || 'Unknown error'));
+    }
+    setClaimingId(null);
   };
 
   const loadOrganizations = async () => {
@@ -1992,12 +2015,19 @@ function ClientsPage() {
           !c.business_name?.toLowerCase().includes(query) &&
           !c.industry?.toLowerCase().includes(query) &&
           !c.source?.toLowerCase().includes(query) &&
+          !c.assigned_to_name?.toLowerCase().includes(query) &&
           !tagsMatch) {
         return false;
       }
     }
     // Status filter (CRM view)
     if (viewMode === 'crm' && statusFilter !== 'all' && c.status !== statusFilter) return false;
+    // Owner filter (CRM view)
+    if (viewMode === 'crm' && ownerFilter !== 'all') {
+      if (ownerFilter === 'mine' && c.assigned_to !== user?.id) return false;
+      if (ownerFilter === 'open' && c.assigned_to) return false;
+      if (ownerFilter !== 'mine' && ownerFilter !== 'open' && c.assigned_to !== ownerFilter) return false;
+    }
     // Tier filter (CRM view)
     if (viewMode === 'crm' && tierFilter !== 'all' && c.tier !== tierFilter) return false;
     // Brand filter (Client view) - check tags for WSIC/LKNW
@@ -2026,6 +2056,13 @@ function ClientsPage() {
     active: clients.filter(c => c.status === 'active').length,
     inactive: clients.filter(c => c.status === 'inactive').length,
     churned: clients.filter(c => c.status === 'churned').length
+  };
+
+  // Owner counts for filter badges
+  const ownerCounts = {
+    all: clients.length,
+    mine: clients.filter(c => c.assigned_to === user?.id).length,
+    open: clients.filter(c => !c.assigned_to).length
   };
 
   // Brand counts for Client view
@@ -2143,6 +2180,26 @@ function ClientsPage() {
         {viewMode === 'crm' && (
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <select
+              value={ownerFilter}
+              onChange={(e) => setOwnerFilter(e.target.value)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                border: ownerFilter === 'mine' ? '2px solid #3b82f6' : ownerFilter === 'open' ? '2px solid #f59e0b' : '1px solid #e5e7eb',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                background: ownerFilter === 'mine' ? '#eff6ff' : ownerFilter === 'open' ? '#fffbeb' : 'white',
+                cursor: 'pointer',
+                fontWeight: ownerFilter !== 'all' ? 600 : 400
+              }}
+            >
+              <option value="all">All Accounts ({ownerCounts.all})</option>
+              <option value="mine">👤 My Accounts ({ownerCounts.mine})</option>
+              <option value="open">🟡 Open Accounts ({ownerCounts.open})</option>
+              {salesUsers.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+            <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               style={{
@@ -2160,24 +2217,6 @@ function ClientsPage() {
               <option value="active">Active ({statusCounts.active})</option>
               <option value="inactive">Inactive ({statusCounts.inactive})</option>
               <option value="churned">Churned ({statusCounts.churned})</option>
-            </select>
-            <select
-              value={tierFilter}
-              onChange={(e) => setTierFilter(e.target.value)}
-              style={{
-                padding: '0.5rem 0.75rem',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.375rem',
-                fontSize: '0.875rem',
-                background: 'white',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="all">All Tiers</option>
-              <option value="platinum">⭐ Platinum</option>
-              <option value="gold">🥇 Gold</option>
-              <option value="silver">🥈 Silver</option>
-              <option value="bronze">🥉 Bronze</option>
             </select>
           </div>
         )}
@@ -2224,70 +2263,65 @@ function ClientsPage() {
             </div>
           ) : (
             <div style={{ overflowX: 'auto', maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr style={{ background: '#f9fafb', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Client</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Business</th>
                     <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Status</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Tier</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Industry</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Total Revenue</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Active Orders</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Open Balance</th>
-                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Last Activity</th>
-                    <th style={{ padding: '0.75rem 1rem', width: '80px', background: '#f9fafb' }}></th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Owner</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Source</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Last Touch</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', background: '#f9fafb' }}>Revenue</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '120px', background: '#f9fafb' }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredClients.map(c => {
                     const orderStats = clientOrderStats[c.id] || {};
                     const statusConfig = {
-                      lead: { bg: '#fef3c7', color: '#92400e' },
-                      prospect: { bg: '#dbeafe', color: '#1e40af' },
-                      active: { bg: '#dcfce7', color: '#166534' },
-                      inactive: { bg: '#f3f4f6', color: '#6b7280' },
-                      churned: { bg: '#fee2e2', color: '#991b1b' }
-                    };
-                    const tierConfig = {
-                      platinum: { icon: '⭐', bg: '#ede9fe', color: '#5b21b6' },
-                      gold: { icon: '🥇', bg: '#fef3c7', color: '#b45309' },
-                      silver: { icon: '🥈', bg: '#f3f4f6', color: '#374151' },
-                      bronze: { icon: '🥉', bg: '#fef3c7', color: '#92400e' }
+                      lead: { bg: '#fef3c7', color: '#92400e', icon: '🎯' },
+                      prospect: { bg: '#dbeafe', color: '#1e40af', icon: '👋' },
+                      active: { bg: '#dcfce7', color: '#166534', icon: '✅' },
+                      inactive: { bg: '#f3f4f6', color: '#6b7280', icon: '⏸️' },
+                      churned: { bg: '#fee2e2', color: '#991b1b', icon: '❌' }
                     };
                     const status = statusConfig[c.status] || statusConfig.prospect;
-                    const tier = tierConfig[c.tier] || tierConfig.bronze;
+                    const isOpen = !c.assigned_to;
+                    const isMine = c.assigned_to === user?.id;
+                    
+                    // Calculate days since last activity
+                    const lastActivity = c.last_activity_at || c.updated_at;
+                    const daysSince = lastActivity ? Math.floor((Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24)) : null;
+                    const touchStatus = daysSince === null ? 'unknown' : daysSince <= 7 ? 'hot' : daysSince <= 30 ? 'warm' : 'cold';
                     
                     return (
-                      <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <tr key={c.id} style={{ 
+                        borderBottom: '1px solid #f3f4f6',
+                        background: isMine ? '#f0f9ff' : isOpen ? '#fffbeb' : 'white'
+                      }}>
                         <td style={{ padding: '0.75rem 1rem' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            {c.logo_path ? (
-                              <img src={c.logo_path} alt={c.name} style={{ width: 36, height: 36, borderRadius: '0.5rem', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
-                            ) : (
-                              <div style={{ width: 36, height: 36, borderRadius: '0.5rem', background: c.primary_color || '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
-                                {(c.name || c.business_name || '?').charAt(0)}
-                              </div>
-                            )}
+                            <div style={{ 
+                              width: 40, height: 40, borderRadius: '0.5rem', 
+                              background: c.primary_color || '#1e3a8a', 
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                              color: 'white', fontWeight: 600, fontSize: '0.9375rem' 
+                            }}>
+                              {(c.business_name || c.name || '?').charAt(0)}
+                            </div>
                             <div>
-                              <div style={{ fontWeight: 500 }}>{c.name || c.business_name}</div>
-                              {c.tags && c.tags.length > 0 && (
-                                <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
-                                  {c.tags.slice(0, 2).map((tag, i) => (
-                                    <span key={i} style={{ padding: '0.0625rem 0.375rem', background: '#e0e7ff', color: '#3730a3', borderRadius: '0.25rem', fontSize: '0.625rem', fontWeight: 500 }}>
-                                      {tag}
-                                    </span>
-                                  ))}
-                                  {c.tags.length > 2 && (
-                                    <span style={{ fontSize: '0.625rem', color: '#6b7280' }}>+{c.tags.length - 2}</span>
-                                  )}
-                                </div>
-                              )}
+                              <div style={{ fontWeight: 500, color: '#111827' }}>{c.business_name || c.name}</div>
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                {c.primary_contact_name || c.industry || '—'}
+                              </div>
                             </div>
                           </div>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                           <span style={{ 
-                            display: 'inline-block',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
                             padding: '0.25rem 0.625rem', 
                             background: status.bg, 
                             color: status.color,
@@ -2296,48 +2330,84 @@ function ClientsPage() {
                             fontWeight: 500,
                             textTransform: 'capitalize'
                           }}>
-                            {c.status || 'prospect'}
+                            {status.icon} {c.status || 'prospect'}
                           </span>
                         </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                          <span style={{ 
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.25rem',
-                            padding: '0.25rem 0.5rem', 
-                            background: tier.bg, 
-                            color: tier.color,
-                            borderRadius: '0.375rem', 
-                            fontSize: '0.75rem',
-                            fontWeight: 500,
-                            textTransform: 'capitalize'
-                          }}>
-                            {tier.icon} {c.tier || 'bronze'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
-                          {c.industry || '—'}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 600, color: '#059669' }}>
-                          {orderStats.totalRevenue ? formatCurrency(orderStats.totalRevenue) : '—'}
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                          <span style={{ 
-                            fontWeight: 600, 
-                            color: orderStats.activeOrders > 0 ? '#059669' : '#9ca3af'
-                          }}>
-                            {orderStats.activeOrders ?? '—'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', color: orderStats.openBalance > 0 ? '#dc2626' : '#6b7280' }}>
-                          {orderStats.totalInvoices > 0 ? (orderStats.openBalance > 0 ? formatCurrency(orderStats.openBalance) : '$0') : '—'}
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          {isOpen ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span style={{ 
+                                padding: '0.25rem 0.5rem', 
+                                background: '#fef3c7', 
+                                color: '#92400e',
+                                borderRadius: '0.375rem', 
+                                fontSize: '0.75rem',
+                                fontWeight: 500
+                              }}>
+                                🟡 Open
+                              </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); claimAccount(c.id); }}
+                                disabled={claimingId === c.id}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  background: '#3b82f6',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '0.375rem',
+                                  fontSize: '0.6875rem',
+                                  fontWeight: 500,
+                                  cursor: claimingId === c.id ? 'wait' : 'pointer',
+                                  opacity: claimingId === c.id ? 0.7 : 1
+                                }}
+                              >
+                                {claimingId === c.id ? '...' : 'Claim'}
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <div style={{ 
+                                width: 24, height: 24, borderRadius: '50%', 
+                                background: isMine ? '#3b82f6' : '#6b7280', 
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                color: 'white', fontWeight: 600, fontSize: '0.625rem' 
+                              }}>
+                                {c.assigned_to_name?.charAt(0) || '?'}
+                              </div>
+                              <span style={{ 
+                                fontSize: '0.8125rem', 
+                                fontWeight: isMine ? 600 : 400,
+                                color: isMine ? '#1e40af' : '#374151'
+                              }}>
+                                {isMine ? 'You' : c.assigned_to_name || 'Unknown'}
+                              </span>
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: '#6b7280' }}>
-                          {c.last_activity_at ? (
-                            new Date(c.last_activity_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                          ) : c.updated_at ? (
-                            new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                          ) : '—'}
+                          {c.source || c.previous_owner || '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          {daysSince !== null ? (
+                            <span style={{ 
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              fontSize: '0.8125rem',
+                              color: touchStatus === 'hot' ? '#059669' : touchStatus === 'warm' ? '#d97706' : '#dc2626'
+                            }}>
+                              <span style={{
+                                width: 8, height: 8, borderRadius: '50%',
+                                background: touchStatus === 'hot' ? '#10b981' : touchStatus === 'warm' ? '#f59e0b' : '#ef4444'
+                              }} />
+                              {daysSince === 0 ? 'Today' : daysSince === 1 ? '1 day' : `${daysSince} days`}
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: '0.8125rem', color: '#9ca3af' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 600, color: orderStats.totalRevenue > 0 ? '#059669' : '#9ca3af' }}>
+                          {orderStats.totalRevenue ? formatCurrency(orderStats.totalRevenue) : '—'}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                           <Link 
@@ -2368,20 +2438,20 @@ function ClientsPage() {
                     <td style={{ padding: '1rem', fontWeight: 600, color: '#5b21b6' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Users size={18} color="#7c3aed" />
-                        <span>Total ({filteredClients.length} clients)</span>
+                        <span>Total ({filteredClients.length} accounts)</span>
                       </div>
                     </td>
-                    <td colSpan={3} style={{ padding: '1rem' }}></td>
-                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#059669' }}>
-                      {formatCurrency(Object.values(clientOrderStats).reduce((sum, s) => sum + (s?.totalRevenue || 0), 0))}
+                    <td style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: '#6b7280' }}>
+                      {statusCounts.active} active
                     </td>
-                    <td style={{ padding: '1rem', textAlign: 'center', fontWeight: 700, color: '#059669' }}>
-                      {Object.values(clientOrderStats).reduce((sum, s) => sum + (s?.activeOrders || 0), 0)}
-                    </td>
-                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#dc2626' }}>
-                      {formatCurrency(Object.values(clientOrderStats).reduce((sum, s) => sum + (s?.openBalance || 0), 0))}
+                    <td style={{ padding: '1rem', fontSize: '0.75rem', color: '#6b7280' }}>
+                      {ownerCounts.open} open
                     </td>
                     <td colSpan={2} style={{ padding: '1rem' }}></td>
+                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#059669' }}>
+                      {formatCurrency(filteredClients.reduce((sum, c) => sum + (clientOrderStats[c.id]?.totalRevenue || 0), 0))}
+                    </td>
+                    <td style={{ padding: '1rem' }}></td>
                   </tr>
                 </tfoot>
               </table>
