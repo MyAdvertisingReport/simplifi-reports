@@ -95,13 +95,17 @@ git add billing.js BillingPage.jsx
 - **Overdue Reminders:** Send reminder emails
 - **Auto-Generate Invoices:** Generate from signed orders with category-based billing ⭐
 
-### ✅ Security Features
+### ✅ Security Features (Updated January 27, 2026)
 - bcrypt password hashing (10 salt rounds)
 - Account lockout after 5 failed attempts
 - Session management with expiration
 - Role-based access control (admin, sales_manager, sales_associate)
 - Parameterized SQL queries (injection prevention)
 - Activity logging for security events
+- **Helmet security headers** ✅ NEW
+- **Rate limiting on login** (10 attempts/15 min) ✅ NEW
+- **JWT validation** (fails in production without secret) ✅ NEW
+- **Protected diagnostic endpoints** ✅ NEW
 
 ---
 
@@ -203,19 +207,13 @@ product_categories (
 - Contact management improvements
 - Dashboard updates with client metrics
 
-### 2. Security Improvements
-- Add `helmet` for security headers
-- Add `express-rate-limit` for login protection
-- Remove JWT secret fallback
-- Protect diagnostic endpoints
-
-### 3. Stripe Webhooks for Payment Status
+### 2. Stripe Webhooks for Payment Status
 - `POST /api/webhooks/stripe` endpoint
 - Handle `invoice.paid`, `payment_intent.succeeded`
 - Auto-mark invoices as paid
 - Send payment confirmation email
 
-### 4. Overdue Invoice Notifications
+### 3. Overdue Invoice Notifications
 - Automated emails at 7, 14, 21, 28 days
 - Final notice at Day 28 with auto-charge warning
 - Day 30: Auto-charge backup payment method
@@ -316,7 +314,7 @@ POST   /api/billing/generate-monthly      - Batch create invoices
 
 ## 🔒 Security Documentation
 See `SECURITY_AUDIT.md` for:
-- Current security posture (7.5/10)
-- High/Medium priority fixes
-- Implementation checklist
-- Quick win code snippets
+- Current security posture **(8.5/10)** ✅
+- ~~High/Medium priority fixes~~ High priority complete!
+- Remaining improvements checklist
+- Incident response procedures

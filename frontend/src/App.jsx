@@ -1763,6 +1763,7 @@ function StatCard({ label, value, subtitle, icon: Icon, color = '#1e3a8a' }) {
 function ClientsPage() {
   const [clients, setClients] = useState([]);
   const [clientStats, setClientStats] = useState({});
+  const [clientOrderStats, setClientOrderStats] = useState({}); // For CRM view
   const [brands, setBrands] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1773,10 +1774,21 @@ function ClientsPage() {
   const [newClient, setNewClient] = useState({ name: '', brandId: '', primaryColor: '#1e3a8a', secondaryColor: '#64748b' });
   const { user } = useAuth();
   const { isMobile } = useResponsive();
+  
+  // View mode and filters
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('clientsViewMode') || 'crm'); // 'campaign' or 'crm'
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [tierFilter, setTierFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadData();
   }, []);
+  
+  // Persist view mode
+  useEffect(() => {
+    localStorage.setItem('clientsViewMode', viewMode);
+  }, [viewMode]);
 
   const loadData = async () => {
     try {
@@ -1785,7 +1797,44 @@ function ClientsPage() {
       setBrands(b);
       if (b.length) setNewClient(prev => ({ ...prev, brandId: b[0].id }));
       
-      // Load stats for each client (past 30 days)
+      // Load CRM stats (orders/invoices) for each client
+      const orderStatsPromises = c.map(async (client) => {
+        try {
+          const [ordersRes, invoicesRes] = await Promise.all([
+            api.get(`/api/orders?clientId=${client.id}`).catch(() => ({ orders: [] })),
+            api.get(`/api/billing/invoices?clientId=${client.id}`).catch(() => ({ invoices: [] }))
+          ]);
+          
+          const orders = ordersRes.orders || ordersRes || [];
+          const invoices = invoicesRes.invoices || invoicesRes || [];
+          
+          const activeOrders = orders.filter(o => o.status === 'signed' || o.status === 'active');
+          const totalRevenue = orders
+            .filter(o => o.status === 'signed' || o.status === 'active' || o.status === 'completed')
+            .reduce((sum, o) => sum + (parseFloat(o.contract_total) || 0), 0);
+          const openInvoices = invoices.filter(i => i.status === 'sent' || i.status === 'approved');
+          const openBalance = openInvoices.reduce((sum, i) => sum + (parseFloat(i.balance_due) || 0), 0);
+          
+          return {
+            clientId: client.id,
+            totalOrders: orders.length,
+            activeOrders: activeOrders.length,
+            totalRevenue,
+            totalInvoices: invoices.length,
+            openInvoices: openInvoices.length,
+            openBalance
+          };
+        } catch (err) {
+          return { clientId: client.id, error: true };
+        }
+      });
+      
+      const allOrderStats = await Promise.all(orderStatsPromises);
+      const orderStatsMap = {};
+      allOrderStats.forEach(s => { orderStatsMap[s.clientId] = s; });
+      setClientOrderStats(orderStatsMap);
+      
+      // Load Simpli.fi stats for campaign view (past 30 days)
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       const startDate = thirtyDaysAgo.toISOString().split('T')[0];
@@ -1953,14 +2002,46 @@ function ClientsPage() {
 
   const formatCurrency = (n) => '$' + (parseFloat(n) || 0).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
+  // Filter clients based on current filters
+  const filteredClients = clients.filter(c => {
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      if (!c.name?.toLowerCase().includes(query) && 
+          !c.business_name?.toLowerCase().includes(query) &&
+          !c.industry?.toLowerCase().includes(query)) {
+        return false;
+      }
+    }
+    // Status filter
+    if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+    // Tier filter
+    if (tierFilter !== 'all' && c.tier !== tierFilter) return false;
+    return true;
+  });
+
+  // Status counts for filter badges
+  const statusCounts = {
+    all: clients.length,
+    lead: clients.filter(c => c.status === 'lead').length,
+    prospect: clients.filter(c => c.status === 'prospect').length,
+    active: clients.filter(c => c.status === 'active').length,
+    inactive: clients.filter(c => c.status === 'inactive').length,
+    churned: clients.filter(c => c.status === 'churned').length
+  };
+
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <div><h1>Clients</h1><p style={{ color: '#6b7280' }}>Manage your advertising clients</p></div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Clients</h1>
+          <p style={{ color: '#6b7280', margin: '0.25rem 0 0' }}>Manage your advertising clients</p>
+        </div>
         {user?.role === 'admin' && (
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button 
               onClick={openSyncModal} 
               style={{ 
@@ -1993,8 +2074,314 @@ function ClientsPage() {
           </div>
         )}
       </div>
+
+      {/* View Toggle & Filters Bar */}
+      <div style={{ 
+        background: 'white', 
+        borderRadius: '0.75rem', 
+        border: '1px solid #e5e7eb', 
+        padding: '1rem 1.25rem',
+        marginBottom: '1rem',
+        display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: '1rem',
+        alignItems: isMobile ? 'stretch' : 'center',
+        justifyContent: 'space-between'
+      }}>
+        {/* View Toggle */}
+        <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+          <button
+            onClick={() => setViewMode('crm')}
+            style={{
+              padding: '0.5rem 1rem',
+              border: 'none',
+              borderRadius: '0.375rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              background: viewMode === 'crm' ? 'white' : 'transparent',
+              color: viewMode === 'crm' ? '#1e3a8a' : '#6b7280',
+              boxShadow: viewMode === 'crm' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+            }}
+          >
+            <Users size={16} /> CRM View
+          </button>
+          <button
+            onClick={() => setViewMode('campaign')}
+            style={{
+              padding: '0.5rem 1rem',
+              border: 'none',
+              borderRadius: '0.375rem',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              background: viewMode === 'campaign' ? 'white' : 'transparent',
+              color: viewMode === 'campaign' ? '#1e3a8a' : '#6b7280',
+              boxShadow: viewMode === 'campaign' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+            }}
+          >
+            <BarChart3 size={16} /> Campaign View
+          </button>
+        </div>
+
+        {/* Search */}
+        <div style={{ position: 'relative', flex: isMobile ? 'unset' : '0 1 300px' }}>
+          <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+          <input
+            type="text"
+            placeholder="Search clients..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.5rem 0.75rem 0.5rem 2.25rem',
+              border: '1px solid #e5e7eb',
+              borderRadius: '0.375rem',
+              fontSize: '0.875rem'
+            }}
+          />
+        </div>
+
+        {/* Filters */}
+        {viewMode === 'crm' && (
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                background: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="all">All Status ({statusCounts.all})</option>
+              <option value="lead">Lead ({statusCounts.lead})</option>
+              <option value="prospect">Prospect ({statusCounts.prospect})</option>
+              <option value="active">Active ({statusCounts.active})</option>
+              <option value="inactive">Inactive ({statusCounts.inactive})</option>
+              <option value="churned">Churned ({statusCounts.churned})</option>
+            </select>
+            <select
+              value={tierFilter}
+              onChange={(e) => setTierFilter(e.target.value)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                background: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="all">All Tiers</option>
+              <option value="platinum">⭐ Platinum</option>
+              <option value="gold">🥇 Gold</option>
+              <option value="silver">🥈 Silver</option>
+              <option value="bronze">🥉 Bronze</option>
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* CRM View */}
+      {viewMode === 'crm' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+          {filteredClients.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <Building2 size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
+              <p style={{ color: '#6b7280' }}>
+                {clients.length === 0 ? 'No clients yet.' : 'No clients match your filters.'}
+              </p>
+              {clients.length === 0 && user?.role === 'admin' && (
+                <button 
+                  onClick={openSyncModal}
+                  style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#0d9488', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
+                >
+                  Sync from Simpli.fi
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Client</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Tier</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Industry</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Total Revenue</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Active Orders</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Open Balance</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Last Activity</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '80px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredClients.map(c => {
+                    const orderStats = clientOrderStats[c.id] || {};
+                    const statusConfig = {
+                      lead: { bg: '#fef3c7', color: '#92400e' },
+                      prospect: { bg: '#dbeafe', color: '#1e40af' },
+                      active: { bg: '#dcfce7', color: '#166534' },
+                      inactive: { bg: '#f3f4f6', color: '#6b7280' },
+                      churned: { bg: '#fee2e2', color: '#991b1b' }
+                    };
+                    const tierConfig = {
+                      platinum: { icon: '⭐', bg: '#ede9fe', color: '#5b21b6' },
+                      gold: { icon: '🥇', bg: '#fef3c7', color: '#b45309' },
+                      silver: { icon: '🥈', bg: '#f3f4f6', color: '#374151' },
+                      bronze: { icon: '🥉', bg: '#fef3c7', color: '#92400e' }
+                    };
+                    const status = statusConfig[c.status] || statusConfig.prospect;
+                    const tier = tierConfig[c.tier] || tierConfig.bronze;
+                    
+                    return (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {c.logo_path ? (
+                              <img src={c.logo_path} alt={c.name} style={{ width: 36, height: 36, borderRadius: '0.5rem', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                            ) : (
+                              <div style={{ width: 36, height: 36, borderRadius: '0.5rem', background: c.primary_color || '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>
+                                {(c.name || c.business_name || '?').charAt(0)}
+                              </div>
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 500 }}>{c.name || c.business_name}</div>
+                              {c.tags && c.tags.length > 0 && (
+                                <div style={{ display: 'flex', gap: '0.25rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+                                  {c.tags.slice(0, 2).map((tag, i) => (
+                                    <span key={i} style={{ padding: '0.0625rem 0.375rem', background: '#e0e7ff', color: '#3730a3', borderRadius: '0.25rem', fontSize: '0.625rem', fontWeight: 500 }}>
+                                      {tag}
+                                    </span>
+                                  ))}
+                                  {c.tags.length > 2 && (
+                                    <span style={{ fontSize: '0.625rem', color: '#6b7280' }}>+{c.tags.length - 2}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <span style={{ 
+                            display: 'inline-block',
+                            padding: '0.25rem 0.625rem', 
+                            background: status.bg, 
+                            color: status.color,
+                            borderRadius: '9999px', 
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            textTransform: 'capitalize'
+                          }}>
+                            {c.status || 'prospect'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <span style={{ 
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            padding: '0.25rem 0.5rem', 
+                            background: tier.bg, 
+                            color: tier.color,
+                            borderRadius: '0.375rem', 
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            textTransform: 'capitalize'
+                          }}>
+                            {tier.icon} {c.tier || 'bronze'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#374151' }}>
+                          {c.industry || '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 600, color: '#059669' }}>
+                          {orderStats.totalRevenue ? formatCurrency(orderStats.totalRevenue) : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
+                          <span style={{ 
+                            fontWeight: 600, 
+                            color: orderStats.activeOrders > 0 ? '#059669' : '#9ca3af'
+                          }}>
+                            {orderStats.activeOrders ?? '—'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.875rem', color: orderStats.openBalance > 0 ? '#dc2626' : '#6b7280' }}>
+                          {orderStats.openBalance ? formatCurrency(orderStats.openBalance) : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.8125rem', color: '#6b7280' }}>
+                          {c.last_activity_at ? (
+                            new Date(c.last_activity_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                          ) : c.updated_at ? (
+                            new Date(c.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                          ) : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <Link 
+                            to={`/client/${c.slug}`} 
+                            style={{ 
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              padding: '0.375rem 0.75rem',
+                              background: '#f3f4f6',
+                              color: '#374151',
+                              borderRadius: '0.375rem',
+                              fontSize: '0.8125rem',
+                              textDecoration: 'none',
+                              fontWeight: 500
+                            }}
+                          >
+                            View <ChevronRight size={14} />
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {/* CRM Totals Footer */}
+                <tfoot>
+                  <tr style={{ background: 'linear-gradient(135deg, #ede9fe 0%, #dbeafe 100%)', borderTop: '2px solid #c4b5fd' }}>
+                    <td style={{ padding: '1rem', fontWeight: 600, color: '#5b21b6' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Users size={18} color="#7c3aed" />
+                        <span>Total ({filteredClients.length} clients)</span>
+                      </div>
+                    </td>
+                    <td colSpan={3} style={{ padding: '1rem' }}></td>
+                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#059669' }}>
+                      {formatCurrency(Object.values(clientOrderStats).reduce((sum, s) => sum + (s?.totalRevenue || 0), 0))}
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'center', fontWeight: 700, color: '#059669' }}>
+                      {Object.values(clientOrderStats).reduce((sum, s) => sum + (s?.activeOrders || 0), 0)}
+                    </td>
+                    <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9375rem', fontWeight: 700, color: '#dc2626' }}>
+                      {formatCurrency(Object.values(clientOrderStats).reduce((sum, s) => sum + (s?.openBalance || 0), 0))}
+                    </td>
+                    <td colSpan={2} style={{ padding: '1rem' }}></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Campaign View (Original) */}
+      {viewMode === 'campaign' && (
       <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
-        {clients.length === 0 ? (
+        {filteredClients.length === 0 ? (
           <div style={{ padding: '3rem', textAlign: 'center' }}>
             <Building2 size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
             <p style={{ color: '#6b7280' }}>No clients yet.</p>
@@ -2010,7 +2397,7 @@ function ClientsPage() {
         ) : isMobile ? (
           /* Mobile: Card layout with all data visible */
           <div>
-            {clients.map((c, idx) => {
+            {filteredClients.map((c, idx) => {
               const stats = clientStats[c.id];
               const status = getStatusIndicator(stats);
               return (
@@ -2127,7 +2514,7 @@ function ClientsPage() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                 <BarChart3 size={16} color="#059669" />
-                <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.875rem' }}>Total ({clients.length} clients) - Past 30 Days</span>
+                <span style={{ fontWeight: 600, color: '#065f46', fontSize: '0.875rem' }}>Total ({filteredClients.length clients) - Past 30 Days</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
                 <div style={{ textAlign: 'center' }}>
@@ -2181,7 +2568,7 @@ function ClientsPage() {
               </tr>
             </thead>
             <tbody>
-              {clients.map(c => {
+              {filteredClients.map(c => {
                 const stats = clientStats[c.id];
                 const status = getStatusIndicator(stats);
                 return (
@@ -2274,7 +2661,7 @@ function ClientsPage() {
                 <td style={{ padding: '1rem', fontWeight: 600, color: '#065f46' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <BarChart3 size={18} color="#059669" />
-                    <span>Total ({clients.length} clients)</span>
+                    <span>Total ({filteredClients.length clients)</span>
                   </div>
                 </td>
                 <td style={{ padding: '1rem', textAlign: 'center' }}></td>
@@ -2296,11 +2683,12 @@ function ClientsPage() {
           </table>
         )}
       </div>
+      )}
 
-      {/* Date range indicator */}
-      {clients.length > 0 && (
+      {/* Date range indicator - only show for campaign view */}
+      {viewMode === 'campaign' && filteredClients.length > 0 && (
         <div style={{ marginTop: '1rem', textAlign: 'right', fontSize: '0.75rem', color: '#9ca3af' }}>
-          Stats shown for {(() => {
+          Campaign stats shown for {(() => {
             const now = new Date();
             const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
             const formatDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -2511,9 +2899,19 @@ function ClientDetailPage({ publicMode = false }) {
   const [reportLink, setReportLink] = useState(null);
   const [copied, setCopied] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [activeTab, setActiveTab] = useState('reports'); // 'reports', 'orders', 'overview', 'notes', 'documents', 'invoices'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'orders', 'invoices', 'contacts', 'documents', 'notes', 'reports'
   const [clientOrders, setClientOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [clientInvoices, setClientInvoices] = useState([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [clientContacts, setClientContacts] = useState([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [clientActivities, setClientActivities] = useState([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [clientDocuments, setClientDocuments] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [editingContact, setEditingContact] = useState(null);
   const { user } = useAuth();
   const { isMobile, isTablet, gridCols } = useResponsive();
   
@@ -2589,6 +2987,34 @@ function ClientDetailPage({ publicMode = false }) {
     }
   }, [activeTab, client?.id]);
 
+  // Load invoices when Invoices tab is selected
+  useEffect(() => {
+    if (activeTab === 'invoices' && client?.id && !publicMode) {
+      loadClientInvoices();
+    }
+  }, [activeTab, client?.id]);
+
+  // Load contacts when Contacts tab is selected
+  useEffect(() => {
+    if (activeTab === 'contacts' && client?.id && !publicMode) {
+      loadClientContacts();
+    }
+  }, [activeTab, client?.id]);
+
+  // Load documents when Documents tab is selected
+  useEffect(() => {
+    if (activeTab === 'documents' && client?.id && !publicMode) {
+      loadClientDocuments();
+    }
+  }, [activeTab, client?.id]);
+
+  // Load activities for Overview tab
+  useEffect(() => {
+    if (activeTab === 'overview' && client?.id && !publicMode) {
+      loadClientActivities();
+    }
+  }, [activeTab, client?.id]);
+
   const loadClientOrders = async () => {
     if (!client?.id) return;
     setOrdersLoading(true);
@@ -2599,6 +3025,56 @@ function ClientDetailPage({ publicMode = false }) {
       console.error('Failed to load orders:', err);
     }
     setOrdersLoading(false);
+  };
+
+  const loadClientInvoices = async () => {
+    if (!client?.id) return;
+    setInvoicesLoading(true);
+    try {
+      const data = await api.get(`/api/billing/invoices?clientId=${client.id}`);
+      setClientInvoices(data.invoices || data || []);
+    } catch (err) {
+      console.error('Failed to load invoices:', err);
+    }
+    setInvoicesLoading(false);
+  };
+
+  const loadClientContacts = async () => {
+    if (!client?.id) return;
+    setContactsLoading(true);
+    try {
+      const data = await api.get(`/api/clients/${client.id}/contacts`);
+      setClientContacts(data.contacts || data || []);
+    } catch (err) {
+      console.error('Failed to load contacts:', err);
+    }
+    setContactsLoading(false);
+  };
+
+  const loadClientDocuments = async () => {
+    if (!client?.id) return;
+    setDocumentsLoading(true);
+    try {
+      const data = await api.get(`/api/documents?clientId=${client.id}`);
+      setClientDocuments(data.documents || data || []);
+    } catch (err) {
+      console.error('Failed to load documents:', err);
+    }
+    setDocumentsLoading(false);
+  };
+
+  const loadClientActivities = async () => {
+    if (!client?.id) return;
+    setActivitiesLoading(true);
+    try {
+      const data = await api.get(`/api/clients/${client.id}/activities`);
+      setClientActivities(data.activities || data || []);
+    } catch (err) {
+      console.error('Failed to load activities:', err);
+      // Fallback: Create activities from orders and invoices
+      setClientActivities([]);
+    }
+    setActivitiesLoading(false);
   };
 
   const loadClient = async () => {
@@ -3169,12 +3645,13 @@ function ClientDetailPage({ publicMode = false }) {
             WebkitOverflowScrolling: 'touch'
           }}>
             {[
-              { id: 'reports', label: 'Reports', icon: BarChart3 },
-              { id: 'orders', label: 'Orders', icon: FileText },
               { id: 'overview', label: 'Overview', icon: Building2 },
+              { id: 'orders', label: 'Orders', icon: FileText },
+              { id: 'invoices', label: 'Invoices', icon: DollarSign },
+              { id: 'contacts', label: 'Contacts', icon: Users },
+              { id: 'documents', label: 'Documents', icon: FileText },
               { id: 'notes', label: 'Notes', icon: MessageSquare },
-              { id: 'documents', label: 'Documents', icon: FileText, comingSoon: true },
-              { id: 'invoices', label: 'Invoices', icon: DollarSign, comingSoon: true },
+              { id: 'reports', label: 'Reports', icon: BarChart3 },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -3197,18 +3674,6 @@ function ClientDetailPage({ publicMode = false }) {
               >
                 <tab.icon size={16} />
                 {tab.label}
-                {tab.comingSoon && (
-                  <span style={{
-                    fontSize: '0.625rem',
-                    padding: '0.125rem 0.375rem',
-                    background: '#f3f4f6',
-                    color: '#9ca3af',
-                    borderRadius: '9999px',
-                    fontWeight: 500
-                  }}>
-                    Soon
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -3887,123 +4352,455 @@ function ClientDetailPage({ publicMode = false }) {
         </div>
       )}
 
-      {/* Overview Tab Content */}
+      {/* Overview Tab Content - Enhanced CRM */}
       {!publicMode && activeTab === 'overview' && (
-        <div style={{ display: 'grid', gap: '1.5rem', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr' }}>
-          {/* Client Details Card */}
-          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Client Details</h3>
-              {user?.role === 'admin' && (
-                <button 
-                  onClick={() => setShowEditModal(true)}
-                  style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '0.375rem', fontSize: '0.75rem', cursor: 'pointer', color: '#374151' }}
-                >
-                  Edit
-                </button>
-              )}
-            </div>
-            <div style={{ padding: '1.25rem' }}>
-              <div style={{ display: 'grid', gap: '1rem' }}>
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Business Name</div>
-                  <div style={{ fontWeight: 500 }}>{client?.name || client?.business_name || '—'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Industry</div>
-                  <div>{client?.industry || '—'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Website</div>
-                  <div>{client?.website ? <a href={client.website} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6' }}>{client.website}</a> : '—'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Simpli.fi Org ID</div>
-                  <div style={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>{client?.simplifi_org_id || '—'}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.75rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Status</div>
-                  <div>
-                    <span style={{
-                      display: 'inline-block',
-                      padding: '0.25rem 0.625rem',
-                      background: client?.status === 'active' ? '#dcfce7' : '#f3f4f6',
-                      color: client?.status === 'active' ? '#166534' : '#6b7280',
-                      borderRadius: '9999px',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      textTransform: 'capitalize'
-                    }}>
-                      {client?.status || 'Active'}
-                    </span>
+        <div style={{ display: 'grid', gap: '1.5rem', gridTemplateColumns: isMobile ? '1fr' : '2fr 1fr' }}>
+          {/* Left Column - Client Info */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Client Header Card */}
+            <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div style={{ 
+                padding: '1.5rem',
+                background: `linear-gradient(135deg, ${client?.primary_color || '#1e3a8a'}15 0%, ${client?.secondary_color || '#3b82f6'}10 100%)`,
+                borderBottom: '1px solid #e5e7eb'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {client?.logo_path ? (
+                      <img src={client.logo_path} alt="" style={{ width: '64px', height: '64px', borderRadius: '0.75rem', objectFit: 'contain', background: 'white', padding: '0.5rem' }} />
+                    ) : (
+                      <div style={{ 
+                        width: '64px', height: '64px', borderRadius: '0.75rem', 
+                        background: client?.primary_color || '#1e3a8a',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'white', fontSize: '1.5rem', fontWeight: 700
+                      }}>
+                        {(client?.name || client?.business_name || '?').charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, color: '#111827' }}>
+                        {client?.name || client?.business_name}
+                      </h2>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' }}>
+                        {/* Status Badge */}
+                        <span style={{
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          textTransform: 'capitalize',
+                          background: client?.status === 'active' ? '#dcfce7' : 
+                                     client?.status === 'lead' ? '#fef3c7' :
+                                     client?.status === 'churned' ? '#fee2e2' : '#f3f4f6',
+                          color: client?.status === 'active' ? '#166534' : 
+                                 client?.status === 'lead' ? '#92400e' :
+                                 client?.status === 'churned' ? '#991b1b' : '#6b7280'
+                        }}>
+                          {client?.status || 'prospect'}
+                        </span>
+                        {/* Tier Badge */}
+                        {client?.tier && (
+                          <span style={{
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            textTransform: 'capitalize',
+                            background: client?.tier === 'platinum' ? '#ede9fe' :
+                                       client?.tier === 'gold' ? '#fef3c7' :
+                                       client?.tier === 'silver' ? '#f3f4f6' : '#fef3c7',
+                            color: client?.tier === 'platinum' ? '#5b21b6' :
+                                   client?.tier === 'gold' ? '#b45309' :
+                                   client?.tier === 'silver' ? '#374151' : '#92400e'
+                          }}>
+                            {client?.tier === 'platinum' ? '⭐ ' : client?.tier === 'gold' ? '🥇 ' : client?.tier === 'silver' ? '🥈 ' : '🥉 '}
+                            {client?.tier}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Assigned Rep Card */}
-          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Assigned Representative</h3>
-            </div>
-            <div style={{ padding: '1.25rem' }}>
-              {client?.assigned_to ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{ 
-                    width: '48px', 
-                    height: '48px', 
-                    borderRadius: '50%', 
-                    background: '#dbeafe', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    color: '#1e40af',
-                    fontWeight: 600,
-                    fontSize: '1.125rem'
-                  }}>
-                    {client?.assigned_user_name?.charAt(0) || '?'}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{client?.assigned_user_name || 'Assigned'}</div>
-                    <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{client?.assigned_user_email || ''}</div>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>
-                  <Users size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
-                  <p style={{ margin: 0, fontSize: '0.875rem' }}>No representative assigned</p>
                   {user?.role === 'admin' && (
-                    <Link to="/users" style={{ display: 'inline-block', marginTop: '0.75rem', fontSize: '0.875rem', color: '#3b82f6' }}>
-                      Assign in User Management →
-                    </Link>
+                    <button 
+                      onClick={() => setShowEditModal(true)}
+                      style={{ 
+                        padding: '0.5rem 1rem', 
+                        background: 'white', 
+                        border: '1px solid #e5e7eb', 
+                        borderRadius: '0.5rem', 
+                        fontSize: '0.875rem', 
+                        cursor: 'pointer', 
+                        color: '#374151',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.375rem',
+                        fontWeight: 500
+                      }}
+                    >
+                      <Edit3 size={14} /> Edit
+                    </button>
                   )}
                 </div>
-              )}
+                
+                {/* Tags */}
+                {client?.tags && client.tags.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.75rem' }}>
+                    {client.tags.map((tag, i) => (
+                      <span key={i} style={{
+                        padding: '0.125rem 0.5rem',
+                        background: '#e0e7ff',
+                        color: '#3730a3',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.6875rem',
+                        fontWeight: 500
+                      }}>
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Client Details Grid */}
+              <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Industry</div>
+                  <div style={{ fontSize: '0.9375rem', color: '#111827' }}>{client?.industry || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Website</div>
+                  <div style={{ fontSize: '0.9375rem' }}>
+                    {client?.website ? (
+                      <a href={client.website} target="_blank" rel="noopener noreferrer" style={{ color: '#3b82f6', textDecoration: 'none' }}>
+                        {client.website.replace(/^https?:\/\//, '')}
+                      </a>
+                    ) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Client Since</div>
+                  <div style={{ fontSize: '0.9375rem', color: '#111827' }}>
+                    {client?.client_since ? new Date(client.client_since).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Source</div>
+                  <div style={{ fontSize: '0.9375rem', color: '#111827' }}>{client?.source || '—'}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Annual Value</div>
+                  <div style={{ fontSize: '0.9375rem', color: '#111827', fontWeight: 600 }}>
+                    {client?.annual_contract_value ? formatCurrency(client.annual_contract_value) : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.6875rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Billing Terms</div>
+                  <div style={{ fontSize: '0.9375rem', color: '#111827', textTransform: 'capitalize' }}>
+                    {client?.billing_terms?.replace(/_/g, ' ') || 'Due on Receipt'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Key Metrics Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#1e3a8a' }}>{activeCampaigns.length}</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>Active Campaigns</div>
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#059669' }}>{clientOrders.filter(o => o.status === 'signed').length}</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>Active Orders</div>
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#7c3aed' }}>{formatNumber(activeTotals.impressions)}</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>Impressions (30d)</div>
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#ea580c' }}>{formatNumber(activeTotals.clicks)}</div>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>Clicks (30d)</div>
+              </div>
+            </div>
+
+            {/* Primary Contact Card */}
+            <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Primary Contact</h3>
+                <button 
+                  onClick={() => setActiveTab('contacts')}
+                  style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', border: '1px solid #e5e7eb', borderRadius: '0.375rem', fontSize: '0.75rem', cursor: 'pointer', color: '#374151' }}
+                >
+                  View All
+                </button>
+              </div>
+              <div style={{ padding: '1.25rem' }}>
+                {clientContacts.find(c => c.is_primary) || clientContacts[0] ? (
+                  (() => {
+                    const contact = clientContacts.find(c => c.is_primary) || clientContacts[0];
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <div style={{ 
+                          width: '56px', height: '56px', borderRadius: '50%', 
+                          background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'white', fontWeight: 600, fontSize: '1.25rem', flexShrink: 0
+                        }}>
+                          {contact.first_name?.charAt(0) || '?'}{contact.last_name?.charAt(0) || ''}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '1.0625rem', color: '#111827' }}>
+                            {contact.first_name} {contact.last_name}
+                          </div>
+                          {contact.title && (
+                            <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.125rem' }}>{contact.title}</div>
+                          )}
+                          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                            {contact.email && (
+                              <a href={`mailto:${contact.email}`} style={{ fontSize: '0.8125rem', color: '#3b82f6', textDecoration: 'none' }}>
+                                {contact.email}
+                              </a>
+                            )}
+                            {contact.phone && (
+                              <a href={`tel:${contact.phone}`} style={{ fontSize: '0.8125rem', color: '#3b82f6', textDecoration: 'none' }}>
+                                {contact.phone}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        {contact.is_primary && (
+                          <span style={{ 
+                            padding: '0.25rem 0.5rem', 
+                            background: '#dcfce7', 
+                            color: '#166534', 
+                            borderRadius: '0.25rem', 
+                            fontSize: '0.6875rem', 
+                            fontWeight: 600,
+                            flexShrink: 0
+                          }}>
+                            PRIMARY
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '1.5rem', color: '#6b7280' }}>
+                    <Users size={32} style={{ marginBottom: '0.75rem', opacity: 0.4 }} />
+                    <p style={{ margin: 0, fontSize: '0.875rem' }}>No contacts yet</p>
+                    <button 
+                      onClick={() => { setActiveTab('contacts'); setShowAddContactModal(true); }}
+                      style={{ 
+                        marginTop: '0.75rem', 
+                        padding: '0.5rem 1rem', 
+                        background: '#1e3a8a', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '0.375rem', 
+                        fontSize: '0.875rem', 
+                        cursor: 'pointer' 
+                      }}
+                    >
+                      Add Contact
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Assigned Rep Card */}
+            <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Assigned Representative</h3>
+              </div>
+              <div style={{ padding: '1.25rem' }}>
+                {client?.assigned_to ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <div style={{ 
+                      width: '48px', height: '48px', borderRadius: '50%', 
+                      background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'white', fontWeight: 600, fontSize: '1.125rem'
+                    }}>
+                      {client?.assigned_user_name?.charAt(0) || '?'}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{client?.assigned_user_name || 'Assigned'}</div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{client?.assigned_user_email || ''}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>
+                    <Users size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+                    <p style={{ margin: 0, fontSize: '0.875rem' }}>No representative assigned</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Quick Stats Card */}
-          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden', gridColumn: isMobile ? 'auto' : '1 / -1' }}>
-            <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Quick Stats</h3>
+          {/* Right Column - Activity Timeline */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            {/* Activity Timeline Card */}
+            <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Recent Activity</h3>
+              </div>
+              <div style={{ padding: '1rem 1.25rem', maxHeight: '500px', overflowY: 'auto' }}>
+                {activitiesLoading ? (
+                  <div style={{ textAlign: 'center', padding: '2rem' }}>
+                    <div className="spinner" />
+                  </div>
+                ) : clientActivities.length > 0 ? (
+                  <div style={{ position: 'relative' }}>
+                    {/* Timeline line */}
+                    <div style={{ position: 'absolute', left: '11px', top: '8px', bottom: '8px', width: '2px', background: '#e5e7eb' }} />
+                    
+                    {clientActivities.slice(0, 15).map((activity, i) => {
+                      const activityIcons = {
+                        order_created: { icon: FileText, bg: '#dbeafe', color: '#1e40af' },
+                        order_signed: { icon: CheckCircle, bg: '#dcfce7', color: '#166534' },
+                        invoice_sent: { icon: DollarSign, bg: '#fef3c7', color: '#92400e' },
+                        invoice_paid: { icon: CheckCircle, bg: '#dcfce7', color: '#166534' },
+                        note_added: { icon: MessageSquare, bg: '#f3e8ff', color: '#7c3aed' },
+                        contact_added: { icon: Users, bg: '#e0e7ff', color: '#3730a3' },
+                        status_change: { icon: Flag, bg: '#fef3c7', color: '#92400e' },
+                        default: { icon: Clock, bg: '#f3f4f6', color: '#6b7280' }
+                      };
+                      const config = activityIcons[activity.activity_type] || activityIcons.default;
+                      const IconComponent = config.icon;
+                      
+                      return (
+                        <div key={activity.id || i} style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', position: 'relative' }}>
+                          <div style={{ 
+                            width: '24px', height: '24px', borderRadius: '50%', 
+                            background: config.bg, 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexShrink: 0, zIndex: 1
+                          }}>
+                            <IconComponent size={12} color={config.color} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#111827' }}>
+                              {activity.title}
+                            </div>
+                            {activity.description && (
+                              <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: '0.125rem' }}>
+                                {activity.description}
+                              </div>
+                            )}
+                            <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                              {activity.created_at ? new Date(activity.created_at).toLocaleDateString('en-US', { 
+                                month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                              }) : ''}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Generate activity from orders/invoices as fallback */
+                  <div style={{ position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: '11px', top: '8px', bottom: '8px', width: '2px', background: '#e5e7eb' }} />
+                    
+                    {/* Combine and sort orders and invoices */}
+                    {[
+                      ...clientOrders.map(o => ({ 
+                        type: 'order', 
+                        date: o.created_at, 
+                        title: `Order ${o.order_number || o.id?.slice(0,8)} created`,
+                        status: o.status,
+                        amount: o.contract_total
+                      })),
+                      ...clientInvoices.map(i => ({ 
+                        type: 'invoice', 
+                        date: i.created_at, 
+                        title: `Invoice ${i.invoice_number} ${i.status === 'paid' ? 'paid' : 'created'}`,
+                        status: i.status,
+                        amount: i.total
+                      }))
+                    ]
+                    .sort((a, b) => new Date(b.date) - new Date(a.date))
+                    .slice(0, 10)
+                    .map((item, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', position: 'relative' }}>
+                        <div style={{ 
+                          width: '24px', height: '24px', borderRadius: '50%', 
+                          background: item.type === 'order' ? '#dbeafe' : '#fef3c7', 
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0, zIndex: 1
+                        }}>
+                          {item.type === 'order' ? 
+                            <FileText size={12} color="#1e40af" /> : 
+                            <DollarSign size={12} color="#92400e" />
+                          }
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#111827' }}>{item.title}</div>
+                          {item.amount && (
+                            <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>{formatCurrency(item.amount)}</div>
+                          )}
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem' }}>
+                            {new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {clientOrders.length === 0 && clientInvoices.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                        <Clock size={32} style={{ marginBottom: '0.75rem', opacity: 0.4 }} />
+                        <p style={{ margin: 0, fontSize: '0.875rem' }}>No activity yet</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            <div style={{ padding: '1.25rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1.5rem' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#1e3a8a' }}>{activeCampaigns.length}</div>
-                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Active Campaigns</div>
+
+            {/* Integration Status Card */}
+            <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: '#111827' }}>Integrations</h3>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#059669' }}>{clientOrders.length}</div>
-                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Total Orders</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#7c3aed' }}>{formatNumber(activeTotals.impressions)}</div>
-                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Impressions (30d)</div>
-              </div>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '2rem', fontWeight: 700, color: '#ea580c' }}>{formatNumber(activeTotals.clicks)}</div>
-                <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Clicks (30d)</div>
+              <div style={{ padding: '1rem 1.25rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '0.375rem', background: '#0d9488', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Target size={16} color="white" />
+                      </div>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Simpli.fi</span>
+                    </div>
+                    {client?.simplifi_org_id ? (
+                      <span style={{ padding: '0.25rem 0.5rem', background: '#dcfce7', color: '#166534', borderRadius: '0.25rem', fontSize: '0.6875rem', fontWeight: 600 }}>
+                        CONNECTED
+                      </span>
+                    ) : (
+                      <span style={{ padding: '0.25rem 0.5rem', background: '#f3f4f6', color: '#6b7280', borderRadius: '0.25rem', fontSize: '0.6875rem', fontWeight: 600 }}>
+                        NOT LINKED
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '0.375rem', background: '#6366f1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <DollarSign size={16} color="white" />
+                      </div>
+                      <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Stripe</span>
+                    </div>
+                    {client?.stripe_customer_id ? (
+                      <span style={{ padding: '0.25rem 0.5rem', background: '#dcfce7', color: '#166534', borderRadius: '0.25rem', fontSize: '0.6875rem', fontWeight: 600 }}>
+                        CONNECTED
+                      </span>
+                    ) : (
+                      <span style={{ padding: '0.25rem 0.5rem', background: '#f3f4f6', color: '#6b7280', borderRadius: '0.25rem', fontSize: '0.6875rem', fontWeight: 600 }}>
+                        NOT LINKED
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -4015,57 +4812,519 @@ function ClientDetailPage({ publicMode = false }) {
         <InternalNotesSection clientId={client?.id} isCollapsible={false} />
       )}
 
-      {/* Documents Tab Content - Coming Soon */}
-      {!publicMode && activeTab === 'documents' && (
-        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '4rem 2rem', textAlign: 'center' }}>
-          <div style={{ 
-            width: '80px', 
-            height: '80px', 
-            borderRadius: '50%', 
-            background: '#f3f4f6', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            margin: '0 auto 1.5rem'
-          }}>
-            <FileText size={36} style={{ color: '#9ca3af' }} />
+      {/* Contacts Tab Content */}
+      {!publicMode && activeTab === 'contacts' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Contacts</h3>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>People associated with {client?.name}</p>
+            </div>
+            <button
+              onClick={() => setShowAddContactModal(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                padding: '0.5rem 1rem',
+                background: '#1e3a8a',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                cursor: 'pointer'
+              }}
+            >
+              <Users size={16} /> Add Contact
+            </button>
           </div>
-          <h3 style={{ margin: '0 0 0.5rem', color: '#111827', fontSize: '1.25rem' }}>Documents Coming Soon</h3>
-          <p style={{ color: '#6b7280', maxWidth: '400px', margin: '0 auto 1.5rem', lineHeight: 1.6 }}>
-            Store and manage client agreements, creative assets, insertion orders, and other important documents all in one place.
-          </p>
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>📄 Contracts</span>
-            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>🎨 Creative Assets</span>
-            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>📋 IO Sheets</span>
-          </div>
+          
+          {contactsLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+              <div className="spinner" />
+            </div>
+          ) : clientContacts.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <Users size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
+              <h4 style={{ margin: '0 0 0.5rem', color: '#374151' }}>No Contacts Yet</h4>
+              <p style={{ color: '#6b7280', marginBottom: '1rem' }}>Add the first contact for this client.</p>
+              <button
+                onClick={() => setShowAddContactModal(true)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  background: '#1e3a8a',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+              >
+                Add Contact
+              </button>
+            </div>
+          ) : (
+            <div style={{ padding: '1rem' }}>
+              <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)' }}>
+                {clientContacts.map(contact => (
+                  <div 
+                    key={contact.id} 
+                    style={{ 
+                      padding: '1.25rem', 
+                      border: '1px solid #e5e7eb', 
+                      borderRadius: '0.75rem',
+                      background: contact.is_primary ? '#f0fdf4' : 'white',
+                      position: 'relative'
+                    }}
+                  >
+                    {contact.is_primary && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '0.75rem',
+                        right: '0.75rem',
+                        padding: '0.125rem 0.5rem',
+                        background: '#dcfce7',
+                        color: '#166534',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.625rem',
+                        fontWeight: 700,
+                        textTransform: 'uppercase'
+                      }}>
+                        Primary
+                      </span>
+                    )}
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <div style={{ 
+                        width: '48px', height: '48px', borderRadius: '50%', 
+                        background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'white', fontWeight: 600, fontSize: '1rem', flexShrink: 0
+                      }}>
+                        {contact.first_name?.charAt(0) || ''}{contact.last_name?.charAt(0) || ''}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: '1rem', color: '#111827' }}>
+                          {contact.first_name} {contact.last_name}
+                        </div>
+                        {contact.title && (
+                          <div style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.125rem' }}>{contact.title}</div>
+                        )}
+                        {contact.role && contact.role !== 'general' && (
+                          <span style={{
+                            display: 'inline-block',
+                            marginTop: '0.375rem',
+                            padding: '0.125rem 0.5rem',
+                            background: contact.role === 'billing' ? '#fef3c7' : 
+                                       contact.role === 'marketing' ? '#dbeafe' : '#f3f4f6',
+                            color: contact.role === 'billing' ? '#92400e' : 
+                                   contact.role === 'marketing' ? '#1e40af' : '#374151',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.6875rem',
+                            fontWeight: 500,
+                            textTransform: 'capitalize'
+                          }}>
+                            {contact.role}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                      {contact.email && (
+                        <a href={`mailto:${contact.email}`} style={{ 
+                          fontSize: '0.875rem', 
+                          color: '#3b82f6', 
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}>
+                          <span style={{ color: '#9ca3af' }}>✉</span> {contact.email}
+                        </a>
+                      )}
+                      {contact.phone && (
+                        <a href={`tel:${contact.phone}`} style={{ 
+                          fontSize: '0.875rem', 
+                          color: '#3b82f6', 
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem'
+                        }}>
+                          <span style={{ color: '#9ca3af' }}>📞</span> {contact.phone}
+                        </a>
+                      )}
+                    </div>
+                    <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => setEditingContact(contact)}
+                        style={{
+                          padding: '0.375rem 0.75rem',
+                          background: '#f3f4f6',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                          color: '#374151'
+                        }}
+                      >
+                        Edit
+                      </button>
+                      {!contact.is_primary && (
+                        <button
+                          onClick={async () => {
+                            if (window.confirm(`Make ${contact.first_name} ${contact.last_name} the primary contact?`)) {
+                              try {
+                                await api.put(`/api/clients/${client.id}/contacts/${contact.id}`, { is_primary: true });
+                                loadClientContacts();
+                              } catch (err) {
+                                alert('Failed to update contact: ' + err.message);
+                              }
+                            }
+                          }}
+                          style={{
+                            padding: '0.375rem 0.75rem',
+                            background: '#dcfce7',
+                            border: '1px solid #bbf7d0',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            color: '#166534'
+                          }}
+                        >
+                          Set Primary
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Invoices Tab Content - Coming Soon */}
+      {/* Add/Edit Contact Modal */}
+      {(showAddContactModal || editingContact) && (
+        <Modal onClose={() => { setShowAddContactModal(false); setEditingContact(null); }}>
+          <ContactForm 
+            contact={editingContact}
+            clientId={client?.id}
+            onSave={async (contactData) => {
+              try {
+                if (editingContact) {
+                  await api.put(`/api/clients/${client.id}/contacts/${editingContact.id}`, contactData);
+                } else {
+                  await api.post(`/api/clients/${client.id}/contacts`, contactData);
+                }
+                loadClientContacts();
+                setShowAddContactModal(false);
+                setEditingContact(null);
+              } catch (err) {
+                alert('Failed to save contact: ' + err.message);
+              }
+            }}
+            onCancel={() => { setShowAddContactModal(false); setEditingContact(null); }}
+          />
+        </Modal>
+      )}
+
+      {/* Documents Tab Content */}
+      {!publicMode && activeTab === 'documents' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Documents</h3>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>Contracts, IO sheets, and creative assets</p>
+            </div>
+            <Link 
+              to="/documents"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                padding: '0.5rem 1rem',
+                background: '#1e3a8a',
+                color: 'white',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                textDecoration: 'none'
+              }}
+            >
+              <FileText size={16} /> Manage Documents
+            </Link>
+          </div>
+          
+          {documentsLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+              <div className="spinner" />
+            </div>
+          ) : clientDocuments.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <FileText size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
+              <h4 style={{ margin: '0 0 0.5rem', color: '#374151' }}>No Documents Yet</h4>
+              <p style={{ color: '#6b7280', marginBottom: '1rem' }}>Upload contracts, creative assets, or other files for this client.</p>
+              <Link 
+                to="/documents"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  background: '#1e3a8a',
+                  color: 'white',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  textDecoration: 'none'
+                }}
+              >
+                Upload Document
+              </Link>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '600px' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Document</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Type</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Uploaded</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '100px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientDocuments.map(doc => (
+                    <tr key={doc.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ 
+                            width: '36px', height: '36px', borderRadius: '0.375rem', 
+                            background: '#f3f4f6', 
+                            display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                          }}>
+                            <FileText size={18} color="#6b7280" />
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 500, fontSize: '0.9375rem' }}>{doc.filename || doc.name}</div>
+                            {doc.description && (
+                              <div style={{ fontSize: '0.8125rem', color: '#6b7280' }}>{doc.description}</div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.25rem 0.625rem',
+                          background: '#f3f4f6',
+                          color: '#374151',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          textTransform: 'capitalize'
+                        }}>
+                          {doc.document_type || doc.type || 'Other'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem' }}>
+                        {doc.created_at ? new Date(doc.created_at).toLocaleDateString() : '—'}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                        <button
+                          onClick={() => window.open(`/api/documents/${doc.id}/download`, '_blank')}
+                          style={{
+                            padding: '0.375rem 0.75rem',
+                            background: '#f3f4f6',
+                            color: '#374151',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            fontWeight: 500
+                          }}
+                        >
+                          Download
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Invoices Tab Content */}
       {!publicMode && activeTab === 'invoices' && (
-        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '4rem 2rem', textAlign: 'center' }}>
-          <div style={{ 
-            width: '80px', 
-            height: '80px', 
-            borderRadius: '50%', 
-            background: '#f3f4f6', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            margin: '0 auto 1.5rem'
-          }}>
-            <DollarSign size={36} style={{ color: '#9ca3af' }} />
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Invoice History</h3>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>All invoices for {client?.name}</p>
+            </div>
+            <Link 
+              to={`/billing/invoices/new?clientId=${client?.id}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.375rem',
+                padding: '0.5rem 1rem',
+                background: '#1e3a8a',
+                color: 'white',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+                textDecoration: 'none'
+              }}
+            >
+              <DollarSign size={16} /> New Invoice
+            </Link>
           </div>
-          <h3 style={{ margin: '0 0 0.5rem', color: '#111827', fontSize: '1.25rem' }}>Invoices Coming Soon</h3>
-          <p style={{ color: '#6b7280', maxWidth: '400px', margin: '0 auto 1.5rem', lineHeight: 1.6 }}>
-            View billing history, track payments, and manage invoices for this client. Integration with QuickBooks coming soon.
-          </p>
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>💳 Payment History</span>
-            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>📊 Billing Summary</span>
-            <span style={{ padding: '0.375rem 0.75rem', background: '#f3f4f6', borderRadius: '9999px', fontSize: '0.8125rem', color: '#6b7280' }}>🔗 QuickBooks Sync</span>
-          </div>
+          
+          {/* Invoice Summary Cards */}
+          {clientInvoices.length > 0 && (
+            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#1e3a8a' }}>{clientInvoices.length}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Total Invoices</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#059669' }}>
+                    {formatCurrency(clientInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (parseFloat(i.total) || 0), 0))}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Paid</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f59e0b' }}>
+                    {formatCurrency(clientInvoices.filter(i => i.status === 'sent').reduce((sum, i) => sum + (parseFloat(i.balance_due) || 0), 0))}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Outstanding</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ef4444' }}>
+                    {clientInvoices.filter(i => i.status === 'sent' && new Date(i.due_date) < new Date()).length}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Overdue</div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {invoicesLoading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+              <div className="spinner" />
+            </div>
+          ) : clientInvoices.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <DollarSign size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
+              <h4 style={{ margin: '0 0 0.5rem', color: '#374151' }}>No Invoices Yet</h4>
+              <p style={{ color: '#6b7280', marginBottom: '1rem' }}>Create the first invoice for this client.</p>
+              <Link 
+                to={`/billing/invoices/new?clientId=${client?.id}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  background: '#1e3a8a',
+                  color: 'white',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  textDecoration: 'none'
+                }}
+              >
+                Create Invoice
+              </Link>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '700px' }}>
+                <thead>
+                  <tr style={{ background: '#f9fafb' }}>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Invoice #</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Status</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Issue Date</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Due Date</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Total</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Balance</th>
+                    <th style={{ padding: '0.75rem 1rem', width: '80px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientInvoices.map(invoice => {
+                    const statusColors = {
+                      draft: { bg: '#f3f4f6', text: '#6b7280' },
+                      approved: { bg: '#dbeafe', text: '#1e40af' },
+                      sent: { bg: '#fef3c7', text: '#92400e' },
+                      paid: { bg: '#dcfce7', text: '#166534' },
+                      void: { bg: '#fee2e2', text: '#991b1b' }
+                    };
+                    const status = statusColors[invoice.status] || statusColors.draft;
+                    const isOverdue = invoice.status === 'sent' && new Date(invoice.due_date) < new Date();
+                    
+                    return (
+                      <tr key={invoice.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>
+                          {invoice.invoice_number}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '0.25rem 0.625rem',
+                            background: isOverdue ? '#fee2e2' : status.bg,
+                            color: isOverdue ? '#991b1b' : status.text,
+                            borderRadius: '9999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            textTransform: 'capitalize'
+                          }}>
+                            {isOverdue ? 'Overdue' : invoice.status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', color: '#6b7280', fontSize: '0.875rem' }}>
+                          {invoice.issue_date ? new Date(invoice.issue_date).toLocaleDateString() : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', color: isOverdue ? '#dc2626' : '#6b7280', fontSize: '0.875rem', fontWeight: isOverdue ? 500 : 400 }}>
+                          {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace' }}>
+                          {formatCurrency(invoice.total)}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontFamily: 'monospace', fontWeight: 600, color: parseFloat(invoice.balance_due) > 0 ? '#dc2626' : '#059669' }}>
+                          {formatCurrency(invoice.balance_due)}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <Link 
+                            to={`/billing`}
+                            style={{
+                              padding: '0.375rem 0.75rem',
+                              background: '#f3f4f6',
+                              color: '#374151',
+                              borderRadius: '0.375rem',
+                              fontSize: '0.75rem',
+                              textDecoration: 'none',
+                              fontWeight: 500
+                            }}
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
       
@@ -8546,6 +9805,260 @@ function FormField({ label, value, onChange, placeholder, type = 'text', require
 }
 
 // ============================================
+// CONTACT FORM (Add/Edit Contact)
+// ============================================
+function ContactForm({ contact, clientId, onSave, onCancel }) {
+  const [formData, setFormData] = useState({
+    first_name: contact?.first_name || '',
+    last_name: contact?.last_name || '',
+    email: contact?.email || '',
+    phone: contact?.phone || '',
+    title: contact?.title || '',
+    role: contact?.role || 'general',
+    is_primary: contact?.is_primary || false,
+    preferred_contact_method: contact?.preferred_contact_method || 'email',
+    notes: contact?.notes || ''
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.first_name.trim() || !formData.last_name.trim()) {
+      alert('First and last name are required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(formData);
+    } catch (err) {
+      console.error('Save failed:', err);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.25rem', fontWeight: 600 }}>
+        {contact ? 'Edit Contact' : 'Add Contact'}
+      </h2>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            First Name *
+          </label>
+          <input
+            type="text"
+            value={formData.first_name}
+            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+            required
+            style={{ 
+              width: '100%', 
+              padding: '0.625rem 0.875rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.375rem',
+              fontSize: '0.9375rem'
+            }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            Last Name *
+          </label>
+          <input
+            type="text"
+            value={formData.last_name}
+            onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+            required
+            style={{ 
+              width: '100%', 
+              padding: '0.625rem 0.875rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.375rem',
+              fontSize: '0.9375rem'
+            }}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+          Job Title
+        </label>
+        <input
+          type="text"
+          value={formData.title}
+          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+          placeholder="e.g., Marketing Director"
+          style={{ 
+            width: '100%', 
+            padding: '0.625rem 0.875rem', 
+            border: '1px solid #d1d5db', 
+            borderRadius: '0.375rem',
+            fontSize: '0.9375rem'
+          }}
+        />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            Email
+          </label>
+          <input
+            type="email"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            style={{ 
+              width: '100%', 
+              padding: '0.625rem 0.875rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.375rem',
+              fontSize: '0.9375rem'
+            }}
+          />
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            Phone
+          </label>
+          <input
+            type="tel"
+            value={formData.phone}
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            style={{ 
+              width: '100%', 
+              padding: '0.625rem 0.875rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.375rem',
+              fontSize: '0.9375rem'
+            }}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            Contact Role
+          </label>
+          <select
+            value={formData.role}
+            onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+            style={{ 
+              width: '100%', 
+              padding: '0.625rem 0.875rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.375rem',
+              fontSize: '0.9375rem',
+              background: 'white'
+            }}
+          >
+            <option value="general">General</option>
+            <option value="primary">Primary Contact</option>
+            <option value="billing">Billing</option>
+            <option value="marketing">Marketing</option>
+            <option value="operations">Operations</option>
+            <option value="executive">Executive</option>
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+            Preferred Contact Method
+          </label>
+          <select
+            value={formData.preferred_contact_method}
+            onChange={(e) => setFormData({ ...formData, preferred_contact_method: e.target.value })}
+            style={{ 
+              width: '100%', 
+              padding: '0.625rem 0.875rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.375rem',
+              fontSize: '0.9375rem',
+              background: 'white'
+            }}
+          >
+            <option value="email">Email</option>
+            <option value="phone">Phone</option>
+            <option value="text">Text Message</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={formData.is_primary}
+            onChange={(e) => setFormData({ ...formData, is_primary: e.target.checked })}
+            style={{ width: '1rem', height: '1rem' }}
+          />
+          <span style={{ fontSize: '0.875rem', color: '#374151' }}>Set as primary contact</span>
+        </label>
+        <p style={{ margin: '0.25rem 0 0 1.5rem', fontSize: '0.75rem', color: '#6b7280' }}>
+          Primary contact receives contracts, invoices, and important communications
+        </p>
+      </div>
+
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label style={{ display: 'block', marginBottom: '0.375rem', fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
+          Notes
+        </label>
+        <textarea
+          value={formData.notes}
+          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+          rows={3}
+          placeholder="Any additional notes about this contact..."
+          style={{ 
+            width: '100%', 
+            padding: '0.625rem 0.875rem', 
+            border: '1px solid #d1d5db', 
+            borderRadius: '0.375rem',
+            fontSize: '0.9375rem',
+            resize: 'vertical'
+          }}
+        />
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            padding: '0.625rem 1.25rem',
+            background: 'white',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.375rem',
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            color: '#374151'
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={saving}
+          style={{
+            padding: '0.625rem 1.25rem',
+            background: '#1e3a8a',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            fontWeight: 500,
+            opacity: saving ? 0.7 : 1
+          }}
+        >
+          {saving ? 'Saving...' : (contact ? 'Save Changes' : 'Add Contact')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ============================================
 // EDIT CLIENT FORM
 // ============================================
 function EditClientForm({ client, onSave, onCancel }) {
@@ -8558,7 +10071,16 @@ function EditClientForm({ client, onSave, onCancel }) {
     campaignGoal: client?.campaign_goal || '',
     contactName: client?.contact_name || '',
     contactEmail: client?.contact_email || '',
-    startDate: client?.start_date || ''
+    startDate: client?.start_date || '',
+    // New CRM fields
+    status: client?.status || 'prospect',
+    tier: client?.tier || 'bronze',
+    industry: client?.industry || '',
+    clientSince: client?.client_since || '',
+    source: client?.source || '',
+    tags: client?.tags?.join(', ') || '',
+    website: client?.website || '',
+    billingTerms: client?.billing_terms || 'due_on_receipt'
   });
   const [saving, setSaving] = useState(false);
 
@@ -8574,7 +10096,16 @@ function EditClientForm({ client, onSave, onCancel }) {
       campaignGoal: formData.campaignGoal || null,
       contactName: formData.contactName || null,
       contactEmail: formData.contactEmail || null,
-      startDate: formData.startDate || null
+      startDate: formData.startDate || null,
+      // New CRM fields
+      status: formData.status,
+      tier: formData.tier,
+      industry: formData.industry || null,
+      clientSince: formData.clientSince || null,
+      source: formData.source || null,
+      tags: formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(t => t) : [],
+      website: formData.website || null,
+      billingTerms: formData.billingTerms
     });
     setSaving(false);
   };
@@ -8587,7 +10118,84 @@ function EditClientForm({ client, onSave, onCancel }) {
       <div style={{ marginBottom: '1.5rem' }}>
         <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.75rem' }}>Basic Information</h4>
         <FormField label="Client Name" value={formData.name} onChange={(v) => setFormData({...formData, name: v})} required />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Status</label>
+            <select
+              value={formData.status}
+              onChange={(e) => setFormData({...formData, status: e.target.value})}
+              style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', background: 'white' }}
+            >
+              <option value="lead">Lead</option>
+              <option value="prospect">Prospect</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="churned">Churned</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Tier</label>
+            <select
+              value={formData.tier}
+              onChange={(e) => setFormData({...formData, tier: e.target.value})}
+              style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', background: 'white' }}
+            >
+              <option value="bronze">🥉 Bronze</option>
+              <option value="silver">🥈 Silver</option>
+              <option value="gold">🥇 Gold</option>
+              <option value="platinum">⭐ Platinum</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+          <FormField label="Industry" value={formData.industry} onChange={(v) => setFormData({...formData, industry: v})} placeholder="e.g., Restaurant, Healthcare" />
+          <FormField label="Website" value={formData.website} onChange={(v) => setFormData({...formData, website: v})} placeholder="https://example.com" />
+        </div>
         <FormField label="Logo URL" value={formData.logoPath} onChange={(v) => setFormData({...formData, logoPath: v})} placeholder="https://example.com/logo.png" />
+      </div>
+
+      {/* CRM Info */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.75rem' }}>CRM Details</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Client Since</label>
+            <input 
+              type="date" 
+              value={formData.clientSince} 
+              onChange={(e) => setFormData({...formData, clientSince: e.target.value})}
+              style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}
+            />
+          </div>
+          <FormField label="Source / How They Found Us" value={formData.source} onChange={(v) => setFormData({...formData, source: v})} placeholder="e.g., Referral, Website, Event" />
+        </div>
+        <div style={{ marginTop: '0.75rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Tags (comma-separated)</label>
+          <input 
+            type="text" 
+            value={formData.tags} 
+            onChange={(e) => setFormData({...formData, tags: e.target.value})}
+            placeholder="e.g., VIP, Long-term, Digital-first"
+            style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}
+          />
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
+            Separate multiple tags with commas
+          </p>
+        </div>
+        <div style={{ marginTop: '0.75rem' }}>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Billing Terms</label>
+          <select
+            value={formData.billingTerms}
+            onChange={(e) => setFormData({...formData, billingTerms: e.target.value})}
+            style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', background: 'white' }}
+          >
+            <option value="due_on_receipt">Due on Receipt</option>
+            <option value="net_15">Net 15</option>
+            <option value="net_30">Net 30</option>
+            <option value="net_45">Net 45</option>
+            <option value="net_60">Net 60</option>
+          </select>
+        </div>
       </div>
       
       {/* Colors */}

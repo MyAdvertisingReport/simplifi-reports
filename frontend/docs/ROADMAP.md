@@ -91,11 +91,11 @@
 
 ### 2. Security Improvements
 
-#### High Priority
-- [ ] Add `helmet` middleware for security headers
-- [ ] Add `express-rate-limit` for login endpoint
-- [ ] Remove JWT secret fallback (`|| 'dev-secret'`)
-- [ ] Protect diagnostic endpoints with auth
+#### ✅ High Priority (COMPLETED - January 27, 2026)
+- [x] Add `helmet` middleware for security headers
+- [x] Add `express-rate-limit` for login endpoint
+- [x] Remove JWT secret fallback (`|| 'dev-secret'`)
+- [x] Protect diagnostic endpoints with auth
 
 #### Medium Priority
 - [ ] Strengthen password policy (12+ chars, complexity)
@@ -256,7 +256,7 @@
 
 ## 🔒 Security Status
 
-**Current Score: 7.5/10**
+**Current Score: 8.5/10** ⬆️ (was 7.5)
 
 ### Strengths
 - ✅ bcrypt password hashing
@@ -265,12 +265,14 @@
 - ✅ Role-based access control
 - ✅ Stripe for PCI-compliant payments
 - ✅ Activity logging
+- ✅ **Helmet security headers** (NEW)
+- ✅ **Rate limiting on login** (NEW)
+- ✅ **JWT validation in production** (NEW)
+- ✅ **Protected diagnostic endpoints** (NEW)
 
-### Needs Improvement
-- ⚠️ JWT secret fallback
-- ⚠️ No rate limiting on login
-- ⚠️ Missing security headers
-- ⚠️ CORS allows all origins
+### Remaining Improvements
+- ⚠️ CORS still allows unknown origins (logging)
+- ⚠️ Password policy could be stronger
 
 See `SECURITY_AUDIT.md` for full details and implementation guide.
 
