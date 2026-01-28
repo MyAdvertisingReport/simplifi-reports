@@ -1,104 +1,91 @@
-# Session Summary - January 28, 2026
+# Session Summary - January 28, 2026 (Afternoon)
 
 ## 🎯 Session Goal
-CRM Enhancement - Import RAB client list, create dual-view Clients page, optimize API performance.
+CRM View Enhancement - Owner/Assignment features, Activity tracking, Client data cleanup
 
 ## ✅ What We Accomplished
 
-### 1. RAB Master Sheet Client Import (266 Clients)
+### 1. CRM View Redesign
 
-**Imported from Excel:**
-- **266 unique advertisers** from RAB Master Sheet
-- **WSIC Radio:** 77 clients
-- **Lake Norman Woman:** 157 clients  
-- **Multi-Platform (both):** 32 clients
-- **1 In-House Brands** client for internal programmatic
+**New Cleaner Interface:**
+| Column | Purpose |
+|--------|---------|
+| Business | Name + contact (with status dot) |
+| Status | Prospect/Lead/Active badge |
+| Owner | Claim button OR assigned rep name |
+| Industry | Business category |
+| Last Touch | Color-coded days (green ≤7d, yellow ≤30d, red >30d) |
+| Activities | Count of logged activities |
 
-**Data Imported Per Client:**
-- Business name (cleaned, duplicates merged)
-- Slug (URL-friendly, unique)
-- Brand associations (WSIC, LKNW tags)
-- Product/inventory type tags (Print, Commercials, Show Sponsor, etc.)
-- Revenue type flag (Trade/Barter tag for trade clients)
-- Status (active/prospect based on Jan-Feb 2025 revenue)
-- Source field (WSIC Radio, Lake Norman Woman, Multi-Platform)
+**Removed:**
+- ❌ Letter avatar (replaced with status dot)
+- ❌ Source column (not meaningful after import)
+- ❌ Revenue column (moved to Client View only)
+- ❌ Tier references (removed entirely)
 
-**Duplicates Merged (11 pairs):**
-- Events By Victoria / Events by Victoria → Events by Victoria
-- Advanced Spinal / Advanced Spinal Fitness → Advanced Spinal Fitness
-- And others
+**Added:**
+- ✅ Owner filter toggle: `All | Open | Mine`
+- ✅ Sort options: A-Z, Z-A, Revenue ↑↓, Recently Active, Needs Attention
+- ✅ Claim button for open accounts
+- ✅ Activity count column
+- ✅ Last touch with color coding
 
-### 2. Dual-View Clients Page
+### 2. Active Clients Update from RAB Data
 
-**CRM View (Sales Pipeline Focus):**
-- Shows ALL 270 clients
-- Filters: Status (Lead/Prospect/Active/Inactive/Churned), Tier
-- Columns: Client, Status, Tier, Industry, Revenue, Active Orders, Open Balance, Last Activity
-- Sticky header for scrolling
+**Verified Active Clients:**
+- 118 unique clients with actual revenue in RAB Master Sheet
+- Updated status to `active` for these clients
+- Added `annual_contract_value` from RAB totals
+- Updated tags with brand (WSIC/LKNW) and product types
 
-**Client View (Operations Focus):**
-- Shows only ACTIVE clients (97 total)
-- Filters: Brand (All/WSIC Radio/Lake Norman Woman/Multi-Platform)
-- Columns: Client, Brand, Products, Revenue, Orders, Balance
-- Brand badges (blue 📻 WSIC, pink 📰 LKNW)
-- Trade/Barter badge for barter clients
-- Sticky header for scrolling
+**Top Clients by Revenue:**
+1. The Serve Pickleball + Kitchen - $48,000
+2. The Closet Niche - $30,395
+3. Alloy Wealth - $25,000
+4. The Dr. Leslie Show - $24,000
+5. Horne Heating & Air Conditioning - $24,000
 
-### 3. 🔥 Major Performance Optimization
+### 3. User ID Fix
 
-**Problem Identified:**
-- Frontend was making 541 API calls on page load (270 clients × 2 endpoints)
-- Rate limiter (429 errors) blocked most requests
-- Balance showing $4,400 for all clients due to failed requests
+**Problem:** Browser auth ID didn't match database user ID
+- Browser (Supabase Auth): `9a69f143-1dd2-4842-a3e8-fe17a664ba2c`
+- Database users table: `4670b75e-b7fc-42eb-88d8-ccd2e2125b3f`
 
-**Solution Implemented:**
-- Updated `/api/clients` to include order/invoice stats via SQL JOINs
-- Single query returns: `total_orders`, `active_orders`, `total_revenue`, `total_invoices`, `open_invoices`, `open_balance`
-- Frontend reads stats directly from client data - no individual calls needed
+**Solution:**
+1. Cleared foreign key references
+2. Deleted old user record
+3. Created new user with correct Auth ID
+4. Reassigned clients to new ID
 
-**Result:**
-| Before | After |
-|--------|-------|
-| 541 API calls | **1 API call** |
-| Rate limit errors | ✅ None |
-| 5-10 second load | ✅ < 1 second |
-| Wrong balance data | ✅ Correct per-client |
+**Result:** "Mine" filter now works correctly!
 
-### 4. Bug Fixes
+### 4. Backend Improvements
 
-**Fixed Invoice API Parameter:**
-- Changed `clientId` → `client_id` in frontend API call
-
-**Fixed Balance Display Logic:**
-- Shows "—" when client has no invoices
-- Shows "$0" when has invoices but no balance
-- Shows actual balance (red) when balance > 0
-
-### 5. Assistant Data Entry Prompt
-
-**Created comprehensive guide for data entry:**
-- Workflows for verifying clients, adding orders, contacts, billing
-- Step-by-step instructions for each task
-- Data validation checks
+**Updated `/api/clients` endpoint:**
+- Added `assigned_to_name` (via JOIN to users table)
+- Added `activity_count` (via JOIN to client_activities)
+- Added `primary_contact_name` field
 
 ---
 
-## 📁 Files Created/Modified
+## 📁 Files Modified
 
 ### Backend
 | File | Changes |
 |------|---------|
-| `server.js` | `/api/clients` now includes order/invoice stats via JOINs |
+| `server.js` | Updated /api/clients with assigned_to_name, activity_count, fixed slug endpoints |
 
 ### Frontend
 | File | Changes |
 |------|---------|
-| `App.jsx` | Removed 500+ API calls, reads stats from client response, sticky headers |
+| `App.jsx` | CRM redesign, owner filter toggle, sort options, claim button, activity count |
 
-### Documentation
-| File | Purpose |
-|------|---------|
-| `ASSISTANT_DATA_ENTRY_PROMPT.md` | Guide for assistant data entry |
+### Database
+| Change | SQL |
+|--------|-----|
+| Updated 118 active clients | SET status='active', annual_contract_value, tags |
+| Fixed user ID mismatch | Recreated user with Auth ID |
+| Assigned test clients | 6 clients assigned to Justin |
 
 ---
 
@@ -106,69 +93,83 @@ CRM Enhancement - Import RAB client list, create dual-view Clients page, optimiz
 
 | Metric | Count |
 |--------|-------|
-| Total Clients | 270 |
-| Active Clients | 95 |
-| Prospect Clients | 175 |
-| WSIC Radio Clients | 77 |
-| Lake Norman Woman Clients | 157 |
-| Multi-Platform Clients | 32 |
-| Trade/Barter Clients | 28 |
+| Total Clients | 2,812 |
+| Active Clients | 122 |
+| Prospect Clients | 2,690 |
+| Open (unassigned) | ~2,135 |
+| Justin's Clients | 6 (for testing) |
+
+---
+
+## 🐛 Known Issues / Duplicates
+
+**Duplicate clients identified:**
+- Randy Marion (2 entries)
+- Whitlyn's Boutique (2 entries)
+- 15 to Fit Method Pilates (2 entries)
+- 100% Chiropractic / 100% Chiropractice
+- G&M Milling / GM Milling
+- Customer Driven Staffing variations
+
+**Cleanup needed:** ~20-30 duplicate pairs
 
 ---
 
 ## 🎯 Next Session Priorities
 
-### 1. Data Entry & Verification
-- Use ASSISTANT_DATA_ENTRY_PROMPT.md to guide data entry
-- Verify imported clients are accurate
-- Add orders for active clients
-- Enter contact information
+### 1. Sales Associate User Management
+- View all users with their assigned client counts
+- Toggle between individual user view and all users
+- Assign/reassign clients between reps
+- Sales rep performance metrics
 
-### 2. CRM Notes Import
-- Get RAB CRM export
-- Import notes and activity history
+### 2. Admin Diagnostics Dashboard
+- User-friendly system health view
+- Database connection status
+- API endpoint status
+- Recent errors log
+- Easy-to-understand for non-technical users
 
-### 3. Sales Associate Features
-- Map salesperson names to user IDs
-- Assign clients to sales reps
-
-### 4. Fix Diagnostics Authentication
-- Update frontend to pass auth token to diagnostics
+### 3. Duplicate Client Cleanup
+- Identify and merge duplicate records
+- Preserve activity history when merging
+- Update any linked orders/invoices
 
 ---
 
-## 💻 Deploy Commands
+## 💻 Deploy Commands Used
 
 ```cmd
 cd simplifi-reports
 copy C:\Users\Justin\Downloads\server.js backend\server.js
 copy C:\Users\Justin\Downloads\App.jsx frontend\src\App.jsx
-git add backend/server.js frontend/src/App.jsx
-git commit -m "Optimize: single query for client stats, eliminate 500+ API calls"
+git add .
+git commit -m "CRM redesign: owner filter, claim accounts, activities, fix user ID"
 git push origin main
 ```
 
 ---
 
-## 🔑 Key Technical Decisions
+## 🔧 SQL Commands Run
 
-### 1. SQL JOINs for Stats
-**Decision:** Use LEFT JOINs with subqueries to aggregate order/invoice stats
-**Reason:** Single database query instead of 500+ API calls
+```sql
+-- Update active clients from RAB data
+UPDATE advertising_clients SET status = 'active', annual_contract_value = X, tags = ARRAY[...] WHERE ...;
 
-### 2. Stats Included in Client Response
-**Decision:** Return stats with each client record
-**Reason:** Frontend doesn't need separate calls, page loads instantly
-
-### 3. Simpli.fi Calls Only When Needed
-**Decision:** Only call Simpli.fi API when viewing individual programmatic client
-**Reason:** ~15 programmatic clients, no need to load campaign data for all 270
+-- Fix user ID mismatch
+UPDATE advertising_clients SET assigned_to = NULL WHERE assigned_to = 'old-id';
+UPDATE client_activities SET user_id = NULL WHERE user_id = 'old-id';
+DELETE FROM users WHERE id = 'old-id';
+INSERT INTO users (id, name, email, role, password_hash, first_name, last_name) VALUES ('new-auth-id', ...);
+UPDATE advertising_clients SET assigned_to = 'new-auth-id' WHERE business_name IN (...);
+```
 
 ---
 
-## 📚 Files to Upload for Next Chat
+## 📚 Files for Next Chat
 
-1. **NEW_CHAT_PROMPT.md** - Updated context file
+1. **NEW_CHAT_PROMPT.md** - Updated context
 2. **SESSION_SUMMARY.md** - This file
-3. **Any RAB CRM exports** - For notes import
-4. **ASSISTANT_DATA_ENTRY_PROMPT.md** - If training assistant
+3. **ROADMAP.md** - Updated priorities
+4. **FILE_STRUCTURE.md** - Reference
+5. **SECURITY_AUDIT.md** - Security status

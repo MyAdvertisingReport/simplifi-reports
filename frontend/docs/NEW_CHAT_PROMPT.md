@@ -1,5 +1,6 @@
 # WSIC Advertising Platform - New Chat Context
 ## Upload this file at the START of every new Claude chat
+## Last Updated: January 28, 2026 (Afternoon)
 
 ---
 
@@ -12,34 +13,21 @@ simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
 │   ├── server.js              ← Main server with all endpoints ⭐
 │   ├── auth.js                ← Authentication & session management
-│   ├── package.json           ← Dependencies (includes stripe)
+│   ├── package.json
 │   ├── routes/
 │   │   ├── order.js           ← Order API endpoints
-│   │   ├── order-variants.js  ← Upload/Change/Kill order endpoints
-│   │   ├── billing.js         ← Invoice management + Auto-generate ⭐
-│   │   ├── document.js        ← Document upload/download
-│   │   ├── admin.js
-│   │   └── email.js
+│   │   ├── billing.js         ← Invoice management ⭐
+│   │   └── ...
 │   └── services/
-│       ├── email-service.js   ← Postmark (includes invoice emails)
-│       └── stripe-service.js  ← Stripe payment processing
+│       ├── email-service.js   ← Postmark emails
+│       └── stripe-service.js  ← Stripe payments
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (~12k lines) - includes ClientsPage ⭐
+        ├── App.jsx            ← Main app (~12k lines) ⭐
         └── components/
-            ├── BillingPage.jsx         ← Invoice list + Generate Modal + Dashboard
-            ├── InvoiceForm.jsx         ← Create/edit invoices
-            ├── OrderForm.jsx           ← New order with product selector
-            ├── OrderTypeSelector.jsx   ← 6 order type selection
-            ├── UploadOrderForm.jsx     ← Upload pre-signed contracts
-            ├── ChangeOrderForm.jsx     ← Electronic change orders
-            ├── ChangeOrderUploadForm.jsx
-            ├── KillOrderForm.jsx       ← Electronic kill orders
-            ├── KillOrderUploadForm.jsx
-            ├── ClientSigningPage.jsx   ← 3-step signing flow
-            ├── AdminDocumentsPage.jsx  ← Document management
-            └── ApprovalsPage.jsx       ← Manager approval queue
+            ├── BillingPage.jsx
+            └── ...
 ```
 
 ### 🚨 Git Commands MUST Use Full Paths:
@@ -60,199 +48,162 @@ git add server.js App.jsx
 | Frontend | React + Vite | Vercel |
 | Backend | Node.js + Express | Railway |
 | Database | PostgreSQL | Supabase |
+| Auth | Supabase Auth + JWT | - |
 | Email | Postmark | ✅ Working |
-| Payments | Stripe | ✅ Working (Card + ACH) |
-| Ad Platform | Simpli.fi API | - |
+| Payments | Stripe | ✅ Working |
+| Ad Platform | Simpli.fi API | ✅ Working |
 | Domain | myadvertisingreport.com | Vercel |
 
 ---
 
 ## 📊 Current State (January 28, 2026)
 
+### ✅ CRM System
+- **2,812 total clients** (imported from RAB)
+- **122 active clients** (verified from RAB revenue data)
+- **2,690 prospects** for sales pipeline
+
+### ✅ CRM View Features
+- **Dual views:** CRM View (sales pipeline) + Client View (operations)
+- **Owner filter toggle:** All | Open | Mine
+- **Sort options:** A-Z, Revenue, Recently Active, Needs Attention
+- **Claim button:** Sales reps can claim open accounts
+- **Activity count:** Shows logged activities per client
+- **Last touch indicator:** Color-coded (green/yellow/red)
+- **Status badges:** Prospect, Lead, Active, Inactive
+
 ### ✅ Working Features
-- User authentication (JWT + session-based)
-- **CRM with 270 clients imported** ⭐ NEW
-- **Dual-view Clients page (CRM View + Client View)** ⭐ NEW
-- Client management with contacts
-- Product/package catalog with entities (WSIC, LKN, LWP)
-- **6 Order Types:** New, Upload, Change (Electronic/Upload), Kill (Electronic/Upload)
-- Order creation with sales rep signature
-- Auto-approval (when no price adjustments)
-- Auto-send to client (when auto-approved + contact exists)
-- Approval workflow for price-adjusted orders
-- **Client signing page - Single page 3-step flow**
-- **Payment collection via Stripe Elements (PCI compliant)**
-- **Three billing preferences: Card, ACH, Invoice**
-- Product selector with Broadcast subcategories
-- Document upload/download system
+- User authentication (Supabase Auth + JWT)
+- Role-based access (admin, sales_manager, sales_associate)
+- 6 Order Types with signing workflow
+- Invoice management with auto-generate
+- Payment collection (Card + ACH via Stripe)
+- Client public report pages
 - Simpli.fi campaign reporting
-- Public client report pages
-
-### ✅ CRM System (NEW - January 28, 2026)
-- **270 clients imported** from RAB Master Sheet
-- **Dual-view Clients page:**
-  - CRM View: All clients, status/tier filters, pipeline focus
-  - Client View: Active clients only, brand filters, operations focus
-- **Client fields:** status, tier, tags, source, billing_terms
-- **Brand tagging:** WSIC, LKNW, Multi-Platform
-- **Product tagging:** Print, Commercials, Show Sponsor, etc.
-- **Trade/Barter flagging** for barter clients
-- **Sticky table headers** for scrolling
-- **🔥 Performance optimized:** Single SQL query returns all client stats (orders, invoices, balances)
-
-### ✅ Billing System (Complete)
-- **Invoice Management:** Create, edit, approve, send, void
-- **Invoice Emails:** Professional template with brand logos, pay button
-- **BillingPage:** Expandable rows, client contact, payment method with last 4
-- **Financial Dashboard:** Key metrics, AR aging, top clients, status breakdown
-- **Payment Recording:** Manual payments, charge card on file
-- **Overdue Reminders:** Send reminder emails
-- **Auto-Generate Invoices:** Generate from signed orders with category-based billing
-
-### ✅ Security Features (Updated January 27, 2026)
-- bcrypt password hashing (10 salt rounds)
-- Account lockout after 5 failed attempts
-- Session management with expiration
-- Role-based access control (admin, sales_manager, sales_associate)
-- Parameterized SQL queries (injection prevention)
-- Activity logging for security events
-- **Helmet security headers** ✅
-- **Rate limiting on login** (10 attempts/15 min) ✅
-- **JWT validation** (fails in production without secret) ✅
-- **Protected diagnostic endpoints** ✅
 
 ---
 
-## 👥 Client Data Summary
+## 👤 User System
 
-| Metric | Count |
-|--------|-------|
-| Total Clients | 270 |
-| Status: Active | 95 |
-| Status: Prospect | 175 |
-| Source: WSIC Radio | 77 |
-| Source: Lake Norman Woman | 157 |
-| Source: Multi-Platform | 32 |
-| Trade/Barter Clients | 28 |
-
----
-
-## 🎨 Clients Page - Dual Views
-
-### CRM View (Sales Pipeline)
-- Shows ALL 270 clients
-- Filters: Status (Lead/Prospect/Active/Inactive/Churned), Tier
-- Columns: Client, Status, Tier, Industry, Revenue, Active Orders, Open Balance, Last Activity
-- Use for: Sales pipeline management, prospecting
-
-### Client View (Operations)
-- Shows only ACTIVE clients (97 total)
-- Filters: Brand (All/WSIC Radio/Lake Norman Woman/Multi-Platform)
-- Columns: Client, Brand, Products, Revenue, Orders, Balance
-- Brand badges: 📻 WSIC (blue), 📰 LKNW (pink)
-- Use for: Day-to-day operations, order management
-
----
-
-## 💰 Invoice Status Flow
-
-```
-draft → approved → sent → paid
-              ↓
-           (void)
+### Current Users Table
+```sql
+-- Key fields
+id (UUID)           -- MUST match Supabase Auth ID
+email               -- Unique
+name                -- Display name
+role                -- 'admin', 'sales_manager', 'sales_associate'
+first_name, last_name
+password_hash       -- bcrypt
 ```
 
-### Billing Rules by Product Category:
-| Category | Billing Period | Due Date |
-|----------|---------------|----------|
-| Broadcast/Podcast | Previous month | Based on contract start |
-| Print | Following month's issue | 15th of billing month |
-| Programmatic/Events/Web | Current month (advance) | Based on contract start |
+### Important: Auth ID Matching
+The `users.id` MUST match the Supabase Auth user ID for "Mine" filters to work.
+Browser stores auth ID in localStorage, compares against `assigned_to` field.
+
+### Justin's User ID
+```
+9a69f143-1dd2-4842-a3e8-fe17a664ba2c
+```
 
 ---
 
-## 💳 Payment Flow
+## 🎯 NEXT SESSION PRIORITIES
 
-### Three Billing Preferences:
-1. **Credit Card (Auto Pay)** - +3.5% fee, collected via Stripe Elements
-2. **ACH (Auto Pay)** - No fee, requires bank verification
-3. **Invoice (Manual Pay)** - Requires backup payment method
+### 1. 🔥 Sales Associate User Management (HIGH PRIORITY)
+
+**Admin needs to:**
+- View all users with their assigned client counts
+- Toggle between: All Users | Individual User view
+- See each rep's: clients, active orders, revenue, activities
+- Assign/reassign clients between reps
+- Bulk assign open accounts
+
+**Suggested UI:**
+```
+Users Management
+├── User list with stats
+│   ├── Justin (Admin) - 6 clients, $X revenue
+│   ├── Stephanie (Sales) - 45 clients, $X revenue
+│   └── ...
+├── Click user → see their clients
+└── Bulk actions: Assign selected to rep
+```
+
+### 2. 🔥 Admin Diagnostics Dashboard (HIGH PRIORITY)
+
+**For non-technical users, need:**
+- Simple health status (✅ All Systems Go / ⚠️ Issues)
+- Database connection status
+- API status indicators
+- Recent errors (simplified)
+- Storage/usage metrics
+- One-click common fixes
+
+**Current diagnostics are too technical** - need user-friendly version
+
+### 3. Duplicate Client Cleanup
+- ~20-30 duplicate pairs identified
+- Need merge functionality
+- Preserve activities when merging
 
 ---
 
 ## 🗄️ Key Database Tables
 
-### advertising_clients (CRM) ⭐
+### advertising_clients
 ```sql
 id, business_name, slug, status, tier, industry
-tags[]                -- ['WSIC', 'LKNW', 'Print', 'Commercials', 'Trade/Barter']
-source                -- 'WSIC Radio', 'Lake Norman Woman', 'Multi-Platform'
-billing_terms, annual_contract_value, client_since
-phone, address fields, website
-simpli_fi_client_id, stripe_customer_id
-assigned_to, created_by, last_activity_at
+tags[]                -- ['WSIC', 'LKNW', 'Print', etc.]
+assigned_to           -- FK to users.id (sales rep)
+annual_contract_value -- From RAB data
+last_activity_at
+primary_contact_name
 ```
 
-### orders
+### users
 ```sql
-id, order_number, client_id, status, order_type
-monthly_total, contract_total, term_months
-contract_start_date, contract_end_date
-billing_preference, stripe_entity_code, payment_method_id
+id                    -- MUST match Supabase Auth ID
+email, name, role
+first_name, last_name
+password_hash
 ```
 
-### invoices
+### client_activities
 ```sql
-id, invoice_number, client_id, order_id, status
-billing_period_start, billing_period_end
-subtotal, processing_fee, total, balance_due
-billing_preference, payment_method_id
+id, client_id, user_id
+activity_type         -- 'call_logged', 'email_sent', 'meeting_scheduled', etc.
+description, metadata
+created_at
 ```
 
 ---
 
-## 🎯 Next Up (Priority Order)
+## 📈 Current Metrics
 
-### 1. 🔥 Data Entry & Verification (CURRENT PRIORITY)
-- Use ASSISTANT_DATA_ENTRY_PROMPT.md to guide data entry
-- Verify imported clients are accurate
-- Add orders for active clients
-- Enter contact information
-- Set up billing preferences
-
-### 2. CRM Notes Import
-- Get RAB CRM export
-- Import notes and activity history
-- Link to client records
-
-### 3. Sales Associate Features
-- Map salesperson names to user IDs
-- Assign clients to sales reps
-- Filter by assigned rep
-- Sales dashboard metrics
-
-### 4. Stripe Webhooks for Payment Status
-- `POST /api/webhooks/stripe` endpoint
-- Auto-mark invoices as paid
-- Send payment confirmation email
+| Metric | Count |
+|--------|-------|
+| Total Clients | 2,812 |
+| Active Clients | 122 |
+| Prospect Clients | 2,690 |
+| Open (unassigned) | ~2,135 |
+| Team Members | 18 |
+| Activities Logged | 4,652 |
 
 ---
 
 ## ⚙️ Development Preferences
 
 ### File Delivery
-- **Always provide complete files** - Do NOT provide code snippets to insert
-- Claude should create the full updated file for download
-- User will replace the entire file in their project
+- **Always provide complete files** - Do NOT provide code snippets
+- Claude creates full updated file for download
+- User replaces entire file in project
 
 ### Git Workflow
-- User uses **simple Windows cmd prompt** for git commands
-- Standard deploy workflow:
 ```cmd
 cd simplifi-reports
-copy [downloaded file] backend\server.js
-git add backend/server.js
-git commit -m "Description of change"
+copy C:\Users\Justin\Downloads\filename.js backend\filename.js
+git add backend/filename.js
+git commit -m "Description"
 git push origin main
 ```
 
@@ -260,47 +211,38 @@ git push origin main
 
 ## 📝 Quick Reference
 
-### Deploy Command (from repo root):
-```bash
-git add . && git commit -m "message" && git push origin main
-```
-
-### Common File Paths:
+### Key File Paths
 | What | Path |
 |------|------|
 | Main Server | `backend/server.js` |
-| Main App (incl. ClientsPage) | `frontend/src/App.jsx` |
-| Billing Routes | `backend/routes/billing.js` |
-| Email Service | `backend/services/email-service.js` |
-| BillingPage | `frontend/src/components/BillingPage.jsx` |
-| Client Signing | `frontend/src/components/ClientSigningPage.jsx` |
-| Order Form | `frontend/src/components/OrderForm.jsx` |
+| Main App | `frontend/src/App.jsx` |
+| Billing | `backend/routes/billing.js` |
 
-### App.jsx Key Sections:
-| Section | Lines (approx) |
-|---------|----------------|
-| Sidebar | 528-760 |
-| Dashboard | 800-1100 |
-| **ClientsPage** | 1763-2700 |
+### App.jsx Sections (approx lines)
+| Section | Lines |
+|---------|-------|
+| ClientsPage | 1763-2500 |
 | Client Detail | 2700-3500 |
 | Routes | end of file |
 
-### Client Status Values:
-- `lead` - New potential client
-- `prospect` - Engaged, no contract yet
-- `active` - Has current contract/orders
-- `inactive` - Paused or dormant
-- `churned` - Lost/cancelled
+### Client Status Values
+- `prospect` - In pipeline, no contract
+- `lead` - Qualified lead
+- `active` - Has contract/orders
+- `inactive` - Paused
+- `churned` - Lost
 
-### Brand Tags:
-- `WSIC` - WSIC Radio client
-- `LKNW` - Lake Norman Woman client
-- Both = Multi-Platform client
+### API Endpoints for Users
+```
+GET  /api/users              - List all users (admin)
+GET  /api/users/:id          - Get user details
+GET  /api/users/sales        - Get sales team only
+POST /api/clients/:id/claim  - Claim open account
+PUT  /api/clients/:id/assign - Assign to different rep
+```
 
 ---
 
-## 🔒 Security Documentation
-See `SECURITY_AUDIT.md` for:
-- Current security posture **(8.5/10)** ✅
-- Implementation checklist
-- Incident response procedures
+## 🔒 Security Status: 8.5/10 ✅
+
+See SECURITY_AUDIT.md for details.

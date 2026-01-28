@@ -1,129 +1,113 @@
 # WSIC Advertising Platform - Development Roadmap
-## Updated: January 28, 2026
+## Updated: January 28, 2026 (Afternoon)
 
 ---
 
-## 🎯 Current Sprint: Data Entry & CRM Enhancement
+## 🎯 Current Sprint: User Management & Diagnostics
 
-### ✅ COMPLETED (January 28, 2026)
+### ✅ COMPLETED (January 28, 2026 - Afternoon)
 
-#### CRM / Client Management - Phase 1
-- [x] Import 266 clients from RAB Master Sheet
-- [x] Add CRM fields to advertising_clients table (status, tier, tags, source)
-- [x] Dual-view Clients page (CRM View + Client View)
-- [x] Brand filtering (WSIC, LKNW, Multi-Platform)
-- [x] Product/inventory type tagging
-- [x] Trade/Barter client identification
-- [x] Status assignment based on current revenue (Jan-Feb 2025)
-- [x] Sticky table headers for scrolling
-- [x] Update /api/clients to return all CRM fields
-- [x] Fix invoice API parameter (clientId → client_id)
-- [x] **🔥 Performance optimization: Single query for all client stats** ⭐
-  - Eliminated 500+ API calls per page load
-  - Stats (orders, invoices, balance) now included via SQL JOINs
-  - Page loads in <1 second instead of 5-10 seconds
+#### CRM View Redesign
+- [x] Owner filter toggle (All | Open | Mine)
+- [x] Sort options (A-Z, Revenue, Recently Active, Needs Attention)
+- [x] Claim button for open accounts
+- [x] Activity count column
+- [x] Last touch color coding (green/yellow/red)
+- [x] Remove tier references
+- [x] Replace Source with Industry column
+- [x] Status dot instead of letter avatar
+- [x] Backend: Add assigned_to_name, activity_count to /api/clients
 
-### ✅ COMPLETED (January 27, 2026)
+#### Active Clients Verification
+- [x] Analyze RAB Master Sheet for actual revenue
+- [x] Identify 118 active clients with contracts
+- [x] Update status to 'active' for verified clients
+- [x] Add annual_contract_value from RAB totals
+- [x] Update tags with brand + product types
 
-#### Billing System - Phase 1 & 2
-- [x] Database schema (invoices, invoice_items, invoice_payments tables)
-- [x] Backend API (15 endpoints for full CRUD + workflow)
-- [x] Invoice creation (manual + from order)
-- [x] Invoice approval workflow
-- [x] Send invoice email with Stripe payment link
-- [x] Professional email template with brand logos
-- [x] Record manual payments
-- [x] Charge payment method on file
-- [x] Void invoices
-- [x] Send overdue reminders
-- [x] Edit draft invoices
-- [x] **Auto-Generate Invoices from Signed Orders** ⭐
-
-#### Security Audit & Improvements
-- [x] Comprehensive security review (8.5/10)
-- [x] Add `helmet` middleware for security headers
-- [x] Add `express-rate-limit` for login endpoint
-- [x] Remove JWT secret fallback
-- [x] Protect diagnostic endpoints with auth
+#### User ID Fix
+- [x] Identified Auth ID vs Database ID mismatch
+- [x] Recreated user with correct Supabase Auth ID
+- [x] "Mine" filter now works correctly
 
 ---
 
 ## 📋 NEXT UP (Priority Order)
 
-### 1. 🔥 Data Entry & Verification (CURRENT PRIORITY)
+### 1. 🔥 Sales Associate User Management (HIGH)
 
-#### Client Data Entry
-- [ ] Verify imported client names are spelled correctly
-- [ ] Confirm brand associations (WSIC/LKNW) are accurate
-- [ ] Add primary contacts for all active clients
-- [ ] Add billing contacts where different from primary
+#### User List View (Admin)
+- [ ] Users page showing all team members
+- [ ] Per-user metrics: clients assigned, active orders, revenue
+- [ ] Activity count per user
+- [ ] Filter: All Users | Sales Only | By Role
 
-#### Order Entry
-- [ ] Add orders for active clients using Upload Order form
-- [ ] Link orders to correct products
-- [ ] Set contract terms (start date, duration)
-- [ ] Collect payment methods during signing
+#### Individual User View
+- [ ] Click user → see their assigned clients
+- [ ] See their orders, invoices, activities
+- [ ] Performance metrics (closed deals, revenue)
 
-#### Billing Setup
-- [ ] Set billing preferences per client
-- [ ] Connect payment methods
-- [ ] Verify QuickBooks customer IDs (if applicable)
+#### Client Assignment
+- [ ] Assign client to different rep
+- [ ] Bulk assign selected clients
+- [ ] Transfer all clients from one rep to another
+- [ ] "Claim" functionality already working ✅
 
-### 2. CRM Notes Import
+#### API Endpoints Needed
+```
+GET  /api/users                    - List all users with stats
+GET  /api/users/:id/clients        - Get user's assigned clients
+GET  /api/users/:id/stats          - Get user performance metrics
+PUT  /api/clients/:id/assign       - Assign client to user
+POST /api/clients/bulk-assign      - Bulk assign multiple clients
+```
 
-#### RAB CRM Export
-- [ ] Get activity/notes export from RAB system
-- [ ] Import historical notes to client records
-- [ ] Link activity timeline to clients
+### 2. 🔥 Admin Diagnostics Dashboard (HIGH)
 
-### 3. Sales Associate Features
+#### User-Friendly Health View
+- [ ] Simple status: ✅ All Systems Go / ⚠️ Issues Detected
+- [ ] Color-coded indicators (non-technical)
+- [ ] Plain English explanations
 
-#### User Assignment
-- [ ] Map salesperson names (from RAB sheet) to user accounts
-- [ ] Add assigned_to field population
-- [ ] Filter clients by assigned rep
+#### System Components
+- [ ] Database: Connected/Disconnected
+- [ ] API: Responding/Slow/Down
+- [ ] Email: Working/Issues
+- [ ] Payments: Working/Issues
+- [ ] Simpli.fi: Connected/Issues
 
-#### Sales Dashboard
-- [ ] Sales rep performance metrics
-- [ ] Pipeline by rep
-- [ ] Commission tracking (future)
+#### Monitoring
+- [ ] Recent errors (last 24h) - simplified view
+- [ ] Slow queries alert
+- [ ] Failed login attempts
+- [ ] API usage metrics
 
-### 4. Client Detail Page Enhancement
+#### Quick Actions
+- [ ] Clear cache button
+- [ ] Test email button
+- [ ] Refresh connections button
+- [ ] Export logs button
 
-#### Tabbed Interface
-- [ ] Overview tab (summary + quick stats)
-- [ ] Orders tab (full order history)
-- [ ] Invoices tab (invoice history)
-- [ ] Contacts tab (all contacts)
-- [ ] Notes tab (activity timeline)
-- [ ] Campaigns tab (Simpli.fi data)
+### 3. Duplicate Client Cleanup (MEDIUM)
 
-#### Activity Timeline
-- [ ] Show all client interactions
-- [ ] Log order creation, invoice sends, payments
-- [ ] Manual activity notes
+#### Identification
+- [ ] Query to find duplicate/similar names
+- [ ] UI to review potential duplicates
+- [ ] Side-by-side comparison view
 
-### 5. Stripe Webhooks for Payment Status
+#### Merge Functionality
+- [ ] Select primary record
+- [ ] Merge activities, orders, contacts
+- [ ] Delete duplicate record
+- [ ] Audit log of merges
 
-#### Webhook Endpoints
-- [ ] `POST /api/webhooks/stripe` - Main webhook handler
-- [ ] Verify webhook signatures
-- [ ] Handle `invoice.paid` event
-- [ ] Handle `invoice.payment_failed` event
-
-#### Auto-Update Invoice Status
-- [ ] Mark invoice as paid when Stripe payment succeeds
-- [ ] Record payment in invoice_payments table
-- [ ] Send payment confirmation email
-
-### 6. Overdue Invoice Notifications
-
-#### Automated Email Schedule
-- [ ] 7 days overdue - Friendly reminder
-- [ ] 14 days overdue - Second notice
-- [ ] 21 days overdue - Urgent notice
-- [ ] 28 days overdue - Final notice (auto-charge warning)
-- [ ] 30 days - Auto-charge backup payment method
+#### Known Duplicates (~20-30 pairs)
+- Randy Marion (2 entries)
+- Whitlyn's Boutique (2 entries)
+- 15 to Fit Method Pilates (2 entries)
+- 100% Chiropractic / 100% Chiropractice
+- G&M Milling / GM Milling
+- Customer Driven Staffing variations
 
 ---
 
@@ -131,147 +115,100 @@
 
 | Metric | Count |
 |--------|-------|
-| Total Clients | 270 |
-| Active Clients | 95 |
-| Prospect Clients | 175 |
-| WSIC Radio Clients | 77 |
-| Lake Norman Woman Clients | 157 |
-| Multi-Platform Clients | 32 |
-| Trade/Barter Clients | 28 |
-| Clients with Orders | TBD |
-| Clients with Contacts | TBD |
+| Total Clients | 2,812 |
+| Active Clients | 122 |
+| Prospect Clients | 2,690 |
+| Open (unassigned) | ~2,135 |
+| Claimed/Assigned | ~677 |
+| Team Members | 18 |
+| Activities Logged | 4,652 |
 
 ---
 
 ## 🗓️ Future Phases
 
-### Phase 3: Sales Pipeline / CRM
-- [ ] Lead tracking and management
-- [ ] Opportunity stages with probabilities
+### Phase 3: Sales Pipeline Enhancement
+- [ ] Pipeline stages with probabilities
+- [ ] Expected close dates
 - [ ] Win/loss tracking
-- [ ] Sales associate quotas
-- [ ] Pipeline forecasting
+- [ ] Sales forecasting
+- [ ] Commission tracking
 
-### Phase 4: ACH Bank Verification
-- [ ] Build `/ach-setup/:token` page
-- [ ] Stripe Financial Connections integration
-- [ ] Handle verification webhooks
-- [ ] Update payment_status on completion
+### Phase 4: Reporting & Analytics
+- [ ] Sales rep performance dashboards
+- [ ] Revenue by brand/product
+- [ ] Client lifetime value
+- [ ] Churn analysis
+- [ ] Activity reports
 
-### Phase 5: Contract PDF Generation
-- [ ] Auto-generate PDF from signed orders
-- [ ] Include signatures, terms, all details
-- [ ] Store in documents table
-- [ ] Email PDF to client after signing
+### Phase 5: Automation
+- [ ] Auto-assign leads by territory
+- [ ] Follow-up reminders
+- [ ] Activity due dates
+- [ ] Automated email sequences
+- [ ] Stripe webhooks for payment status
 
-### Phase 6: Campaign Management
-- [ ] Campaign creation from signed orders
-- [ ] Simpli.fi campaign sync
-- [ ] Creative asset management
-- [ ] Campaign performance dashboards
-
-### Phase 7: Client Portal
+### Phase 6: Client Portal
 - [ ] Client self-service login
-- [ ] View their orders/invoices
-- [ ] Make payments online
+- [ ] View orders/invoices
+- [ ] Make payments
 - [ ] Download reports
 - [ ] Update contact info
 
 ---
 
-## 🔗 Key Integration Points
+## 🔧 Technical Debt
 
-| System | Status | Notes |
-|--------|--------|-------|
-| Postmark (Email) | ✅ Working | Invoice emails functional |
-| Supabase (DB) | ✅ Working | All tables created, 270 clients |
-| Simpli.fi (Ads) | ✅ Working | Campaign data sync |
-| Stripe (Payments) | ✅ Working | Payment links, charge on file |
-| Stripe Webhooks | 📋 Next | Auto-mark paid |
-| QuickBooks | 📋 Planned | Customer sync |
+### High Priority
+- [ ] Fix CORS to reject unknown origins
+- [ ] Strengthen password policy (12+ chars)
+- [ ] Add Stripe webhook signature verification
 
----
+### Medium Priority
+- [ ] Input validation library
+- [ ] API request logging
+- [ ] Better error messages
 
-## 🔒 Security Status
-
-**Current Score: 8.5/10** ✅
-
-### Implemented
-- ✅ bcrypt password hashing
-- ✅ Account lockout after failed attempts
-- ✅ Parameterized SQL queries
-- ✅ Role-based access control
-- ✅ Stripe for PCI-compliant payments
-- ✅ Activity logging
-- ✅ Helmet security headers
-- ✅ Rate limiting on login
-- ✅ JWT validation in production
-- ✅ Protected diagnostic endpoints
-
-### Remaining
-- ⚠️ CORS still allows unknown origins (logging only)
-- ⚠️ Password policy could be stronger
+### Low Priority
+- [ ] Unit tests
+- [ ] API documentation
+- [ ] Performance monitoring
 
 ---
 
 ## 📅 Session History
 
-### January 28, 2026 - CRM Import & Performance Optimization
-- Imported 266 clients from RAB Master Sheet
-- Built dual-view Clients page (CRM View + Client View)
-- Added brand filtering (WSIC/LKNW/Multi-Platform)
-- Fixed invoice API parameter bug
-- Added sticky table headers
-- **🔥 Major optimization: Eliminated 500+ API calls**
-  - `/api/clients` now returns order/invoice stats via JOINs
-  - Page load: 5-10 seconds → <1 second
-- Created assistant data entry prompt
+### January 28, 2026 (Afternoon) - CRM Enhancement
+- CRM View redesign with owner filter, sort, claim
+- Updated 118 active clients from RAB data
+- Fixed user ID mismatch (Auth ID vs DB ID)
+- Added activity count and last touch indicators
 
-### January 27, 2026 - Billing Phase 2 + Security Audit
-- Built auto-generate invoices from signed orders
-- Category-based billing logic (Radio, Print, Digital)
-- Professional confirmation dialogs
-- Payment method last 4 digit display fix
-- Comprehensive security audit (7.5→8.5/10)
+### January 28, 2026 (Morning) - CRM Import
+- Imported 2,800+ clients from RAB
+- Imported 4,652 activities
+- Built dual-view Clients page
+- Performance optimization (single query)
 
-### January 27, 2026 - Billing System Phase 1
-- Built complete invoice management system
-- Created BillingPage with expandable rows
-- Added Financial Dashboard
-- Invoice emails with brand detection
-
-### January 26, 2026 - UI Improvements & Payment Fixes
-- Added Broadcast subcategories
-- Added 4 new products
-- Fixed client signing payment flow
-- Created fillable PDF templates
-
-### January 25, 2026 - Order Variants & Upload Forms
-- Built Upload Order form with payment collection
-- Added contract term/renewal fields
-- Fixed inline ACH collection
-
-### January 24, 2026 - Payment Integration & Signing Redesign
-- Redesigned ClientSigningPage to single-page 3-step flow
-- Integrated Stripe Elements for PCI-compliant card collection
-- Added billing preference options
+### January 27, 2026 - Billing & Security
+- Auto-generate invoices feature
+- Security audit improvements (7.5→8.5)
+- Added helmet, rate limiting
 
 ---
 
 ## ⚙️ Development Preferences
 
 ### File Delivery
-- **Always provide complete files** - Do NOT provide code snippets to insert
-- Claude should create the full updated file for download
-- User will replace the entire file in their project
+- **Always provide complete files**
+- No code snippets to insert
+- User replaces entire file
 
 ### Git Workflow
-- User uses **simple Windows cmd prompt** for git commands
-- Standard deploy workflow:
 ```cmd
 cd simplifi-reports
-copy [downloaded file] backend\routes\filename.js
-git add backend/routes/filename.js
-git commit -m "Description of change"
+copy C:\Users\Justin\Downloads\file.js backend\file.js
+git add backend/file.js
+git commit -m "Description"
 git push origin main
 ```
