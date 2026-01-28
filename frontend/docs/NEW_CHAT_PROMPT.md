@@ -10,7 +10,7 @@
 ```
 simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
-│   ├── server.js              ← Main server with all endpoints
+│   ├── server.js              ← Main server with all endpoints ⭐
 │   ├── auth.js                ← Authentication & session management
 │   ├── package.json           ← Dependencies (includes stripe)
 │   ├── routes/
@@ -26,9 +26,9 @@ simplifi-reports/              ← Git root (push from here)
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (10k+ lines)
+        ├── App.jsx            ← Main app (~12k lines) - includes ClientsPage ⭐
         └── components/
-            ├── BillingPage.jsx         ← Invoice list + Generate Modal + Dashboard ⭐
+            ├── BillingPage.jsx         ← Invoice list + Generate Modal + Dashboard
             ├── InvoiceForm.jsx         ← Create/edit invoices
             ├── OrderForm.jsx           ← New order with product selector
             ├── OrderTypeSelector.jsx   ← 6 order type selection
@@ -45,10 +45,10 @@ simplifi-reports/              ← Git root (push from here)
 ### 🚨 Git Commands MUST Use Full Paths:
 ```bash
 # ✅ CORRECT
-git add backend/routes/billing.js frontend/src/components/BillingPage.jsx
+git add backend/server.js frontend/src/App.jsx
 
 # ❌ WRONG
-git add billing.js BillingPage.jsx
+git add server.js App.jsx
 ```
 
 ---
@@ -67,10 +67,12 @@ git add billing.js BillingPage.jsx
 
 ---
 
-## 📊 Current State (January 27, 2026)
+## 📊 Current State (January 28, 2026)
 
 ### ✅ Working Features
 - User authentication (JWT + session-based)
+- **CRM with 270 clients imported** ⭐ NEW
+- **Dual-view Clients page (CRM View + Client View)** ⭐ NEW
 - Client management with contacts
 - Product/package catalog with entities (WSIC, LKN, LWP)
 - **6 Order Types:** New, Upload, Change (Electronic/Upload), Kill (Electronic/Upload)
@@ -86,6 +88,18 @@ git add billing.js BillingPage.jsx
 - Simpli.fi campaign reporting
 - Public client report pages
 
+### ✅ CRM System (NEW - January 28, 2026)
+- **270 clients imported** from RAB Master Sheet
+- **Dual-view Clients page:**
+  - CRM View: All clients, status/tier filters, pipeline focus
+  - Client View: Active clients only, brand filters, operations focus
+- **Client fields:** status, tier, tags, source, billing_terms
+- **Brand tagging:** WSIC, LKNW, Multi-Platform
+- **Product tagging:** Print, Commercials, Show Sponsor, etc.
+- **Trade/Barter flagging** for barter clients
+- **Sticky table headers** for scrolling
+- **🔥 Performance optimized:** Single SQL query returns all client stats (orders, invoices, balances)
+
 ### ✅ Billing System (Complete)
 - **Invoice Management:** Create, edit, approve, send, void
 - **Invoice Emails:** Professional template with brand logos, pay button
@@ -93,7 +107,7 @@ git add billing.js BillingPage.jsx
 - **Financial Dashboard:** Key metrics, AR aging, top clients, status breakdown
 - **Payment Recording:** Manual payments, charge card on file
 - **Overdue Reminders:** Send reminder emails
-- **Auto-Generate Invoices:** Generate from signed orders with category-based billing ⭐
+- **Auto-Generate Invoices:** Generate from signed orders with category-based billing
 
 ### ✅ Security Features (Updated January 27, 2026)
 - bcrypt password hashing (10 salt rounds)
@@ -102,10 +116,41 @@ git add billing.js BillingPage.jsx
 - Role-based access control (admin, sales_manager, sales_associate)
 - Parameterized SQL queries (injection prevention)
 - Activity logging for security events
-- **Helmet security headers** ✅ NEW
-- **Rate limiting on login** (10 attempts/15 min) ✅ NEW
-- **JWT validation** (fails in production without secret) ✅ NEW
-- **Protected diagnostic endpoints** ✅ NEW
+- **Helmet security headers** ✅
+- **Rate limiting on login** (10 attempts/15 min) ✅
+- **JWT validation** (fails in production without secret) ✅
+- **Protected diagnostic endpoints** ✅
+
+---
+
+## 👥 Client Data Summary
+
+| Metric | Count |
+|--------|-------|
+| Total Clients | 270 |
+| Status: Active | 95 |
+| Status: Prospect | 175 |
+| Source: WSIC Radio | 77 |
+| Source: Lake Norman Woman | 157 |
+| Source: Multi-Platform | 32 |
+| Trade/Barter Clients | 28 |
+
+---
+
+## 🎨 Clients Page - Dual Views
+
+### CRM View (Sales Pipeline)
+- Shows ALL 270 clients
+- Filters: Status (Lead/Prospect/Active/Inactive/Churned), Tier
+- Columns: Client, Status, Tier, Industry, Revenue, Active Orders, Open Balance, Last Activity
+- Use for: Sales pipeline management, prospecting
+
+### Client View (Operations)
+- Shows only ACTIVE clients (97 total)
+- Filters: Brand (All/WSIC Radio/Lake Norman Woman/Multi-Platform)
+- Columns: Client, Brand, Products, Revenue, Orders, Balance
+- Brand badges: 📻 WSIC (blue), 📰 LKNW (pink)
+- Use for: Day-to-day operations, order management
 
 ---
 
@@ -115,17 +160,7 @@ git add billing.js BillingPage.jsx
 draft → approved → sent → paid
               ↓
            (void)
-
-Auto-flow for auto-bill clients:
-approved → sent → (Stripe charges automatically) → paid
 ```
-
-### Auto-Generate Invoices Feature:
-- **"Generate Invoices" button** in Billing header
-- Preview billable orders with billing period & due date
-- Select which orders to invoice
-- Creates draft invoices with line items
-- Skips already-invoiced orders
 
 ### Billing Rules by Product Category:
 | Category | Billing Period | Due Date |
@@ -143,80 +178,63 @@ approved → sent → (Stripe charges automatically) → paid
 2. **ACH (Auto Pay)** - No fee, requires bank verification
 3. **Invoice (Manual Pay)** - Requires backup payment method
 
-### Payment Endpoints (No Auth - Token Based):
-```
-POST /api/orders/sign/:token/setup-intent      - Create SetupIntent
-POST /api/orders/sign/:token/payment-method/card - Save card
-POST /api/orders/sign/:token/payment-method/ach  - Create ACH
-POST /api/orders/sign/:token/complete          - Submit signature
-```
-
 ---
 
 ## 🗄️ Key Database Tables
 
-### Billing Tables
+### advertising_clients (CRM) ⭐
 ```sql
-invoices (
-  id, invoice_number, client_id, order_id, status,
-  billing_period_start, billing_period_end,
-  issue_date, due_date, subtotal, processing_fee, total,
-  amount_paid, balance_due, billing_preference,
-  stripe_invoice_id, stripe_invoice_url, payment_method_id,
-  notes, created_by, approved_by, sent_at, paid_at, voided_at,
-  grace_period_ends_at
-)
-
-invoice_items (id, invoice_id, product_id, description, quantity, unit_price, amount)
-
-invoice_payments (id, invoice_id, amount, payment_method, reference, recorded_by)
+id, business_name, slug, status, tier, industry
+tags[]                -- ['WSIC', 'LKNW', 'Print', 'Commercials', 'Trade/Barter']
+source                -- 'WSIC Radio', 'Lake Norman Woman', 'Multi-Platform'
+billing_terms, annual_contract_value, client_since
+phone, address fields, website
+simpli_fi_client_id, stripe_customer_id
+assigned_to, created_by, last_activity_at
 ```
 
-### Order Table (Key Fields)
+### orders
 ```sql
-orders (
-  id, order_number, client_id, status, monthly_total, contract_total,
-  order_type,                -- 'new', 'upload', 'change', 'kill', etc.
-  parent_order_id,           -- For change/kill orders
-  billing_preference,        -- 'card', 'ach', 'invoice'
-  stripe_customer_id,
-  stripe_entity_code,        -- 'wsic', 'lkn', 'lwp'
-  payment_method_id,
-  payment_type,              -- 'card', 'ach', 'us_bank_account'
-  payment_status,            -- 'authorized', 'ach_pending', 'invoice_pending'
-  sales_associate_id         -- UUID → users table
-)
+id, order_number, client_id, status, order_type
+monthly_total, contract_total, term_months
+contract_start_date, contract_end_date
+billing_preference, stripe_entity_code, payment_method_id
 ```
 
-### Product Categories Table
+### invoices
 ```sql
-product_categories (
-  id, name, code,            -- code: 'broadcast', 'podcast', 'print', 'programmatic', 'events', 'web_social'
-  description
-)
+id, invoice_number, client_id, order_id, status
+billing_period_start, billing_period_end
+subtotal, processing_fee, total, balance_due
+billing_preference, payment_method_id
 ```
 
 ---
 
 ## 🎯 Next Up (Priority Order)
 
-### 1. 🔥 Client Profile Enhancement (NEXT SESSION)
-- Enhanced client model with status (Lead → Prospect → Active → Churned)
-- Client detail page with order history, invoice history
-- Activity timeline
-- Contact management improvements
-- Dashboard updates with client metrics
+### 1. 🔥 Data Entry & Verification (CURRENT PRIORITY)
+- Use ASSISTANT_DATA_ENTRY_PROMPT.md to guide data entry
+- Verify imported clients are accurate
+- Add orders for active clients
+- Enter contact information
+- Set up billing preferences
 
-### 2. Stripe Webhooks for Payment Status
+### 2. CRM Notes Import
+- Get RAB CRM export
+- Import notes and activity history
+- Link to client records
+
+### 3. Sales Associate Features
+- Map salesperson names to user IDs
+- Assign clients to sales reps
+- Filter by assigned rep
+- Sales dashboard metrics
+
+### 4. Stripe Webhooks for Payment Status
 - `POST /api/webhooks/stripe` endpoint
-- Handle `invoice.paid`, `payment_intent.succeeded`
 - Auto-mark invoices as paid
 - Send payment confirmation email
-
-### 3. Overdue Invoice Notifications
-- Automated emails at 7, 14, 21, 28 days
-- Final notice at Day 28 with auto-charge warning
-- Day 30: Auto-charge backup payment method
 
 ---
 
@@ -232,29 +250,10 @@ product_categories (
 - Standard deploy workflow:
 ```cmd
 cd simplifi-reports
-copy [downloaded file] backend\routes\filename.js
-git add backend/routes/filename.js
+copy [downloaded file] backend\server.js
+git add backend/server.js
 git commit -m "Description of change"
 git push origin main
-```
-
----
-
-## ⚙️ Environment Variables (Railway)
-
-```
-DATABASE_URL=postgresql://...
-POSTMARK_API_KEY=...
-JWT_SECRET=...                    # ⚠️ CRITICAL - Must be set
-BASE_URL=https://myadvertisingreport.com
-SUPABASE_URL=...
-SUPABASE_SERVICE_KEY=...
-
-# Stripe (per entity)
-STRIPE_WSIC_SECRET_KEY=...
-STRIPE_WSIC_PUBLISHABLE_KEY=...
-STRIPE_LKN_SECRET_KEY=...
-STRIPE_LKN_PUBLISHABLE_KEY=...
 ```
 
 ---
@@ -270,51 +269,38 @@ git add . && git commit -m "message" && git push origin main
 | What | Path |
 |------|------|
 | Main Server | `backend/server.js` |
-| Auth Routes | `backend/auth.js` |
+| Main App (incl. ClientsPage) | `frontend/src/App.jsx` |
 | Billing Routes | `backend/routes/billing.js` |
 | Email Service | `backend/services/email-service.js` |
 | BillingPage | `frontend/src/components/BillingPage.jsx` |
-| InvoiceForm | `frontend/src/components/InvoiceForm.jsx` |
 | Client Signing | `frontend/src/components/ClientSigningPage.jsx` |
 | Order Form | `frontend/src/components/OrderForm.jsx` |
-| Main App | `frontend/src/App.jsx` |
 
-### Invoice Number Format:
-- Pattern: `INV-YYYY-NNNNN`
-- Example: `INV-2026-01003`
+### App.jsx Key Sections:
+| Section | Lines (approx) |
+|---------|----------------|
+| Sidebar | 528-760 |
+| Dashboard | 800-1100 |
+| **ClientsPage** | 1763-2700 |
+| Client Detail | 2700-3500 |
+| Routes | end of file |
 
-### Order Status for Billing:
-- `signed` = Active and billable
-- Use status filter in Generate Invoices modal
+### Client Status Values:
+- `lead` - New potential client
+- `prospect` - Engaged, no contract yet
+- `active` - Has current contract/orders
+- `inactive` - Paused or dormant
+- `churned` - Lost/cancelled
 
-### Billing API Endpoints:
-```
-GET    /api/billing/invoices              - List with filters
-GET    /api/billing/invoices/:id          - Full details
-POST   /api/billing/invoices              - Create
-PUT    /api/billing/invoices/:id          - Update draft
-PUT    /api/billing/invoices/:id/approve  - Approve
-POST   /api/billing/invoices/:id/send     - Send email
-POST   /api/billing/invoices/:id/record-payment
-POST   /api/billing/invoices/:id/charge   - Charge on file
-PUT    /api/billing/invoices/:id/void
-POST   /api/billing/invoices/:id/send-reminder
-GET    /api/billing/stats
-GET    /api/billing/billable-orders       - Preview for generation
-POST   /api/billing/generate-monthly      - Batch create invoices
-```
-
-### Stripe Notes:
-- Token-based endpoints for client signing (no auth)
-- Customer validation before use (recreates if missing)
-- Per-entity Stripe accounts (WSIC, LKN, LWP)
-- Payment method last 4 fetched from Stripe API on invoice detail
+### Brand Tags:
+- `WSIC` - WSIC Radio client
+- `LKNW` - Lake Norman Woman client
+- Both = Multi-Platform client
 
 ---
 
 ## 🔒 Security Documentation
 See `SECURITY_AUDIT.md` for:
 - Current security posture **(8.5/10)** ✅
-- ~~High/Medium priority fixes~~ High priority complete!
-- Remaining improvements checklist
+- Implementation checklist
 - Incident response procedures

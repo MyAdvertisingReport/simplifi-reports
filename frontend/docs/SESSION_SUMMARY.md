@@ -1,90 +1,85 @@
-# Session Summary - January 27, 2026 (Part 2)
+# Session Summary - January 28, 2026
 
 ## 🎯 Session Goal
-Complete billing auto-generate invoices feature, conduct security audit, and prepare for CRM/Client Profile enhancement.
+CRM Enhancement - Import RAB client list, create dual-view Clients page, optimize API performance.
 
 ## ✅ What We Accomplished
 
-### 1. Auto-Generate Invoices from Signed Orders
+### 1. RAB Master Sheet Client Import (266 Clients)
 
-**Backend Endpoints:**
-- `GET /api/billing/billable-orders` - Preview orders ready for invoicing
-- `POST /api/billing/generate-monthly` - Batch create invoices for selected orders
+**Imported from Excel:**
+- **266 unique advertisers** from RAB Master Sheet
+- **WSIC Radio:** 77 clients
+- **Lake Norman Woman:** 157 clients  
+- **Multi-Platform (both):** 32 clients
+- **1 In-House Brands** client for internal programmatic
 
-**Billing Logic by Product Category:**
-| Category | Billing Period | Due Date |
-|----------|---------------|----------|
-| Broadcast/Podcast | Previous month (services rendered) | Based on contract start |
-| Print | Following month's issue | Always 15th |
-| Programmatic/Events/Web | Current month (advance) | Based on contract start |
+**Data Imported Per Client:**
+- Business name (cleaned, duplicates merged)
+- Slug (URL-friendly, unique)
+- Brand associations (WSIC, LKNW tags)
+- Product/inventory type tags (Print, Commercials, Show Sponsor, etc.)
+- Revenue type flag (Trade/Barter tag for trade clients)
+- Status (active/prospect based on Jan-Feb 2025 revenue)
+- Source field (WSIC Radio, Lake Norman Woman, Multi-Platform)
 
-**Features:**
-- Preview billable orders with month selector
-- Shows billing period and due date per order
-- "Mixed Products" badge for orders with multiple billing types
-- Select/deselect individual orders
-- Summary cards: Orders to Invoice, Selected Total, Already Invoiced
-- Professional confirmation dialog with client list
-- Success message with invoice details
-- Skips already-invoiced orders
+**Duplicates Merged (11 pairs):**
+- Events By Victoria / Events by Victoria → Events by Victoria
+- Advanced Spinal / Advanced Spinal Fitness → Advanced Spinal Fitness
+- And others
 
-### 2. Bug Fixes
+### 2. Dual-View Clients Page
 
-**Fixed `contacts` table reference:**
-- Changed `client_contacts cc` → `contacts ct` in billing.js
-- Invoice detail expansion now works correctly
+**CRM View (Sales Pipeline Focus):**
+- Shows ALL 270 clients
+- Filters: Status (Lead/Prospect/Active/Inactive/Churned), Tier
+- Columns: Client, Status, Tier, Industry, Revenue, Active Orders, Open Balance, Last Activity
+- Sticky header for scrolling
 
-**Fixed `order_items` columns:**
-- Changed `oi.adjusted_price` → `oi.unit_price` (column didn't exist)
-- Changed `p.id as product_id` → `oi.product_id` (already on order_items)
+**Client View (Operations Focus):**
+- Shows only ACTIVE clients (97 total)
+- Filters: Brand (All/WSIC Radio/Lake Norman Woman/Multi-Platform)
+- Columns: Client, Brand, Products, Revenue, Orders, Balance
+- Brand badges (blue 📻 WSIC, pink 📰 LKNW)
+- Trade/Barter badge for barter clients
+- Sticky header for scrolling
 
-**Fixed payment method display:**
-- Changed `stripeService.retrievePaymentMethod()` → `stripeService.getPaymentMethod(entityCode, pmId)`
-- Now correctly fetches last 4 digits from Stripe
+### 3. 🔥 Major Performance Optimization
 
-**Fixed order status query:**
-- Changed `status = 'active'` → `status = 'signed'` (signed = active for billing)
+**Problem Identified:**
+- Frontend was making 541 API calls on page load (270 clients × 2 endpoints)
+- Rate limiter (429 errors) blocked most requests
+- Balance showing $4,400 for all clients due to failed requests
 
-### 3. Professional Confirmation Dialogs
+**Solution Implemented:**
+- Updated `/api/clients` to include order/invoice stats via SQL JOINs
+- Single query returns: `total_orders`, `active_orders`, `total_revenue`, `total_invoices`, `open_invoices`, `open_balance`
+- Frontend reads stats directly from client data - no individual calls needed
 
-Updated all billing confirmations to include:
-- Emoji indicators (📋, 💳, ⚠️, 📧)
-- Client name and invoice number
-- Amount being processed
-- Clear explanation of what happens next
-- "Click OK to proceed" guidance
+**Result:**
+| Before | After |
+|--------|-------|
+| 541 API calls | **1 API call** |
+| Rate limit errors | ✅ None |
+| 5-10 second load | ✅ < 1 second |
+| Wrong balance data | ✅ Correct per-client |
 
-### 4. Comprehensive Security Audit
+### 4. Bug Fixes
 
-**Overall Score: 7.5/10**
+**Fixed Invoice API Parameter:**
+- Changed `clientId` → `client_id` in frontend API call
 
-**Strengths:**
-- ✅ bcrypt password hashing (10 rounds)
-- ✅ Account lockout after 5 failed attempts
-- ✅ Parameterized SQL queries (no injection)
-- ✅ Role-based access control
-- ✅ Stripe for PCI-compliant payments
-- ✅ Activity logging
+**Fixed Balance Display Logic:**
+- Shows "—" when client has no invoices
+- Shows "$0" when has invoices but no balance
+- Shows actual balance (red) when balance > 0
 
-**High Priority Issues:**
-- ⚠️ JWT secret fallback to 'dev-secret'
-- ⚠️ No rate limiting on login endpoint
-- ⚠️ Missing security headers (helmet)
-- ⚠️ Diagnostic endpoints unprotected
+### 5. Assistant Data Entry Prompt
 
-**Created SECURITY_AUDIT.md with:**
-- Practical section for business stakeholders
-- Technical section for developers
-- Implementation checklist
-- Quick win code snippets
-
-### 5. Documentation Updates
-
-Updated all roadmap documents:
-- FILE_STRUCTURE.md - Added billing endpoints, security notes
-- NEW_CHAT_PROMPT.md - Added auto-generate feature, security docs
-- ROADMAP.md - Marked billing complete, added CRM as next priority
-- SECURITY_AUDIT.md - New comprehensive security document
+**Created comprehensive guide for data entry:**
+- Workflows for verifying clients, adding orders, contacts, billing
+- Step-by-step instructions for each task
+- Data validation checks
 
 ---
 
@@ -93,112 +88,87 @@ Updated all roadmap documents:
 ### Backend
 | File | Changes |
 |------|---------|
-| `routes/billing.js` | Added billable-orders, generate-monthly endpoints; fixed column names |
+| `server.js` | `/api/clients` now includes order/invoice stats via JOINs |
 
 ### Frontend
 | File | Changes |
 |------|---------|
-| `components/BillingPage.jsx` | Added Generate Invoices modal, professional confirmations |
+| `App.jsx` | Removed 500+ API calls, reads stats from client response, sticky headers |
 
 ### Documentation
-| File | Changes |
+| File | Purpose |
 |------|---------|
-| `FILE_STRUCTURE.md` | Updated with billing logic, security notes |
-| `NEW_CHAT_PROMPT.md` | Added auto-generate feature, next priorities |
-| `ROADMAP.md` | Marked Phase 2 complete, CRM next |
-| `SECURITY_AUDIT.md` | New file - comprehensive security review |
+| `ASSISTANT_DATA_ENTRY_PROMPT.md` | Guide for assistant data entry |
+
+---
+
+## 📊 Current Database State
+
+| Metric | Count |
+|--------|-------|
+| Total Clients | 270 |
+| Active Clients | 95 |
+| Prospect Clients | 175 |
+| WSIC Radio Clients | 77 |
+| Lake Norman Woman Clients | 157 |
+| Multi-Platform Clients | 32 |
+| Trade/Barter Clients | 28 |
+
+---
+
+## 🎯 Next Session Priorities
+
+### 1. Data Entry & Verification
+- Use ASSISTANT_DATA_ENTRY_PROMPT.md to guide data entry
+- Verify imported clients are accurate
+- Add orders for active clients
+- Enter contact information
+
+### 2. CRM Notes Import
+- Get RAB CRM export
+- Import notes and activity history
+
+### 3. Sales Associate Features
+- Map salesperson names to user IDs
+- Assign clients to sales reps
+
+### 4. Fix Diagnostics Authentication
+- Update frontend to pass auth token to diagnostics
+
+---
+
+## 💻 Deploy Commands
+
+```cmd
+cd simplifi-reports
+copy C:\Users\Justin\Downloads\server.js backend\server.js
+copy C:\Users\Justin\Downloads\App.jsx frontend\src\App.jsx
+git add backend/server.js frontend/src/App.jsx
+git commit -m "Optimize: single query for client stats, eliminate 500+ API calls"
+git push origin main
+```
 
 ---
 
 ## 🔑 Key Technical Decisions
 
-### 1. Order Status for Billing
-**Decision:** Use `status = 'signed'` for billable orders
-**Reason:** "Signed" means contract is active and should be billed
+### 1. SQL JOINs for Stats
+**Decision:** Use LEFT JOINs with subqueries to aggregate order/invoice stats
+**Reason:** Single database query instead of 500+ API calls
 
-### 2. Print Billing on 15th
-**Decision:** Print products always due on 15th of billing month
-**Reason:** Print invoices issued 15th of month BEFORE issue date
+### 2. Stats Included in Client Response
+**Decision:** Return stats with each client record
+**Reason:** Frontend doesn't need separate calls, page loads instantly
 
-### 3. Mixed Order Handling
-**Decision:** If order has both previous-month and advance products, bill at beginning of month
-**Reason:** Can't split invoice, so use advance timing
-
-### 4. Security Audit Format
-**Decision:** Two sections - Practical (business) and Technical (developers)
-**Reason:** Different audiences need different information
+### 3. Simpli.fi Calls Only When Needed
+**Decision:** Only call Simpli.fi API when viewing individual programmatic client
+**Reason:** ~15 programmatic clients, no need to load campaign data for all 270
 
 ---
 
-## 🎯 Next Session: Client Profile Enhancement
+## 📚 Files to Upload for Next Chat
 
-### Recommended Starting Files
-1. `App.jsx` - Dashboard and Client sections
-2. `advertising_clients` table schema
-3. `contacts` table schema
-4. Current client-related API endpoints
-
-### Planned Features
-1. **Enhanced Client Model:**
-   - Status (Lead → Prospect → Active → Churned)
-   - Industry, tier, tags
-   - Annual contract value
-
-2. **Client Detail Page:**
-   - Header with key info
-   - Tabbed interface (Overview, Orders, Invoices, Contacts, Notes)
-   - Activity timeline
-
-3. **Dashboard Updates:**
-   - Clients by status
-   - Revenue by client
-   - Client health indicators
-
----
-
-## 📋 Outstanding Items
-
-### For Next Session
-- [ ] Get `App.jsx` Dashboard section (~lines 800-1100)
-- [ ] Get `App.jsx` Client Detail section (~lines 2400-3200)
-- [ ] Review `advertising_clients` table current schema
-- [ ] Review `contacts` table current schema
-
-### Security Improvements (Can be done anytime)
-- [ ] Install helmet and express-rate-limit
-- [ ] Remove JWT secret fallback
-- [ ] Protect diagnostic endpoints
-
----
-
-## 🧪 Testing Checklist
-
-### Auto-Generate Invoices
-- [x] Generate Invoices button appears in header
-- [x] Modal opens with month selector
-- [x] Billable orders load for selected month
-- [x] Orders show correct billing period
-- [x] Mixed products badge displays
-- [x] Already-invoiced orders shown separately
-- [x] Can select/deselect orders
-- [x] Confirmation shows client list
-- [x] Invoices created successfully
-- [x] Success message shows invoice details
-
-### Billing Confirmations
-- [x] Generate shows client names and total
-- [x] Charge card shows amount and invoice number
-- [x] Void shows warning about permanence
-- [x] Send reminder shows days overdue
-
----
-
-## 💡 Notes for Future
-
-1. **Scheduled Invoice Generation:** Currently manual trigger - could add cron job to auto-run on 1st and 15th
-
-2. **Stripe Webhooks:** Would eliminate need to manually mark invoices as paid
-
-3. **Security Quick Wins:** helmet + rate-limit can be added in ~10 minutes
-
-4. **Client CRM:** This is the foundation for sales pipeline features later
+1. **NEW_CHAT_PROMPT.md** - Updated context file
+2. **SESSION_SUMMARY.md** - This file
+3. **Any RAB CRM exports** - For notes import
+4. **ASSISTANT_DATA_ENTRY_PROMPT.md** - If training assistant

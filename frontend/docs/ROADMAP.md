@@ -1,9 +1,27 @@
 # WSIC Advertising Platform - Development Roadmap
-## Updated: January 27, 2026
+## Updated: January 28, 2026
 
 ---
 
-## 🎯 Current Sprint: CRM & Client Management
+## 🎯 Current Sprint: Data Entry & CRM Enhancement
+
+### ✅ COMPLETED (January 28, 2026)
+
+#### CRM / Client Management - Phase 1
+- [x] Import 266 clients from RAB Master Sheet
+- [x] Add CRM fields to advertising_clients table (status, tier, tags, source)
+- [x] Dual-view Clients page (CRM View + Client View)
+- [x] Brand filtering (WSIC, LKNW, Multi-Platform)
+- [x] Product/inventory type tagging
+- [x] Trade/Barter client identification
+- [x] Status assignment based on current revenue (Jan-Feb 2025)
+- [x] Sticky table headers for scrolling
+- [x] Update /api/clients to return all CRM fields
+- [x] Fix invoice API parameter (clientId → client_id)
+- [x] **🔥 Performance optimization: Single query for all client stats** ⭐
+  - Eliminated 500+ API calls per page load
+  - Stats (orders, invoices, balance) now included via SQL JOINs
+  - Page loads in <1 second instead of 5-10 seconds
 
 ### ✅ COMPLETED (January 27, 2026)
 
@@ -21,104 +39,84 @@
 - [x] Edit draft invoices
 - [x] **Auto-Generate Invoices from Signed Orders** ⭐
 
-#### BillingPage UI
-- [x] Expandable invoice rows with full details
-- [x] Client contact info display (name, email, phone)
-- [x] Payment method with last 4 digits
-- [x] Backup payment method for invoice clients
-- [x] Single "Approve & Send" workflow
-- [x] Professional confirmation dialogs with context
-- [x] Status-based action buttons
-- [x] **Generate Invoices Modal** with order preview ⭐
-
-#### Auto-Generate Invoices Feature
-- [x] Preview billable orders for selected month
-- [x] Category-based billing periods (Radio=previous, Print=15th before, Digital=advance)
-- [x] Mixed order handling (bills at beginning of month)
-- [x] Due date logic (15th or last business day based on contract start)
-- [x] Skip already-invoiced orders
-- [x] Batch invoice creation with summary
-- [x] Professional confirmation with client list
-
-#### Financial Dashboard
-- [x] Key metrics (This Month, Collected, Collection Rate, Avg Value)
-- [x] Accounts Receivable Aging (Current through 90+ days)
-- [x] Top Clients by Revenue
-- [x] Invoice Status Breakdown
-
-#### Security Audit
-- [x] Comprehensive security review
-- [x] Documentation of strengths and vulnerabilities
-- [x] Prioritized fix recommendations
-- [x] Implementation checklist
+#### Security Audit & Improvements
+- [x] Comprehensive security review (8.5/10)
+- [x] Add `helmet` middleware for security headers
+- [x] Add `express-rate-limit` for login endpoint
+- [x] Remove JWT secret fallback
+- [x] Protect diagnostic endpoints with auth
 
 ---
 
 ## 📋 NEXT UP (Priority Order)
 
-### 1. 🔥 Client Profile Enhancement (RECOMMENDED NEXT)
+### 1. 🔥 Data Entry & Verification (CURRENT PRIORITY)
 
-#### Enhanced Client Model
-- [ ] Add client status field (Lead → Prospect → Active → Churned)
-- [ ] Add industry/vertical field
-- [ ] Add annual contract value calculation
-- [ ] Add client since date
-- [ ] Add client tier (Bronze, Silver, Gold, Platinum)
-- [ ] Custom tags for segmentation
+#### Client Data Entry
+- [ ] Verify imported client names are spelled correctly
+- [ ] Confirm brand associations (WSIC/LKNW) are accurate
+- [ ] Add primary contacts for all active clients
+- [ ] Add billing contacts where different from primary
 
-#### Client Detail Page Redesign
-- [ ] Header with key client info and status badge
-- [ ] Quick stats: Total revenue, Active orders, Open invoices
-- [ ] Tabbed interface:
-  - Overview (summary + activity)
-  - Orders (full order history)
-  - Invoices (invoice history)
-  - Contacts (all contacts)
-  - Notes (client notes)
-  - Campaigns (Simpli.fi data)
-- [ ] Activity timeline showing all interactions
+#### Order Entry
+- [ ] Add orders for active clients using Upload Order form
+- [ ] Link orders to correct products
+- [ ] Set contract terms (start date, duration)
+- [ ] Collect payment methods during signing
 
-#### Dashboard Updates
-- [ ] Total clients by status
-- [ ] Revenue by client (top 10)
-- [ ] New clients this month
-- [ ] Client health indicators
+#### Billing Setup
+- [ ] Set billing preferences per client
+- [ ] Connect payment methods
+- [ ] Verify QuickBooks customer IDs (if applicable)
 
-#### Contact Management Improvements
-- [ ] Multiple contacts per client
-- [ ] Contact roles (Primary, Billing, Marketing)
-- [ ] Contact preferences (email, phone)
+### 2. CRM Notes Import
 
-### 2. Security Improvements
+#### RAB CRM Export
+- [ ] Get activity/notes export from RAB system
+- [ ] Import historical notes to client records
+- [ ] Link activity timeline to clients
 
-#### ✅ High Priority (COMPLETED - January 27, 2026)
-- [x] Add `helmet` middleware for security headers
-- [x] Add `express-rate-limit` for login endpoint
-- [x] Remove JWT secret fallback (`|| 'dev-secret'`)
-- [x] Protect diagnostic endpoints with auth
+### 3. Sales Associate Features
 
-#### Medium Priority
-- [ ] Strengthen password policy (12+ chars, complexity)
-- [ ] Add input validation library (`express-validator`)
-- [ ] Fix CORS to reject unknown origins
-- [ ] Add API request logging
+#### User Assignment
+- [ ] Map salesperson names (from RAB sheet) to user accounts
+- [ ] Add assigned_to field population
+- [ ] Filter clients by assigned rep
 
-### 3. Stripe Webhooks for Payment Status
+#### Sales Dashboard
+- [ ] Sales rep performance metrics
+- [ ] Pipeline by rep
+- [ ] Commission tracking (future)
+
+### 4. Client Detail Page Enhancement
+
+#### Tabbed Interface
+- [ ] Overview tab (summary + quick stats)
+- [ ] Orders tab (full order history)
+- [ ] Invoices tab (invoice history)
+- [ ] Contacts tab (all contacts)
+- [ ] Notes tab (activity timeline)
+- [ ] Campaigns tab (Simpli.fi data)
+
+#### Activity Timeline
+- [ ] Show all client interactions
+- [ ] Log order creation, invoice sends, payments
+- [ ] Manual activity notes
+
+### 5. Stripe Webhooks for Payment Status
 
 #### Webhook Endpoints
 - [ ] `POST /api/webhooks/stripe` - Main webhook handler
 - [ ] Verify webhook signatures
 - [ ] Handle `invoice.paid` event
 - [ ] Handle `invoice.payment_failed` event
-- [ ] Handle `payment_intent.succeeded` event
 
 #### Auto-Update Invoice Status
 - [ ] Mark invoice as paid when Stripe payment succeeds
 - [ ] Record payment in invoice_payments table
 - [ ] Send payment confirmation email
-- [ ] Handle partial payments
 
-### 4. Overdue Invoice Notifications
+### 6. Overdue Invoice Notifications
 
 #### Automated Email Schedule
 - [ ] 7 days overdue - Friendly reminder
@@ -127,68 +125,21 @@
 - [ ] 28 days overdue - Final notice (auto-charge warning)
 - [ ] 30 days - Auto-charge backup payment method
 
-#### Notification Tracking
-- [ ] Track reminder emails sent
-- [ ] Prevent duplicate reminders
-- [ ] Admin view of notification history
-
-### 5. CSV Export
-
-#### Invoice Export
-- [ ] Export filtered invoice list to CSV
-- [ ] Include all relevant fields
-- [ ] Date range selection
-- [ ] Status filtering
-
-#### Financial Reports
-- [ ] Revenue by month CSV
-- [ ] Aging report CSV
-- [ ] Client revenue report CSV
-
-### 6. Year-over-Year Dashboard Comparisons
-
-#### Time Period Comparisons
-- [ ] This month vs same month last year
-- [ ] YTD vs last year YTD
-- [ ] This quarter vs same quarter last year
-
-#### Visual Indicators
-- [ ] Growth/decline percentages
-- [ ] Trend arrows (up/down)
-- [ ] Comparison charts
-
 ---
 
-## 📊 Invoice Status Flow
+## 📊 Current Data State
 
-```
-                                    ┌─────────────────────┐
-                                    │  Auto-Generate from │
-                                    │   Signed Orders     │
-                                    └─────────┬───────────┘
-                                              │
-                                              ▼
-┌─────────┐     ┌──────────┐     ┌──────────┐     ┌────────┐     ┌────────┐
-│  Draft  │ ──► │ Approved │ ──► │   Sent   │ ──► │  Paid  │     │  Void  │
-└─────────┘     └──────────┘     └──────────┘     └────────┘     └────────┘
-     │               │                 │                              ▲
-     │               │                 │                              │
-     ▼               ▼                 ▼                              │
-  (Edit)        (Approve          (Overdue)                      (Void from
-              & Send)           after due date                   any status)
-                                      │
-                                      ▼
-                               ┌─────────────┐
-                               │   Overdue   │
-                               │  Reminders  │
-                               └──────┬──────┘
-                                      │
-                                      ▼ (Day 30)
-                               ┌─────────────┐
-                               │ Auto-Charge │
-                               │   Backup    │
-                               └─────────────┘
-```
+| Metric | Count |
+|--------|-------|
+| Total Clients | 270 |
+| Active Clients | 95 |
+| Prospect Clients | 175 |
+| WSIC Radio Clients | 77 |
+| Lake Norman Woman Clients | 157 |
+| Multi-Platform Clients | 32 |
+| Trade/Barter Clients | 28 |
+| Clients with Orders | TBD |
+| Clients with Contacts | TBD |
 
 ---
 
@@ -233,60 +184,77 @@
 | System | Status | Notes |
 |--------|--------|-------|
 | Postmark (Email) | ✅ Working | Invoice emails functional |
-| Supabase (DB) | ✅ Working | All tables created |
+| Supabase (DB) | ✅ Working | All tables created, 270 clients |
 | Simpli.fi (Ads) | ✅ Working | Campaign data sync |
 | Stripe (Payments) | ✅ Working | Payment links, charge on file |
 | Stripe Webhooks | 📋 Next | Auto-mark paid |
-
----
-
-## 📧 Email Templates Status
-
-| Email Type | Status | Notes |
-|------------|--------|-------|
-| Contract to Client | ✅ Working | With brand logos |
-| Signature Confirmation | ✅ Working | Card payment confirmed |
-| ACH Setup | ✅ Working | Action required |
-| Invoice to Client | ✅ Working | With pay button |
-| Invoice Reminder | ✅ Working | Overdue notice |
-| Payment Confirmation | 📋 Planned | After webhook integration |
-| Auto-Charge Notice | 📋 Planned | Day 30 warning |
+| QuickBooks | 📋 Planned | Customer sync |
 
 ---
 
 ## 🔒 Security Status
 
-**Current Score: 8.5/10** ⬆️ (was 7.5)
+**Current Score: 8.5/10** ✅
 
-### Strengths
+### Implemented
 - ✅ bcrypt password hashing
 - ✅ Account lockout after failed attempts
 - ✅ Parameterized SQL queries
 - ✅ Role-based access control
 - ✅ Stripe for PCI-compliant payments
 - ✅ Activity logging
-- ✅ **Helmet security headers** (NEW)
-- ✅ **Rate limiting on login** (NEW)
-- ✅ **JWT validation in production** (NEW)
-- ✅ **Protected diagnostic endpoints** (NEW)
+- ✅ Helmet security headers
+- ✅ Rate limiting on login
+- ✅ JWT validation in production
+- ✅ Protected diagnostic endpoints
 
-### Remaining Improvements
-- ⚠️ CORS still allows unknown origins (logging)
+### Remaining
+- ⚠️ CORS still allows unknown origins (logging only)
 - ⚠️ Password policy could be stronger
-
-See `SECURITY_AUDIT.md` for full details and implementation guide.
 
 ---
 
-## 🔧 Technical Debt / Improvements
+## 📅 Session History
 
-- [ ] Stripe webhook handling for payment events
-- [ ] Scheduled job runner for auto-invoicing
-- [ ] Better error handling throughout
-- [ ] Unit tests for billing flows
-- [ ] API rate limiting
-- [ ] Audit logging for compliance
-- [ ] Security header implementation
+### January 28, 2026 - CRM Import & Performance Optimization
+- Imported 266 clients from RAB Master Sheet
+- Built dual-view Clients page (CRM View + Client View)
+- Added brand filtering (WSIC/LKNW/Multi-Platform)
+- Fixed invoice API parameter bug
+- Added sticky table headers
+- **🔥 Major optimization: Eliminated 500+ API calls**
+  - `/api/clients` now returns order/invoice stats via JOINs
+  - Page load: 5-10 seconds → <1 second
+- Created assistant data entry prompt
+
+### January 27, 2026 - Billing Phase 2 + Security Audit
+- Built auto-generate invoices from signed orders
+- Category-based billing logic (Radio, Print, Digital)
+- Professional confirmation dialogs
+- Payment method last 4 digit display fix
+- Comprehensive security audit (7.5→8.5/10)
+
+### January 27, 2026 - Billing System Phase 1
+- Built complete invoice management system
+- Created BillingPage with expandable rows
+- Added Financial Dashboard
+- Invoice emails with brand detection
+
+### January 26, 2026 - UI Improvements & Payment Fixes
+- Added Broadcast subcategories
+- Added 4 new products
+- Fixed client signing payment flow
+- Created fillable PDF templates
+
+### January 25, 2026 - Order Variants & Upload Forms
+- Built Upload Order form with payment collection
+- Added contract term/renewal fields
+- Fixed inline ACH collection
+
+### January 24, 2026 - Payment Integration & Signing Redesign
+- Redesigned ClientSigningPage to single-page 3-step flow
+- Integrated Stripe Elements for PCI-compliant card collection
+- Added billing preference options
 
 ---
 
@@ -307,38 +275,3 @@ git add backend/routes/filename.js
 git commit -m "Description of change"
 git push origin main
 ```
-
----
-
-## 📅 Session History
-
-### January 27, 2026 - Billing Phase 2 + Security Audit
-- Built auto-generate invoices from signed orders
-- Category-based billing logic (Radio, Print, Digital)
-- Professional confirmation dialogs
-- Payment method last 4 digit display fix
-- Comprehensive security audit (7.5/10)
-- Documentation updates
-
-### January 27, 2026 - Billing System Phase 1
-- Built complete invoice management system
-- Created BillingPage with expandable rows
-- Added Financial Dashboard
-- Invoice emails with brand detection
-- Edit invoice functionality
-
-### January 26, 2026 - UI Improvements & Payment Fixes
-- Added Broadcast subcategories
-- Added 4 new products
-- Fixed client signing payment flow
-- Created fillable PDF templates
-
-### January 25, 2026 - Order Variants & Upload Forms
-- Built Upload Order form with payment collection
-- Added contract term/renewal fields
-- Fixed inline ACH collection
-
-### January 24, 2026 - Payment Integration & Signing Redesign
-- Redesigned ClientSigningPage to single-page 3-step flow
-- Integrated Stripe Elements for PCI-compliant card collection
-- Added billing preference options
