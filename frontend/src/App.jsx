@@ -1781,7 +1781,7 @@ function ClientsPage() {
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('clientsViewMode') || 'crm'); // 'client' or 'crm'
   const [statusFilter, setStatusFilter] = useState('all');
   const [ownerFilter, setOwnerFilter] = useState('all'); // 'all', 'mine', 'open', or a specific user ID
-  const [tierFilter, setTierFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('name'); // 'name', 'name-desc', 'revenue', 'revenue-desc', 'recent', 'oldest'
   const [brandFilter, setBrandFilter] = useState('all'); // 'all', 'WSIC', 'LKNW', 'multi'
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -2028,8 +2028,6 @@ function ClientsPage() {
       if (ownerFilter === 'open' && c.assigned_to) return false;
       if (ownerFilter !== 'mine' && ownerFilter !== 'open' && c.assigned_to !== ownerFilter) return false;
     }
-    // Tier filter (CRM view)
-    if (viewMode === 'crm' && tierFilter !== 'all' && c.tier !== tierFilter) return false;
     // Brand filter (Client view) - check tags for WSIC/LKNW
     if (viewMode === 'client' && brandFilter !== 'all') {
       const hasWSIC = c.tags?.includes('WSIC') || c.source?.includes('WSIC');
@@ -2046,6 +2044,24 @@ function ClientsPage() {
       if (!hasOrders && !isActive) return false;
     }
     return true;
+  }).sort((a, b) => {
+    // Apply sorting
+    const aRevenue = clientOrderStats[a.id]?.totalRevenue || 0;
+    const bRevenue = clientOrderStats[b.id]?.totalRevenue || 0;
+    const aDate = new Date(a.last_activity_at || a.updated_at || 0).getTime();
+    const bDate = new Date(b.last_activity_at || b.updated_at || 0).getTime();
+    const aName = (a.business_name || a.name || '').toLowerCase();
+    const bName = (b.business_name || b.name || '').toLowerCase();
+    
+    switch (sortBy) {
+      case 'name': return aName.localeCompare(bName);
+      case 'name-desc': return bName.localeCompare(aName);
+      case 'revenue': return aRevenue - bRevenue;
+      case 'revenue-desc': return bRevenue - aRevenue;
+      case 'recent': return bDate - aDate;
+      case 'oldest': return aDate - bDate;
+      default: return aName.localeCompare(bName);
+    }
   });
 
   // Status counts for filter badges
@@ -2178,27 +2194,60 @@ function ClientsPage() {
 
         {/* Filters */}
         {viewMode === 'crm' && (
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <select
-              value={ownerFilter}
-              onChange={(e) => setOwnerFilter(e.target.value)}
-              style={{
-                padding: '0.5rem 0.75rem',
-                border: ownerFilter === 'mine' ? '2px solid #3b82f6' : ownerFilter === 'open' ? '2px solid #f59e0b' : '1px solid #e5e7eb',
-                borderRadius: '0.375rem',
-                fontSize: '0.875rem',
-                background: ownerFilter === 'mine' ? '#eff6ff' : ownerFilter === 'open' ? '#fffbeb' : 'white',
-                cursor: 'pointer',
-                fontWeight: ownerFilter !== 'all' ? 600 : 400
-              }}
-            >
-              <option value="all">All Accounts ({ownerCounts.all})</option>
-              <option value="mine">👤 My Accounts ({ownerCounts.mine})</option>
-              <option value="open">🟡 Open Accounts ({ownerCounts.open})</option>
-              {salesUsers.map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* Open/Claimed Toggle */}
+            <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+              <button
+                onClick={() => setOwnerFilter('all')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: ownerFilter === 'all' ? 'white' : 'transparent',
+                  color: ownerFilter === 'all' ? '#1e3a8a' : '#6b7280',
+                  boxShadow: ownerFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                All ({ownerCounts.all})
+              </button>
+              <button
+                onClick={() => setOwnerFilter('open')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: ownerFilter === 'open' ? '#fef3c7' : 'transparent',
+                  color: ownerFilter === 'open' ? '#92400e' : '#6b7280',
+                  boxShadow: ownerFilter === 'open' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                🟡 Open ({ownerCounts.open})
+              </button>
+              <button
+                onClick={() => setOwnerFilter('mine')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: ownerFilter === 'mine' ? '#dbeafe' : 'transparent',
+                  color: ownerFilter === 'mine' ? '#1e40af' : '#6b7280',
+                  boxShadow: ownerFilter === 'mine' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                👤 Mine ({ownerCounts.mine})
+              </button>
+            </div>
+            
+            {/* Status Filter */}
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -2212,11 +2261,31 @@ function ClientsPage() {
               }}
             >
               <option value="all">All Status ({statusCounts.all})</option>
-              <option value="lead">Lead ({statusCounts.lead})</option>
               <option value="prospect">Prospect ({statusCounts.prospect})</option>
+              <option value="lead">Lead ({statusCounts.lead})</option>
               <option value="active">Active ({statusCounts.active})</option>
               <option value="inactive">Inactive ({statusCounts.inactive})</option>
-              <option value="churned">Churned ({statusCounts.churned})</option>
+            </select>
+
+            {/* Sort */}
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                padding: '0.5rem 0.75rem',
+                border: '1px solid #e5e7eb',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                background: 'white',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="name">Sort: A-Z</option>
+              <option value="name-desc">Sort: Z-A</option>
+              <option value="revenue">Sort: Revenue ↑</option>
+              <option value="revenue-desc">Sort: Revenue ↓</option>
+              <option value="recent">Sort: Recently Active</option>
+              <option value="oldest">Sort: Needs Attention</option>
             </select>
           </div>
         )}
@@ -2303,11 +2372,16 @@ function ClientsPage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <div style={{ 
                               width: 40, height: 40, borderRadius: '0.5rem', 
-                              background: c.primary_color || '#1e3a8a', 
+                              background: c.primary_color || (isOpen ? '#f59e0b' : isMine ? '#3b82f6' : '#6b7280'), 
                               display: 'flex', alignItems: 'center', justifyContent: 'center', 
                               color: 'white', fontWeight: 600, fontSize: '0.9375rem' 
                             }}>
-                              {(c.business_name || c.name || '?').charAt(0)}
+                              {(() => {
+                                const name = c.business_name || c.name || '?';
+                                const firstChar = name.charAt(0).toUpperCase();
+                                // If starts with number, show the number
+                                return firstChar;
+                              })()}
                             </div>
                             <div>
                               <div style={{ fontWeight: 500, color: '#111827' }}>{c.business_name || c.name}</div>
