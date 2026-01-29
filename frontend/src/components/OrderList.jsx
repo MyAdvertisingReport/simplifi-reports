@@ -187,13 +187,35 @@ const getOrderCategories = (items) => {
 const getAdjustedProducts = (items) => {
   if (!items) return [];
   return items.filter(item => {
-    // Check if item has a discount or adjusted price
-    const hasDiscount = item.discount_percent && parseFloat(item.discount_percent) > 0;
-    const hasAdjustedPrice = item.original_price && 
-      parseFloat(item.original_price) !== parseFloat(item.unit_price || item.line_total);
-    const hasWaivedSetup = item.original_setup_fee && 
-      parseFloat(item.original_setup_fee) > parseFloat(item.setup_fee || 0);
-    return hasDiscount || hasAdjustedPrice || hasWaivedSetup;
+    // Check for price discount (book_price vs unit_price)
+    const bookPrice = parseFloat(item.book_price) || 0;
+    const unitPrice = parseFloat(item.unit_price) || parseFloat(item.line_total) || 0;
+    const hasDiscountedPrice = bookPrice > 0 && unitPrice < bookPrice;
+    
+    // Check for waived/reduced setup fee
+    const bookSetupFee = parseFloat(item.book_setup_fee) || 0;
+    const actualSetupFee = parseFloat(item.setup_fee) || 0;
+    const hasReducedSetup = bookSetupFee > 0 && actualSetupFee < bookSetupFee;
+    
+    // Check discount_percent field
+    const hasDiscountPercent = parseFloat(item.discount_percent) > 0;
+    
+    return hasDiscountedPrice || hasReducedSetup || hasDiscountPercent;
+  }).map(item => {
+    // Calculate discount percentage if not provided
+    const bookPrice = parseFloat(item.book_price) || 0;
+    const unitPrice = parseFloat(item.unit_price) || parseFloat(item.line_total) || 0;
+    let discountPercent = parseFloat(item.discount_percent) || 0;
+    
+    if (discountPercent === 0 && bookPrice > 0 && unitPrice < bookPrice) {
+      discountPercent = Math.round(((bookPrice - unitPrice) / bookPrice) * 100);
+    }
+    
+    return {
+      ...item,
+      calculated_discount: discountPercent,
+      setup_waived: (parseFloat(item.book_setup_fee) || 0) > (parseFloat(item.setup_fee) || 0)
+    };
   });
 };
 
@@ -1027,10 +1049,12 @@ export default function OrderList() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {adjustedProducts.map((item, idx) => {
                                 const catStyle = getCategoryStyle(item.product_category);
-                                const discount = item.discount_percent ? parseFloat(item.discount_percent) : 0;
-                                const originalPrice = item.original_price || item.book_price;
-                                const currentPrice = item.unit_price || item.line_total;
-                                const waivedSetup = item.original_setup_fee && parseFloat(item.original_setup_fee) > parseFloat(item.setup_fee || 0);
+                                const bookPrice = parseFloat(item.book_price) || 0;
+                                const currentPrice = parseFloat(item.unit_price) || parseFloat(item.line_total) || 0;
+                                const discountPercent = item.calculated_discount || 0;
+                                const setupWaived = item.setup_waived;
+                                const bookSetupFee = parseFloat(item.book_setup_fee) || 0;
+                                const actualSetupFee = parseFloat(item.setup_fee) || 0;
                                 
                                 return (
                                   <div key={idx} style={{
@@ -1040,8 +1064,10 @@ export default function OrderList() {
                                     display: 'flex',
                                     justifyContent: 'space-between',
                                     alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: '8px',
                                   }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 200px' }}>
                                       <span style={{
                                         display: 'inline-flex',
                                         padding: '2px 6px',
@@ -1054,28 +1080,32 @@ export default function OrderList() {
                                       </span>
                                       <span style={{ fontWeight: '500', color: '#1e293b' }}>{item.product_name}</span>
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                      {originalPrice && (
-                                        <span style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: '13px' }}>
-                                          ${parseFloat(originalPrice).toFixed(2)}
-                                        </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      {/* Price adjustment */}
+                                      {bookPrice > 0 && currentPrice < bookPrice && (
+                                        <>
+                                          <span style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: '13px' }}>
+                                            ${bookPrice.toFixed(2)}
+                                          </span>
+                                          <span style={{ fontWeight: '600', color: '#059669', fontSize: '13px' }}>
+                                            ${currentPrice.toFixed(2)}
+                                          </span>
+                                          {discountPercent > 0 && (
+                                            <span style={{
+                                              backgroundColor: '#fee2e2',
+                                              color: '#991b1b',
+                                              padding: '2px 8px',
+                                              borderRadius: '12px',
+                                              fontSize: '11px',
+                                              fontWeight: '600',
+                                            }}>
+                                              -{discountPercent}%
+                                            </span>
+                                          )}
+                                        </>
                                       )}
-                                      <span style={{ fontWeight: '600', color: '#059669', fontSize: '13px' }}>
-                                        ${parseFloat(currentPrice).toFixed(2)}
-                                      </span>
-                                      {discount > 0 && (
-                                        <span style={{
-                                          backgroundColor: '#fee2e2',
-                                          color: '#991b1b',
-                                          padding: '2px 8px',
-                                          borderRadius: '12px',
-                                          fontSize: '11px',
-                                          fontWeight: '600',
-                                        }}>
-                                          -{discount}%
-                                        </span>
-                                      )}
-                                      {waivedSetup && (
+                                      {/* Setup fee waived/reduced */}
+                                      {setupWaived && (
                                         <span style={{
                                           backgroundColor: '#dbeafe',
                                           color: '#1e40af',
@@ -1084,7 +1114,7 @@ export default function OrderList() {
                                           fontSize: '11px',
                                           fontWeight: '600',
                                         }}>
-                                          Setup Waived
+                                          Setup: ${bookSetupFee.toFixed(0)} → ${actualSetupFee.toFixed(0)}
                                         </span>
                                       )}
                                     </div>
