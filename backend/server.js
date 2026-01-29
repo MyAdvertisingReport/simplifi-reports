@@ -4321,6 +4321,32 @@ app.get('/api/users/:id/training-progress', authenticateToken, async (req, res) 
 // USER PROFILE & STATS ROUTES
 // ============================================
 
+// Get single user by ID
+app.get('/api/users/:id', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Check permission - admins can view anyone, users can view themselves
+    if (req.user.role !== 'admin' && req.user.id !== userId && !req.user.is_super_admin) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    
+    const result = await adminPool.query(
+      'SELECT id, name, email, role, is_super_admin, start_date, manager_id, created_at FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
 // Get user profile with extended stats
 app.get('/api/users/:id/stats', authenticateToken, async (req, res) => {
   try {
