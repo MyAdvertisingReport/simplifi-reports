@@ -603,6 +603,47 @@ function Sidebar({ isOpen }) {
   // Track which sections are expanded
   const [expandedSections, setExpandedSections] = useState({ orders: true, billing: true, settings: false });
   
+  // Password change modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+    
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    
+    setChangingPassword(true);
+    try {
+      await api.put('/api/auth/change-password', { currentPassword, newPassword });
+      setPasswordSuccess('Password changed successfully!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => {
+        setShowPasswordModal(false);
+        setPasswordSuccess('');
+      }, 1500);
+    } catch (err) {
+      setPasswordError(err.message || 'Failed to change password');
+    }
+    setChangingPassword(false);
+  };
+  
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
@@ -642,7 +683,6 @@ function Sidebar({ isOpen }) {
   // Settings section items (admin only)
   const settingsItems = [
     { path: '/users', icon: Users, label: 'Users' },
-    { path: '/settings', icon: Settings, label: 'Preferences' },
   ];
   
   // Super Admin only settings items
@@ -657,7 +697,7 @@ function Sidebar({ isOpen }) {
   const isBillingSection = location.pathname.startsWith('/billing') || location.pathname.startsWith('/commissions');
   
   // Check if current path is in settings section
-  const isSettingsSection = location.pathname === '/users' || location.pathname === '/settings' || location.pathname === '/settings/system';
+  const isSettingsSection = location.pathname === '/users' || location.pathname === '/settings/system';
 
   return (
     <aside style={{
@@ -982,7 +1022,70 @@ function Sidebar({ isOpen }) {
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', width: '100%' }}>
           <LogOut size={18} /> Sign Out
         </button>
+        <button onClick={() => setShowPasswordModal(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem', background: 'transparent', border: 'none', color: '#9ca3af', cursor: 'pointer', width: '100%', marginTop: '0.25rem' }}>
+          <Lock size={18} /> Change Password
+        </button>
       </div>
+      
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '400px', margin: '1rem' }}>
+            <h3 style={{ margin: '0 0 1rem', color: '#111827' }}>Change Password</h3>
+            <form onSubmit={handleChangePassword}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: '#374151' }}>Current Password</label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: '#374151' }}>New Password</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: '#374151' }}>Confirm New Password</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+              {passwordError && <p style={{ color: '#dc2626', fontSize: '0.875rem', marginBottom: '1rem' }}>{passwordError}</p>}
+              {passwordSuccess && <p style={{ color: '#16a34a', fontSize: '0.875rem', marginBottom: '1rem' }}>{passwordSuccess}</p>}
+              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                <button 
+                  type="button" 
+                  onClick={() => { setShowPasswordModal(false); setPasswordError(''); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }}
+                  style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={changingPassword}
+                  style={{ padding: '0.625rem 1.25rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer', opacity: changingPassword ? 0.7 : 1 }}
+                >
+                  {changingPassword ? 'Changing...' : 'Change Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
@@ -17066,7 +17169,6 @@ function App() {
           <Route path="/tools" element={<ProtectedRoute><ToolsPage /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
           <Route path="/commissions" element={<ProtectedRoute><CommissionsPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/system" element={<ProtectedRoute><SystemDiagnosticsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
           <Route path="/admin/documents" element={<ProtectedRoute><AdminDocumentsPage /></ProtectedRoute>} />
