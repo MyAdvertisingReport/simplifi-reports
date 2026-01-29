@@ -1911,8 +1911,20 @@ function ClientsPage() {
   const [syncResults, setSyncResults] = useState(null);
   const [claimingId, setClaimingId] = useState(null); // Track which client is being claimed
   const [newClient, setNewClient] = useState({ name: '', brandId: '', primaryColor: '#1e3a8a', secondaryColor: '#64748b' });
-  const { user } = useAuth();
+  const { user, viewingAs, isSuperAdmin } = useAuth();
   const { isMobile } = useResponsive();
+  
+  // Determine the "effective user" - either the user being viewed as, or the actual user
+  const effectiveUser = viewingAs || user;
+  
+  // Determine if the effective user has elevated permissions
+  const effectiveIsAdmin = viewingAs 
+    ? (viewingAs.role === 'admin') 
+    : (user?.role === 'admin');
+  const effectiveIsSuperAdmin = viewingAs 
+    ? false  // When viewing as someone, use their actual permissions
+    : isSuperAdmin;
+  const effectiveCanSeeAll = effectiveIsAdmin || effectiveIsSuperAdmin;
   
   // View mode and filters
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('clientsViewMode') || 'crm'); // 'client' or 'crm'
@@ -2144,6 +2156,20 @@ function ClientsPage() {
 
   // Filter clients based on current filters
   const filteredClients = clients.filter(c => {
+    // FIRST: Apply role-based visibility restrictions
+    // If viewing as a non-admin user (or is a non-admin user), only show their own assigned clients in CRM
+    if (!effectiveCanSeeAll && viewMode === 'crm') {
+      // Non-admin users can only see: their own clients, OR open accounts they could claim
+      const isMyClient = c.assigned_to === effectiveUser?.id;
+      const isOpenAccount = !c.assigned_to;
+      if (!isMyClient && !isOpenAccount) return false;
+    }
+    
+    // If viewing as a non-admin user in Client View, only show their assigned ACTIVE clients
+    if (!effectiveCanSeeAll && viewMode === 'client') {
+      if (c.assigned_to !== effectiveUser?.id) return false;
+    }
+    
     // Search filter - also search tags
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -2159,9 +2185,9 @@ function ClientsPage() {
     }
     // Status filter (CRM view)
     if (viewMode === 'crm' && statusFilter !== 'all' && c.status !== statusFilter) return false;
-    // Owner filter (CRM view)
-    if (viewMode === 'crm' && ownerFilter !== 'all') {
-      if (ownerFilter === 'mine' && c.assigned_to !== user?.id) return false;
+    // Owner filter (CRM view) - only applicable if user can see all
+    if (viewMode === 'crm' && ownerFilter !== 'all' && effectiveCanSeeAll) {
+      if (ownerFilter === 'mine' && c.assigned_to !== effectiveUser?.id) return false;
       if (ownerFilter === 'open' && c.assigned_to) return false;
       if (ownerFilter !== 'mine' && ownerFilter !== 'open' && c.assigned_to !== ownerFilter) return false;
     }
@@ -2211,10 +2237,10 @@ function ClientsPage() {
     churned: clients.filter(c => c.status === 'churned').length
   };
 
-  // Owner counts for filter badges
+  // Owner counts for filter badges - based on effective user
   const ownerCounts = {
-    all: clients.length,
-    mine: clients.filter(c => c.assigned_to === user?.id).length,
+    all: effectiveCanSeeAll ? clients.length : clients.filter(c => c.assigned_to === effectiveUser?.id || !c.assigned_to).length,
+    mine: clients.filter(c => c.assigned_to === effectiveUser?.id).length,
     open: clients.filter(c => !c.assigned_to).length
   };
 
@@ -2236,7 +2262,7 @@ function ClientsPage() {
           <h1 style={{ margin: 0 }}>Clients</h1>
           <p style={{ color: '#6b7280', margin: '0.25rem 0 0' }}>Manage your advertising clients and prospects</p>
         </div>
-        {user?.role === 'admin' && (
+        {effectiveCanSeeAll && (
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button 
               onClick={() => setShowModal(true)} 
@@ -2332,57 +2358,73 @@ function ClientsPage() {
         {/* Filters */}
         {viewMode === 'crm' && (
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Open/Claimed Toggle */}
-            <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
-              <button
-                onClick={() => setOwnerFilter('all')}
-                style={{
-                  padding: '0.375rem 0.75rem',
-                  border: 'none',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.8125rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  background: ownerFilter === 'all' ? 'white' : 'transparent',
-                  color: ownerFilter === 'all' ? '#1e3a8a' : '#6b7280',
-                  boxShadow: ownerFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                }}
-              >
-                All ({ownerCounts.all})
-              </button>
-              <button
-                onClick={() => setOwnerFilter('open')}
-                style={{
-                  padding: '0.375rem 0.75rem',
-                  border: 'none',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.8125rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  background: ownerFilter === 'open' ? '#fef3c7' : 'transparent',
-                  color: ownerFilter === 'open' ? '#92400e' : '#6b7280',
-                  boxShadow: ownerFilter === 'open' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                }}
-              >
-                🟡 Open ({ownerCounts.open})
-              </button>
-              <button
-                onClick={() => setOwnerFilter('mine')}
-                style={{
-                  padding: '0.375rem 0.75rem',
-                  border: 'none',
-                  borderRadius: '0.375rem',
-                  fontSize: '0.8125rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  background: ownerFilter === 'mine' ? '#dbeafe' : 'transparent',
-                  color: ownerFilter === 'mine' ? '#1e40af' : '#6b7280',
-                  boxShadow: ownerFilter === 'mine' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                }}
-              >
-                👤 Mine ({ownerCounts.mine})
-              </button>
-            </div>
+            {/* Open/Claimed Toggle - only show if user can see all */}
+            {effectiveCanSeeAll && (
+              <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+                <button
+                  onClick={() => setOwnerFilter('all')}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    background: ownerFilter === 'all' ? 'white' : 'transparent',
+                    color: ownerFilter === 'all' ? '#1e3a8a' : '#6b7280',
+                    boxShadow: ownerFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  All ({ownerCounts.all})
+                </button>
+                <button
+                  onClick={() => setOwnerFilter('open')}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    background: ownerFilter === 'open' ? '#fef3c7' : 'transparent',
+                    color: ownerFilter === 'open' ? '#92400e' : '#6b7280',
+                    boxShadow: ownerFilter === 'open' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  🟡 Open ({ownerCounts.open})
+                </button>
+                <button
+                  onClick={() => setOwnerFilter('mine')}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    background: ownerFilter === 'mine' ? '#dbeafe' : 'transparent',
+                    color: ownerFilter === 'mine' ? '#1e40af' : '#6b7280',
+                    boxShadow: ownerFilter === 'mine' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  👤 Mine ({ownerCounts.mine})
+                </button>
+              </div>
+            )}
+            
+            {/* For non-admins, just show their client count */}
+            {!effectiveCanSeeAll && (
+              <div style={{ 
+                padding: '0.375rem 0.75rem', 
+                background: '#dbeafe', 
+                borderRadius: '0.375rem',
+                fontSize: '0.8125rem',
+                fontWeight: 500,
+                color: '#1e40af'
+              }}>
+                👤 My Clients ({ownerCounts.mine}) + 🟡 Open ({ownerCounts.open})
+              </div>
+            )}
             
             {/* Status Filter */}
             <select
@@ -2493,7 +2535,10 @@ function ClientsPage() {
                     };
                     const status = statusConfig[c.status] || statusConfig.prospect;
                     const isOpen = !c.assigned_to;
-                    const isMine = c.assigned_to === user?.id;
+                    const isMine = c.assigned_to === effectiveUser?.id;
+                    
+                    // Determine if current effective user can view this client's details
+                    const canViewDetails = effectiveCanSeeAll || isMine;
                     
                     // Calculate days since last activity
                     const lastActivity = c.last_activity_at || c.updated_at;
@@ -2611,23 +2656,39 @@ function ClientsPage() {
                           </span>
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                          <Link 
-                            to={`/client/${c.slug}`} 
-                            style={{ 
+                          {canViewDetails ? (
+                            <Link 
+                              to={`/client/${c.slug}`} 
+                              style={{ 
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                padding: '0.375rem 0.75rem',
+                                background: '#f3f4f6',
+                                color: '#374151',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.8125rem',
+                                textDecoration: 'none',
+                                fontWeight: 500
+                              }}
+                            >
+                              View <ChevronRight size={14} />
+                            </Link>
+                          ) : (
+                            <span style={{ 
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '0.25rem',
                               padding: '0.375rem 0.75rem',
                               background: '#f3f4f6',
-                              color: '#374151',
+                              color: '#9ca3af',
                               borderRadius: '0.375rem',
                               fontSize: '0.8125rem',
-                              textDecoration: 'none',
-                              fontWeight: 500
-                            }}
-                          >
-                            View <ChevronRight size={14} />
-                          </Link>
+                              cursor: 'not-allowed'
+                            }}>
+                              <Eye size={14} style={{ opacity: 0.5 }} />
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -2690,6 +2751,10 @@ function ClientsPage() {
                     const productTags = c.tags?.filter(t => 
                       !['WSIC', 'LKNW', 'LWP', 'Trade/Barter', 'Internal', 'Programmatic'].includes(t)
                     ) || [];
+                    
+                    // Determine if current effective user can view this client's details
+                    const isMine = c.assigned_to === effectiveUser?.id;
+                    const canViewDetails = effectiveCanSeeAll || isMine;
                     
                     return (
                       <tr key={c.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
@@ -2783,23 +2848,39 @@ function ClientsPage() {
                           {orderStats.totalInvoices > 0 ? (orderStats.openBalance > 0 ? formatCurrency(orderStats.openBalance) : '$0') : '—'}
                         </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                          <Link 
-                            to={`/client/${c.slug}`} 
-                            style={{ 
+                          {canViewDetails ? (
+                            <Link 
+                              to={`/client/${c.slug}`} 
+                              style={{ 
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                padding: '0.375rem 0.75rem',
+                                background: '#f3f4f6',
+                                color: '#374151',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.8125rem',
+                                textDecoration: 'none',
+                                fontWeight: 500
+                              }}
+                            >
+                              View <ChevronRight size={14} />
+                            </Link>
+                          ) : (
+                            <span style={{ 
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '0.25rem',
                               padding: '0.375rem 0.75rem',
                               background: '#f3f4f6',
-                              color: '#374151',
+                              color: '#9ca3af',
                               borderRadius: '0.375rem',
                               fontSize: '0.8125rem',
-                              textDecoration: 'none',
-                              fontWeight: 500
-                            }}
-                          >
-                            View <ChevronRight size={14} />
-                          </Link>
+                              cursor: 'not-allowed'
+                            }}>
+                              <Eye size={14} style={{ opacity: 0.5 }} />
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
