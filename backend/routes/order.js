@@ -1145,7 +1145,7 @@ router.put('/:id/approve', async (req, res) => {
     await client.query('BEGIN');
     
     const { id } = req.params;
-    const { notes } = req.body;
+    const { notes, autoSend = true } = req.body; // Default to auto-send
     const user = req.user;
 
     // Check user has permission (admin or manager)
@@ -1154,7 +1154,7 @@ router.put('/:id/approve', async (req, res) => {
       return res.status(403).json({ error: 'Only managers can approve orders' });
     }
 
-    // Get the order
+    // Get the order with items
     const orderResult = await client.query(
       `SELECT o.*, c.business_name as client_name, c.slug as client_slug,
               u.name as submitted_by_name, u.email as submitted_by_email
@@ -1189,29 +1189,114 @@ router.put('/:id/approve', async (req, res) => {
       }
     }
 
-    // Update order status
-    const updateResult = await client.query(
-      `UPDATE orders SET
-        status = 'approved',
-        approved_by = $1,
-        approved_at = NOW(),
-        approval_notes = $2,
-        updated_at = NOW()
-       WHERE id = $3
-       RETURNING *`,
-      [validUserId, notes || null, id]
-    );
+    // Check if we should auto-send to client
+    let primaryContact = null;
+    let signingUrl = null;
+    let autoSent = false;
 
-    await client.query('COMMIT');
+    if (autoSend) {
+      // Get primary contact for the client
+      const contactResult = await client.query(
+        'SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1',
+        [order.client_id]
+      );
+      
+      if (contactResult.rows.length > 0) {
+        primaryContact = contactResult.rows[0];
+      }
+    }
 
-    const updatedOrder = {
-      ...updateResult.rows[0],
-      client_name: order.client_name,
-      client_slug: order.client_slug,
-      approved_by_name: user.name
-    };
+    let updatedOrder;
 
-    // Send approval notification email
+    if (primaryContact) {
+      // Approve AND send to client in one step
+      const signingToken = generateSigningToken();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      const updateResult = await client.query(
+        `UPDATE orders SET
+          status = 'sent',
+          approved_by = $1,
+          approved_at = NOW(),
+          approval_notes = $2,
+          signing_token = $3,
+          signing_token_expires_at = $4,
+          sent_to_client_at = NOW(),
+          sent_to_client_by = $5,
+          updated_at = NOW()
+         WHERE id = $6
+         RETURNING *`,
+        [validUserId, notes || null, signingToken, expiresAt, validUserId, id]
+      );
+
+      // Fetch items with entity names for email
+      const itemsWithEntities = await client.query(
+        `SELECT oi.*, e.name as entity_name, e.logo_url, e.code as entity_code
+         FROM order_items oi 
+         LEFT JOIN entities e ON oi.entity_id = e.id 
+         WHERE oi.order_id = $1`,
+        [id]
+      );
+
+      await client.query('COMMIT');
+
+      const orderMonthlyTotal = parseFloat(updateResult.rows[0].monthly_total) || 0;
+      const orderContractTotal = parseFloat(updateResult.rows[0].contract_total) || orderMonthlyTotal * (updateResult.rows[0].term_months || 1);
+
+      updatedOrder = {
+        ...updateResult.rows[0],
+        client_name: order.client_name,
+        client_slug: order.client_slug,
+        approved_by_name: user.name,
+        items: itemsWithEntities.rows,
+        monthly_total: orderMonthlyTotal,
+        contract_total: orderContractTotal
+      };
+
+      // Build signing URL
+      const baseUrl = process.env.BASE_URL || 'https://myadvertisingreport.com';
+      signingUrl = `${baseUrl}/sign/${signingToken}`;
+      autoSent = true;
+
+      // Send contract email to client
+      if (emailService && primaryContact.email) {
+        try {
+          console.log(`[Order Approve] Auto-sending contract to ${primaryContact.email} for order ${updatedOrder.order_number}`);
+          await emailService.sendContractToClient({
+            order: updatedOrder,
+            contact: primaryContact,
+            signingUrl: signingUrl
+          });
+        } catch (emailError) {
+          console.error('Failed to send contract email:', emailError);
+        }
+      }
+    } else {
+      // Just approve (no contact to send to)
+      const updateResult = await client.query(
+        `UPDATE orders SET
+          status = 'approved',
+          approved_by = $1,
+          approved_at = NOW(),
+          approval_notes = $2,
+          updated_at = NOW()
+         WHERE id = $3
+         RETURNING *`,
+        [validUserId, notes || null, id]
+      );
+
+      await client.query('COMMIT');
+
+      updatedOrder = {
+        ...updateResult.rows[0],
+        client_name: order.client_name,
+        client_slug: order.client_slug,
+        approved_by_name: user.name
+      };
+    }
+
+    // Send approval notification email to the submitter
     if (emailService && order.submitted_by_email) {
       try {
         await emailService.sendOrderApproved({
@@ -1220,7 +1305,9 @@ router.put('/:id/approve', async (req, res) => {
           submittedBy: { 
             name: order.submitted_by_name, 
             email: order.submitted_by_email 
-          }
+          },
+          autoSent: autoSent,
+          sentTo: primaryContact ? `${primaryContact.first_name} ${primaryContact.last_name} (${primaryContact.email})` : null
         });
       } catch (emailError) {
         console.error('Failed to send approval email:', emailError);
@@ -1229,7 +1316,14 @@ router.put('/:id/approve', async (req, res) => {
 
     res.json({
       ...updatedOrder,
-      message: 'Order approved successfully'
+      auto_sent: autoSent,
+      signing_url: signingUrl,
+      sent_to: primaryContact ? `${primaryContact.first_name} ${primaryContact.last_name} (${primaryContact.email})` : null,
+      message: autoSent 
+        ? `Order approved and sent to ${primaryContact.first_name} ${primaryContact.last_name} for signature!`
+        : (autoSend 
+            ? 'Order approved (no primary contact found - please add contact and send manually)'
+            : 'Order approved successfully')
     });
   } catch (error) {
     await client.query('ROLLBACK');

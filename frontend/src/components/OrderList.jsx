@@ -153,23 +153,72 @@ const categoryConfig = {
   'social': { bg: '#ffe4e6', color: '#be123c', icon: '📱' },
 };
 
+// Entity/Brand color configuration - matches the primary product category for each brand
+const entityColorConfig = {
+  // WSIC - Broadcast (pink/magenta)
+  'WSIC': { bg: '#9d174d', color: '#ffffff', lightBg: '#fce7f3', lightColor: '#9d174d' },
+  'wsic': { bg: '#9d174d', color: '#ffffff', lightBg: '#fce7f3', lightColor: '#9d174d' },
+  
+  // Lake Norman Woman - Print (blue)
+  'Lake Norman Woman': { bg: '#1e40af', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e40af' },
+  'LKN': { bg: '#1e40af', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e40af' },
+  'lkn': { bg: '#1e40af', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e40af' },
+  
+  // LiveWorkPlay LKN - Events (amber/orange)
+  'LiveWorkPlay LKN': { bg: '#92400e', color: '#ffffff', lightBg: '#fef3c7', lightColor: '#92400e' },
+  'LWP': { bg: '#92400e', color: '#ffffff', lightBg: '#fef3c7', lightColor: '#92400e' },
+  'lwp': { bg: '#92400e', color: '#ffffff', lightBg: '#fef3c7', lightColor: '#92400e' },
+  
+  // Digital/Programmatic brands (green)
+  'Simpli.fi': { bg: '#166534', color: '#ffffff', lightBg: '#dcfce7', lightColor: '#166534' },
+  'simplifi': { bg: '#166534', color: '#ffffff', lightBg: '#dcfce7', lightColor: '#166534' },
+};
+
+// Get brand color based on entity name or primary category
+const getBrandColor = (entityName, primaryCategory) => {
+  // First check if we have a specific color for this entity
+  const entityColor = entityColorConfig[entityName] || entityColorConfig[entityName?.toLowerCase()];
+  if (entityColor) return entityColor;
+  
+  // Fall back to category-based color
+  if (primaryCategory) {
+    const catStyle = getCategoryStyle(primaryCategory);
+    // Invert for brand bubble (darker bg, white text)
+    return { 
+      bg: catStyle.color, // Use the category text color as brand bg
+      color: '#ffffff',
+      lightBg: catStyle.bg,
+      lightColor: catStyle.color
+    };
+  }
+  
+  // Default dark blue
+  return { bg: '#1e3a8a', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e3a8a' };
+};
+
 const getCategoryStyle = (category) => {
   if (!category) return { bg: '#f3f4f6', color: '#374151', icon: '📋' };
   return categoryConfig[category] || { bg: '#f3f4f6', color: '#374151', icon: '📋' };
 };
 
-// Get unique brands from order items
+// Get unique brands from order items with their primary category
 const getOrderBrands = (items) => {
   if (!items || items.length === 0) return [];
-  const seen = new Set();
-  return items.filter(item => {
-    if (!item.entity_name || seen.has(item.entity_name)) return false;
-    seen.add(item.entity_name);
-    return true;
-  }).map(item => ({
-    name: item.entity_name,
-    logo: item.entity_logo
-  }));
+  const brandMap = new Map();
+  
+  items.forEach(item => {
+    if (!item.entity_name) return;
+    if (!brandMap.has(item.entity_name)) {
+      brandMap.set(item.entity_name, {
+        name: item.entity_name,
+        code: item.entity_code,
+        logo: item.entity_logo,
+        primaryCategory: item.product_category // First category seen
+      });
+    }
+  });
+  
+  return Array.from(brandMap.values());
 };
 
 // Get unique categories from order items
@@ -692,20 +741,23 @@ export default function OrderList() {
                       </td>
                       <td style={styles.td}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                          {brands.length > 0 ? brands.map((brand, idx) => (
-                            <span key={idx} style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              padding: '3px 8px',
-                              fontSize: '11px',
-                              fontWeight: '600',
-                              backgroundColor: '#1e3a8a',
-                              color: 'white',
-                              borderRadius: '6px',
-                            }}>
-                              {brand.name}
-                            </span>
-                          )) : (
+                          {brands.length > 0 ? brands.map((brand, idx) => {
+                            const brandColor = getBrandColor(brand.name, brand.primaryCategory);
+                            return (
+                              <span key={idx} style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                padding: '3px 8px',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                backgroundColor: brandColor.bg,
+                                color: brandColor.color,
+                                borderRadius: '6px',
+                              }}>
+                                {brand.code || brand.name}
+                              </span>
+                            );
+                          }) : (
                             <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
                           )}
                         </div>
