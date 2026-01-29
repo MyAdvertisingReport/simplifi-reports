@@ -1,6 +1,6 @@
 # WSIC Advertising Platform - New Chat Context
 ## Upload this file at the START of every new Claude chat
-## Last Updated: January 28, 2026 (Evening)
+## Last Updated: January 29, 2026
 
 ---
 
@@ -23,7 +23,7 @@ simplifi-reports/              ← Git root (push from here)
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (~12k lines) ⭐
+        ├── App.jsx            ← Main app (~13.7k lines) ⭐
         └── components/
             ├── BillingPage.jsx
             └── ...
@@ -55,7 +55,37 @@ git add server.js App.jsx
 
 ---
 
-## 🔐 Super Admin System (NEW - January 28, 2026)
+## 🗄️ Database Tables
+
+### Key Tables
+| Table | Purpose |
+|-------|---------|
+| `advertising_clients` | Client/business records (NOT `clients`) |
+| `contacts` | Contact people (first_name, last_name, NOT name) |
+| `users` | Team members |
+| `orders` | Advertising orders |
+| `invoices` | Billing invoices |
+| `client_activities` | Activity timeline |
+| `super_admin_audit_log` | Admin action tracking |
+
+### advertising_clients Key Columns
+```sql
+id, business_name, slug, status, industry, website
+assigned_to              -- FK to users.id (sales rep)
+primary_contact_name     -- Denormalized for display
+tags[]                   -- ['WSIC', 'LKNW', 'Print', etc.]
+```
+
+### contacts Key Columns
+```sql
+id, client_id, first_name, last_name  -- NOT "name"
+email, phone, title, contact_type
+is_primary               -- Boolean
+```
+
+---
+
+## 🔐 Super Admin System
 
 ### Super Admins (3 users)
 | Name | Email | Role |
@@ -64,112 +94,91 @@ git add server.js App.jsx
 | Mamie Lee | mamie@wsicnews.com | admin |
 | Bill Blakely | bill@wsicnews.com | staff |
 
-### Super Admin Capabilities
-- **View As**: See the app as any user would see it (read-only)
+### Capabilities
+- **View As**: See the app as any user would see it
 - **Audit Log**: View all Super Admin actions
 - **All Admin powers**: Plus audit trail access
 
-### Backend Endpoints (✅ Working)
-```
-GET  /api/super-admin/view-as/:userId     - Enter View As mode
-POST /api/super-admin/view-as/:userId/end - Exit View As mode
-GET  /api/super-admin/audit-log           - Get audit trail
-GET  /api/super-admin/list                - List all Super Admins
-```
+---
 
-### Audit Log Tracks
-- `view_as_start` / `view_as_end` - View As sessions
-- `bulk_assign` - Bulk client assignments
-- `transfer_clients` - Client transfers between reps
-- `user_update`, `user_create`, `user_delete`
+## 📊 Current Data State (January 29, 2026)
+
+| Metric | Count |
+|--------|-------|
+| Total Clients | 2,812 |
+| Active Clients | ~122 |
+| Prospect Clients | ~2,690 |
+| Open (unassigned) | ~2,135 |
+| Team Members | 18 |
+| Super Admins | 3 |
+| RAB Contacts Imported | ~300 |
 
 ---
 
-## 📊 Current State (January 28, 2026)
+## ✅ Recently Completed (January 28-29, 2026)
 
-### CRM Data
-- **2,812 total clients** (imported from RAB)
-- **122 active clients** (verified from RAB revenue data)
-- **2,690 prospects** for sales pipeline
-- **~2,135 open/unassigned** clients
+### Client Page Updates
+- ✅ Removed Tier badge from client detail pages
+- ✅ Fixed Assigned Representative to show actual name
+- ✅ Merged Notes tab into Activity tab (unified view)
+- ✅ Activity tab now has note input at top
+- ✅ Removed standalone Notes tab
 
-### Team
-- **18 team members**
-- **3 Super Admins** (Justin, Mamie, Bill)
-- **4,652 logged activities**
+### CRM View Updates
+- ✅ All/Mine/Open toggle for ALL users (not just admins)
+- ✅ Sales associates can VIEW all clients for prospecting
+- ✅ View button permissions maintained (only own clients clickable)
+- ✅ Client View: All/Current/Past toggle (defaults to Current)
+
+### Add Contact Feature
+- ✅ Green "Add Contact" button for all users
+- ✅ Prospect vs Lead type selection
+- ✅ Auto-assignment to current user
+- ✅ Warning to check Master List first
+
+### RAB Contact Import
+- ✅ SQL scripts generated for contact import
+- ✅ ~300 contacts from 5 sales associates
+- ✅ Contacts stored with first_name/last_name structure
+- ✅ contact_type = 'decision_maker' for imported contacts
 
 ---
 
-## 🎯 IMMEDIATE PRIORITY: Frontend Updates
+## 🎯 IMMEDIATE PRIORITY: Orders & Campaign Display
 
-### 1. Super Admin UI (Backend Ready ✅)
+### Next Session Goals
 
-**View As Feature:**
-- Purple eye icon button on Users page
-- Click → see what that user sees (read-only)
-- Small indicator in sidebar when active: `👁️ Viewing as [Name] | Exit`
-- All actions logged to audit trail
+#### 1. Import Actual Client Orders
+- Need to import real order data to identify true active clients
+- Orders determine "active" vs "prospect" status
+- Revenue tracking depends on order data
 
-**Audit Log Tab:**
-- New tab on Users page (Super Admins only): `🔒 Audit Log`
-- Shows: who, what, when, target user
-- Filter by action type
+#### 2. Multi-Product Campaign Display
+Currently only Programmatic (Simpli.fi) campaigns display. Need to add:
 
-**Visual Indicators:**
-- Purple "SA" badge next to Super Admin names
+| Product Type | Data Source | Display Needs |
+|--------------|-------------|---------------|
+| Programmatic | Simpli.fi API | ✅ Working |
+| Radio/Broadcast | Manual entry | Needs UI |
+| Print (LKNW) | Manual entry | Needs UI |
+| Podcast | Manual entry | Needs UI |
+| Events | Manual entry | Needs UI |
+| Web/Social | Manual entry | Needs UI |
 
-### 2. User Management Enhancements (Backend Ready ✅)
-
-**Stats columns already in API:**
-```javascript
-// GET /api/users/extended returns:
-{
-  client_count,           // Total assigned
-  active_client_count,    // Status = 'active'
-  prospect_client_count,  // Status = 'prospect'/'lead'
-  active_orders,          // Orders in signed/active
-  total_revenue,          // Revenue from their clients
-  recent_activities,      // Last 30 days
-  is_super_admin          // Super Admin flag
-}
-```
-
-**Frontend needs:**
-- Display these new stat columns
-- Bulk Assign tab with checkbox selection
-- Transfer All Clients button
-
-### 3. Sales KPI Tracking (NEW)
-
-**Activity types to track:**
-- `touchpoint` - Generic contacts (goal: 100/week)
-- `appointment_set` - Meetings scheduled
-- `proposal_sent` - Proposals created
-- `deal_closed` - Closed sales with $ amount
-
-**Reports needed:**
-- Per-rep metrics with time filters
-- 1-on-1 exportable reports
-
-### 4. Sales Training Center (NEW)
-
-**In-house training hub with:**
-- Sales Process Guide (3 stages)
-- Product Knowledge
-- Pricing Guide
-- FAQs & Objection Handling
+#### 3. Brand-Specific Views
+- WSIC Radio: Broadcast, Podcast, Events
+- Lake Norman Woman: Print, Events, Digital
+- Multi-Platform: All products
 
 ---
 
 ## 👤 User System
 
-### Users Table
-```sql
-id (UUID)           -- MUST match Supabase Auth ID
-email, name, role   -- 'admin', 'sales_manager', 'sales_associate', 'staff'
-is_super_admin      -- Boolean (NEW)
-is_sales            -- Boolean (can be assigned clients)
-```
+### Roles
+- `admin` - Full access
+- `sales_manager` - Team oversight
+- `sales_associate` - Own clients only
+- `staff` - Limited access
 
 ### Justin's User ID
 ```
@@ -178,55 +187,29 @@ is_sales            -- Boolean (can be assigned clients)
 
 ---
 
-## 🗄️ Key Database Tables
-
-### advertising_clients
-```sql
-id, business_name, slug, status, industry
-tags[]                -- ['WSIC', 'LKNW', 'Print', etc.]
-assigned_to           -- FK to users.id (sales rep)
-annual_contract_value
-last_activity_at
-```
-
-### super_admin_audit_log (NEW)
-```sql
-id, super_admin_id, action_type
-target_user_id, target_user_name
-description, metadata (JSONB)
-ip_address, user_agent, created_at
-```
-
-### client_activities
-```sql
-id, client_id, user_id
-activity_type         -- 'call_logged', 'email_sent', 'meeting_scheduled', etc.
-description, metadata, created_at
-```
-
----
-
 ## 📝 API Endpoints Reference
-
-### Users & Super Admin
-```
-GET  /api/auth/me                        - Current user (includes is_super_admin)
-GET  /api/users/extended                 - All users with full stats
-GET  /api/users/:id/stats                - Individual user details + clients
-GET  /api/users/sales                    - Sales team only
-POST /api/clients/bulk-assign            - Bulk assign clients
-POST /api/users/:id/transfer-clients     - Transfer all clients
-GET  /api/super-admin/view-as/:userId    - View As mode
-POST /api/super-admin/view-as/:userId/end - Exit View As
-GET  /api/super-admin/audit-log          - Audit trail
-```
 
 ### Clients
 ```
 GET  /api/clients                  - List with stats
 POST /api/clients/:id/claim        - Claim open account
 POST /api/clients/:id/reassign     - Reassign to different rep
-POST /api/clients/:id/release      - Release back to open
+```
+
+### Users & Super Admin
+```
+GET  /api/auth/me                        - Current user
+GET  /api/users/extended                 - All users with stats
+GET  /api/super-admin/view-as/:userId    - View As mode
+POST /api/super-admin/view-as/:userId/end - Exit View As
+GET  /api/super-admin/audit-log          - Audit trail
+```
+
+### Orders
+```
+GET  /api/orders                   - List orders
+POST /api/orders                   - Create order
+GET  /api/orders/:id               - Get order details
 ```
 
 ---

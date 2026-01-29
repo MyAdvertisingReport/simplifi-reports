@@ -8,7 +8,8 @@ import {
   GripVertical, Save, MessageSquare, Pin, Trash2, Edit3, Video, Radio, Code,
   CheckCircle, AlertCircle, Clock, Bookmark, Flag, Download, History, Award,
   TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List,
-  Database, RefreshCw, Shield, EyeOff, UserCheck, Activity
+  Database, RefreshCw, Shield, EyeOff, UserCheck, Activity, Cpu, HardDrive, 
+  Mail, CreditCard, Wifi, Server, Lock, AlertTriangle, CheckCircle2, XCircle
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
 import OrderForm from './components/OrderForm';
@@ -11180,6 +11181,467 @@ function EditClientForm({ client, onSave, onCancel }) {
 }
 
 // ============================================
+// SYSTEM DIAGNOSTICS PANEL (Super Admin Only)
+// ============================================
+function SystemDiagnosticsPanel({ systemHealth, loading, onRefresh, lastCheck }) {
+  const [expandedSections, setExpandedSections] = useState({});
+  
+  const toggleSection = (key) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+  
+  // Health status helper
+  const getHealthStatus = (status) => {
+    if (status === 'ok' || status === true) return { color: '#16a34a', bg: '#dcfce7', icon: CheckCircle2, label: 'Healthy' };
+    if (status === 'warning') return { color: '#d97706', bg: '#fef3c7', icon: AlertTriangle, label: 'Warning' };
+    if (status === 'error' || status === false) return { color: '#dc2626', bg: '#fee2e2', icon: XCircle, label: 'Error' };
+    return { color: '#6b7280', bg: '#f3f4f6', icon: AlertCircle, label: 'Unknown' };
+  };
+  
+  // Calculate overall health
+  const getOverallHealth = () => {
+    if (!systemHealth || systemHealth.error) return 'error';
+    const checks = [
+      systemHealth.database?.status,
+      systemHealth.simplifiApi?.status,
+      systemHealth.server?.status
+    ];
+    if (checks.some(c => c === 'error')) return 'error';
+    if (checks.some(c => c === 'warning')) return 'warning';
+    if (checks.every(c => c === 'ok')) return 'ok';
+    return 'unknown';
+  };
+  
+  // System components for the visual tree
+  const systemComponents = [
+    {
+      key: 'server',
+      name: 'Application Server',
+      icon: Server,
+      status: systemHealth?.server?.status || 'unknown',
+      friendlyMessage: systemHealth?.server?.status === 'ok' ? 'Server is running smoothly' : 'Server may be experiencing issues',
+      details: systemHealth?.server ? {
+        'Uptime': systemHealth.server.uptime ? `${Math.floor(systemHealth.server.uptime / 3600)}h ${Math.floor((systemHealth.server.uptime % 3600) / 60)}m` : 'Unknown',
+        'Node Version': systemHealth.server.nodeVersion || 'Unknown'
+      } : null
+    },
+    {
+      key: 'database',
+      name: 'Database',
+      icon: Database,
+      status: systemHealth?.database?.status || 'unknown',
+      friendlyMessage: systemHealth?.database?.status === 'ok' 
+        ? `Database connected with ${systemHealth.database.clients || 0} clients and ${systemHealth.database.users || 0} users`
+        : systemHealth?.database?.message || 'Unable to connect to database',
+      details: systemHealth?.database ? {
+        'Total Clients': systemHealth.database.clients || 0,
+        'Total Users': systemHealth.database.users || 0,
+        'Status': systemHealth.database.message || 'Unknown'
+      } : null
+    },
+    {
+      key: 'simplifi',
+      name: 'Simpli.fi Ad Platform',
+      icon: Globe,
+      status: systemHealth?.simplifiApi?.status || 'unknown',
+      friendlyMessage: systemHealth?.simplifiApi?.status === 'ok' 
+        ? 'Ad platform connection is active'
+        : systemHealth?.simplifiApi?.message || 'Ad platform may not be connected',
+      details: systemHealth?.simplifiApi ? {
+        'Status': systemHealth.simplifiApi.message || 'Unknown',
+        'Note': systemHealth.simplifiApi.note || 'N/A'
+      } : null
+    },
+    {
+      key: 'imageProxy',
+      name: 'Image Proxy (Safari Fix)',
+      icon: Image,
+      status: systemHealth?.imageProxy?.status || 'unknown',
+      friendlyMessage: systemHealth?.imageProxy?.status === 'ok' 
+        ? 'Images display correctly in all browsers'
+        : 'Image loading may have issues on Safari',
+      details: systemHealth?.imageProxy ? {
+        'Endpoint': systemHealth.imageProxy.endpoint || 'N/A',
+        'Formats': systemHealth.imageProxy.supportedFormats?.join(', ') || 'N/A'
+      } : null
+    },
+    {
+      key: 'security',
+      name: 'Security',
+      icon: Lock,
+      status: systemHealth?.environment?.securityHeadersEnabled && systemHealth?.environment?.rateLimitingEnabled ? 'ok' : 'warning',
+      friendlyMessage: systemHealth?.environment?.securityHeadersEnabled && systemHealth?.environment?.rateLimitingEnabled
+        ? 'All security measures are active'
+        : 'Some security features may be disabled',
+      details: systemHealth?.environment ? {
+        'Security Headers': systemHealth.environment.securityHeadersEnabled ? '✅ Enabled' : '❌ Disabled',
+        'Rate Limiting': systemHealth.environment.rateLimitingEnabled ? '✅ Enabled' : '❌ Disabled',
+        'JWT Secret': systemHealth.environment.hasJwtSecret ? '✅ Configured' : '❌ Missing'
+      } : null
+    },
+    {
+      key: 'clients',
+      name: 'Client Configuration',
+      icon: Building2,
+      status: systemHealth?.clients?.status || 'unknown',
+      friendlyMessage: systemHealth?.clients?.status === 'ok' 
+        ? `All ${systemHealth.clients.total || 0} clients are properly configured`
+        : `${systemHealth?.clients?.withIssues || 0} clients have configuration issues`,
+      details: systemHealth?.clients ? {
+        'Total Clients': systemHealth.clients.total || 0,
+        'With Issues': systemHealth.clients.withIssues || 0,
+        'Status': systemHealth.clients.status === 'ok' ? 'All configured properly' : 'Some need attention'
+      } : null
+    }
+  ];
+  
+  // Environment configuration
+  const envConfig = systemHealth?.environment ? [
+    { key: 'nodeEnv', label: 'Environment', value: systemHealth.environment.nodeEnv || 'development', ok: systemHealth.environment.nodeEnv === 'production' },
+    { key: 'simplifiApp', label: 'Simpli.fi App Key', value: systemHealth.environment.hasSimplifiAppKey ? 'Configured' : 'Missing', ok: systemHealth.environment.hasSimplifiAppKey },
+    { key: 'simplifiUser', label: 'Simpli.fi User Key', value: systemHealth.environment.hasSimplifiUserKey ? 'Configured' : 'Missing', ok: systemHealth.environment.hasSimplifiUserKey },
+    { key: 'database', label: 'Database URL', value: systemHealth.environment.hasDatabaseUrl ? 'Configured' : 'Missing', ok: systemHealth.environment.hasDatabaseUrl },
+    { key: 'jwt', label: 'JWT Secret', value: systemHealth.environment.hasJwtSecret ? 'Configured' : 'Missing', ok: systemHealth.environment.hasJwtSecret }
+  ] : [];
+  
+  const overallStatus = getHealthStatus(getOverallHealth());
+  const OverallIcon = overallStatus.icon;
+
+  return (
+    <div>
+      {/* Overall Health Banner */}
+      <div style={{
+        background: `linear-gradient(135deg, ${overallStatus.bg} 0%, white 100%)`,
+        border: `1px solid ${overallStatus.color}40`,
+        borderRadius: '0.75rem',
+        padding: '1.5rem',
+        marginBottom: '1.5rem',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div style={{
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            background: overallStatus.bg,
+            border: `3px solid ${overallStatus.color}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <OverallIcon size={28} color={overallStatus.color} />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, color: '#111827' }}>System Status: {overallStatus.label}</h2>
+            <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.875rem' }}>
+              {lastCheck ? `Last checked: ${lastCheck.toLocaleTimeString()}` : 'Not yet checked'}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          style={{
+            padding: '0.75rem 1.5rem',
+            background: loading ? '#9ca3af' : '#7c3aed',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.5rem',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontWeight: 500
+          }}
+        >
+          <RefreshCw size={18} className={loading ? 'spin' : ''} />
+          {loading ? 'Checking...' : 'Run Health Check'}
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ 
+          background: 'white', 
+          borderRadius: '0.75rem', 
+          border: '1px solid #e5e7eb', 
+          padding: '4rem', 
+          textAlign: 'center' 
+        }}>
+          <div className="spinner" style={{ marginBottom: '1rem' }} />
+          <p style={{ color: '#6b7280' }}>Running system diagnostics...</p>
+        </div>
+      ) : systemHealth?.error ? (
+        <div style={{ 
+          background: '#fee2e2', 
+          borderRadius: '0.75rem', 
+          border: '1px solid #fecaca', 
+          padding: '2rem', 
+          textAlign: 'center' 
+        }}>
+          <XCircle size={48} color="#dc2626" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ color: '#dc2626', margin: '0 0 0.5rem' }}>Failed to Load Diagnostics</h3>
+          <p style={{ color: '#b91c1c' }}>{systemHealth.error}</p>
+        </div>
+      ) : (
+        <>
+          {/* System Health Tree */}
+          <div style={{ 
+            background: 'white', 
+            borderRadius: '0.75rem', 
+            border: '1px solid #e5e7eb',
+            marginBottom: '1.5rem'
+          }}>
+            <div style={{ 
+              padding: '1rem 1.5rem', 
+              borderBottom: '1px solid #e5e7eb',
+              background: 'linear-gradient(135deg, #f5f3ff 0%, white 100%)'
+            }}>
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#5b21b6' }}>
+                <Cpu size={20} />
+                System Components
+              </h3>
+              <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#7c3aed' }}>
+                Click any component to see details
+              </p>
+            </div>
+            
+            <div style={{ padding: '1.5rem' }}>
+              {/* Visual Tree Layout */}
+              <div style={{ display: 'grid', gap: '1rem' }}>
+                {systemComponents.map((component, index) => {
+                  const status = getHealthStatus(component.status);
+                  const StatusIcon = status.icon;
+                  const ComponentIcon = component.icon;
+                  const isExpanded = expandedSections[component.key];
+                  
+                  return (
+                    <div key={component.key}>
+                      <button
+                        onClick={() => toggleSection(component.key)}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '1rem',
+                          padding: '1rem 1.25rem',
+                          background: isExpanded ? status.bg : '#f9fafb',
+                          border: `1px solid ${isExpanded ? status.color + '40' : '#e5e7eb'}`,
+                          borderRadius: '0.75rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          textAlign: 'left'
+                        }}
+                      >
+                        {/* Component Icon */}
+                        <div style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: '0.5rem',
+                          background: 'white',
+                          border: `1px solid ${status.color}40`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          <ComponentIcon size={22} color={status.color} />
+                        </div>
+                        
+                        {/* Component Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.5rem',
+                            marginBottom: '0.25rem'
+                          }}>
+                            <span style={{ fontWeight: 600, color: '#111827' }}>{component.name}</span>
+                            <span style={{
+                              padding: '0.125rem 0.5rem',
+                              borderRadius: '9999px',
+                              fontSize: '0.6875rem',
+                              fontWeight: 600,
+                              background: status.bg,
+                              color: status.color,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}>
+                              <StatusIcon size={12} />
+                              {status.label}
+                            </span>
+                          </div>
+                          <p style={{ 
+                            margin: 0, 
+                            fontSize: '0.875rem', 
+                            color: '#6b7280',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {component.friendlyMessage}
+                          </p>
+                        </div>
+                        
+                        {/* Expand Arrow */}
+                        <ChevronDown 
+                          size={20} 
+                          color="#9ca3af"
+                          style={{ 
+                            transition: 'transform 0.2s ease',
+                            transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                            flexShrink: 0
+                          }} 
+                        />
+                      </button>
+                      
+                      {/* Expanded Details */}
+                      {isExpanded && component.details && (
+                        <div style={{
+                          marginTop: '0.5rem',
+                          marginLeft: '2rem',
+                          padding: '1rem 1.25rem',
+                          background: '#f9fafb',
+                          borderRadius: '0.5rem',
+                          border: '1px solid #e5e7eb'
+                        }}>
+                          <div style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                            gap: '0.75rem'
+                          }}>
+                            {Object.entries(component.details).map(([key, value]) => (
+                              <div key={key}>
+                                <div style={{ fontSize: '0.6875rem', color: '#6b7280', textTransform: 'uppercase', marginBottom: '0.125rem' }}>
+                                  {key}
+                                </div>
+                                <div style={{ fontSize: '0.875rem', fontWeight: 500, color: '#111827' }}>
+                                  {value}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Environment Configuration */}
+          {envConfig.length > 0 && (
+            <div style={{ 
+              background: 'white', 
+              borderRadius: '0.75rem', 
+              border: '1px solid #e5e7eb',
+              marginBottom: '1.5rem'
+            }}>
+              <div style={{ 
+                padding: '1rem 1.5rem', 
+                borderBottom: '1px solid #e5e7eb',
+                background: '#f9fafb'
+              }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
+                  <Settings size={20} />
+                  Environment Configuration
+                </h3>
+              </div>
+              <div style={{ padding: '1rem 1.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                  {envConfig.map(item => (
+                    <div 
+                      key={item.key}
+                      style={{
+                        padding: '0.75rem 1rem',
+                        background: item.ok ? '#f0fdf4' : '#fef2f2',
+                        border: `1px solid ${item.ok ? '#86efac' : '#fecaca'}`,
+                        borderRadius: '0.5rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.75rem'
+                      }}
+                    >
+                      {item.ok ? (
+                        <CheckCircle2 size={18} color="#16a34a" />
+                      ) : (
+                        <XCircle size={18} color="#dc2626" />
+                      )}
+                      <div>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{item.label}</div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 500, color: item.ok ? '#166534' : '#991b1b' }}>
+                          {item.value}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Compatibility Notes */}
+          {systemHealth?.mobileCompatibility && (
+            <div style={{ 
+              background: 'white', 
+              borderRadius: '0.75rem', 
+              border: '1px solid #e5e7eb'
+            }}>
+              <div style={{ 
+                padding: '1rem 1.5rem', 
+                borderBottom: '1px solid #e5e7eb',
+                background: '#f9fafb'
+              }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#374151' }}>
+                  <Smartphone size={20} />
+                  Mobile Compatibility Fixes
+                </h3>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
+                  Active workarounds for browser-specific issues
+                </p>
+              </div>
+              <div style={{ padding: '1rem 1.5rem' }}>
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  {Object.entries(systemHealth.mobileCompatibility).map(([key, fix]) => (
+                    <div 
+                      key={key}
+                      style={{
+                        padding: '0.75rem 1rem',
+                        background: '#f0f9ff',
+                        border: '1px solid #bae6fd',
+                        borderRadius: '0.5rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                        <CheckCircle2 size={16} color="#0ea5e9" />
+                        <span style={{ fontWeight: 600, color: '#0c4a6e' }}>
+                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                        </span>
+                      </div>
+                      <p style={{ margin: '0 0 0.25rem 1.5rem', fontSize: '0.8125rem', color: '#0369a1' }}>
+                        <strong>Issue:</strong> {fix.issue}
+                      </p>
+                      <p style={{ margin: '0 0 0 1.5rem', fontSize: '0.8125rem', color: '#0369a1' }}>
+                        <strong>Solution:</strong> {fix.solution}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============================================
 // OTHER PAGES
 // ============================================
 function UsersPage() {
@@ -11214,6 +11676,11 @@ function UsersPage() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditFilter, setAuditFilter] = useState('all');
+  
+  // System diagnostics states (Super Admin only)
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [systemLoading, setSystemLoading] = useState(false);
+  const [lastHealthCheck, setLastHealthCheck] = useState(null);
 
   useEffect(() => { 
     loadData();
@@ -11253,7 +11720,25 @@ function UsersPage() {
     if (activeTab === 'audit' && isSuperAdmin && auditLogs.length === 0) {
       loadAuditLogs();
     }
+    if (activeTab === 'system' && isSuperAdmin && !systemHealth) {
+      loadSystemHealth();
+    }
   }, [activeTab, isSuperAdmin]);
+
+  // Load system health diagnostics (Super Admin only)
+  const loadSystemHealth = async () => {
+    if (!isSuperAdmin) return;
+    setSystemLoading(true);
+    try {
+      const data = await api.get('/api/diagnostics/admin');
+      setSystemHealth(data);
+      setLastHealthCheck(new Date());
+    } catch (err) {
+      console.error('Failed to load system health:', err);
+      setSystemHealth({ error: err.message });
+    }
+    setSystemLoading(false);
+  };
 
   const loadUserDetail = async (userId) => {
     setLoadingDetail(true);
@@ -11687,6 +12172,26 @@ function UsersPage() {
             >
               <Shield size={16} />
               Audit Log
+            </button>
+          )}
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('system')}
+              style={{
+                padding: '0.75rem 0',
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === 'system' ? '2px solid #7c3aed' : '2px solid transparent',
+                color: activeTab === 'system' ? '#7c3aed' : '#6b7280',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              <Cpu size={16} />
+              System
             </button>
           )}
         </nav>
@@ -12145,6 +12650,16 @@ function UsersPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* System Diagnostics Tab (Super Admin only) */}
+      {activeTab === 'system' && isSuperAdmin && (
+        <SystemDiagnosticsPanel 
+          systemHealth={systemHealth} 
+          loading={systemLoading} 
+          onRefresh={loadSystemHealth}
+          lastCheck={lastHealthCheck}
+        />
       )}
 
       {/* Add User Modal */}
