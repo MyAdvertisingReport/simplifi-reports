@@ -639,6 +639,11 @@ function Sidebar({ isOpen }) {
     { path: '/settings', icon: Settings, label: 'Preferences' },
   ];
   
+  // Super Admin only settings items
+  const superAdminItems = isSuperAdmin ? [
+    { path: '/settings/system', icon: Cpu, label: 'System', badge: 'SA' },
+  ] : [];
+  
   // Check if current path is in order management section
   const isOrderSection = location.pathname.startsWith('/orders') || location.pathname === '/admin/products';
   
@@ -646,7 +651,7 @@ function Sidebar({ isOpen }) {
   const isBillingSection = location.pathname.startsWith('/billing');
   
   // Check if current path is in settings section
-  const isSettingsSection = location.pathname === '/users' || location.pathname === '/settings';
+  const isSettingsSection = location.pathname === '/users' || location.pathname === '/settings' || location.pathname === '/settings/system';
 
   return (
     <aside style={{
@@ -884,6 +889,29 @@ function Sidebar({ isOpen }) {
                     fontSize: '0.875rem'
                   }}>
                     <Icon size={16} /><span style={{ fontWeight: 500 }}>{label}</span>
+                  </Link>
+                ))}
+                {/* Super Admin Only Items */}
+                {superAdminItems.map(({ path, icon: Icon, label, badge }) => (
+                  <Link key={path} to={path} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.75rem',
+                    marginLeft: '0.75rem', marginBottom: '0.125rem', borderRadius: '0.375rem', textDecoration: 'none',
+                    color: location.pathname === path ? 'white' : '#a78bfa',
+                    background: location.pathname === path ? 'rgba(124,58,237,0.2)' : 'transparent',
+                    fontSize: '0.875rem'
+                  }}>
+                    <Icon size={16} />
+                    <span style={{ fontWeight: 500, flex: 1 }}>{label}</span>
+                    {badge && (
+                      <span style={{
+                        background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                        color: 'white',
+                        padding: '0.125rem 0.375rem',
+                        borderRadius: '0.25rem',
+                        fontSize: '0.5rem',
+                        fontWeight: 700
+                      }}>{badge}</span>
+                    )}
                   </Link>
                 ))}
               </div>
@@ -11676,11 +11704,6 @@ function UsersPage() {
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditFilter, setAuditFilter] = useState('all');
-  
-  // System diagnostics states (Super Admin only)
-  const [systemHealth, setSystemHealth] = useState(null);
-  const [systemLoading, setSystemLoading] = useState(false);
-  const [lastHealthCheck, setLastHealthCheck] = useState(null);
 
   useEffect(() => { 
     loadData();
@@ -11720,25 +11743,7 @@ function UsersPage() {
     if (activeTab === 'audit' && isSuperAdmin && auditLogs.length === 0) {
       loadAuditLogs();
     }
-    if (activeTab === 'system' && isSuperAdmin && !systemHealth) {
-      loadSystemHealth();
-    }
   }, [activeTab, isSuperAdmin]);
-
-  // Load system health diagnostics (Super Admin only)
-  const loadSystemHealth = async () => {
-    if (!isSuperAdmin) return;
-    setSystemLoading(true);
-    try {
-      const data = await api.get('/api/diagnostics/admin');
-      setSystemHealth(data);
-      setLastHealthCheck(new Date());
-    } catch (err) {
-      console.error('Failed to load system health:', err);
-      setSystemHealth({ error: err.message });
-    }
-    setSystemLoading(false);
-  };
 
   const loadUserDetail = async (userId) => {
     setLoadingDetail(true);
@@ -12172,26 +12177,6 @@ function UsersPage() {
             >
               <Shield size={16} />
               Audit Log
-            </button>
-          )}
-          {isSuperAdmin && (
-            <button
-              onClick={() => setActiveTab('system')}
-              style={{
-                padding: '0.75rem 0',
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === 'system' ? '2px solid #7c3aed' : '2px solid transparent',
-                color: activeTab === 'system' ? '#7c3aed' : '#6b7280',
-                fontWeight: 500,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem'
-              }}
-            >
-              <Cpu size={16} />
-              System
             </button>
           )}
         </nav>
@@ -12652,16 +12637,6 @@ function UsersPage() {
         </div>
       )}
 
-      {/* System Diagnostics Tab (Super Admin only) */}
-      {activeTab === 'system' && isSuperAdmin && (
-        <SystemDiagnosticsPanel 
-          systemHealth={systemHealth} 
-          loading={systemLoading} 
-          onRefresh={loadSystemHealth}
-          lastCheck={lastHealthCheck}
-        />
-      )}
-
       {/* Add User Modal */}
       {showModal && (
         <Modal title="Add New User" onClose={() => setShowModal(false)}>
@@ -12930,7 +12905,6 @@ function SettingsPage() {
   const [status, setStatus] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
   
   // Password change state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -13252,47 +13226,80 @@ function SettingsPage() {
           </div>
         </div>
       )}
-      
-      {/* System Diagnostics Section */}
-      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', marginTop: '1.5rem' }}>
-        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #f3f4f6' }}>
-          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Settings size={18} />
-            System Diagnostics
-          </h3>
-        </div>
-        <div style={{ padding: '1.5rem' }}>
-          <p style={{ color: '#6b7280', marginBottom: '1rem', fontSize: '0.875rem' }}>
-            Run system diagnostics to check API connectivity, image proxy status, database health, and client configuration.
-          </p>
-          <button
-            onClick={() => setShowDiagnostics(true)}
-            style={{
-              padding: '0.625rem 1.25rem',
-              background: '#6366f1',
-              color: 'white',
-              border: 'none',
-              borderRadius: '0.5rem',
-              cursor: 'pointer',
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem'
-            }}
-          >
-            <Settings size={16} />
-            Open Diagnostics Panel
-          </button>
-        </div>
+    </div>
+  );
+}
+
+// ============================================
+// SYSTEM DIAGNOSTICS PAGE (Super Admin Only)
+// ============================================
+function SystemDiagnosticsPage() {
+  const { user, isSuperAdmin } = useAuth();
+  const navigate = useNavigate();
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [lastCheck, setLastCheck] = useState(null);
+
+  useEffect(() => {
+    if (!isSuperAdmin) {
+      navigate('/dashboard');
+      return;
+    }
+    loadSystemHealth();
+  }, [isSuperAdmin]);
+
+  const loadSystemHealth = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/api/diagnostics/admin');
+      setSystemHealth(data);
+      setLastCheck(new Date());
+    } catch (err) {
+      console.error('Failed to load system health:', err);
+      setSystemHealth({ error: err.message });
+    }
+    setLoading(false);
+  };
+
+  if (!isSuperAdmin) {
+    return (
+      <div style={{ textAlign: 'center', padding: '3rem' }}>
+        <Shield size={48} color="#dc2626" style={{ marginBottom: '1rem' }} />
+        <h2>Access Denied</h2>
+        <p style={{ color: '#6b7280' }}>This page is only accessible to Super Admins.</p>
       </div>
-      
-      {/* Diagnostics Panel Modal */}
-      {showDiagnostics && (
-        <DiagnosticsPanel 
-          isPublic={false} 
-          onClose={() => setShowDiagnostics(false)} 
-        />
-      )}
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+          <Cpu size={28} color="#7c3aed" />
+          <h1 style={{ margin: 0 }}>System Diagnostics</h1>
+          <span style={{
+            background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+            color: 'white',
+            padding: '0.25rem 0.5rem',
+            borderRadius: '0.25rem',
+            fontSize: '0.625rem',
+            fontWeight: 700,
+            letterSpacing: '0.05em'
+          }}>SUPER ADMIN</span>
+        </div>
+        <p style={{ color: '#6b7280', margin: 0 }}>
+          Monitor system health, check component status, and verify configuration
+        </p>
+      </div>
+
+      {/* System Diagnostics Panel */}
+      <SystemDiagnosticsPanel 
+        systemHealth={systemHealth} 
+        loading={loading} 
+        onRefresh={loadSystemHealth}
+        lastCheck={lastCheck}
+      />
     </div>
   );
 }
@@ -14230,6 +14237,7 @@ function App() {
           <Route path="/client/:slug/campaign/:campaignId" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/settings/system" element={<ProtectedRoute><SystemDiagnosticsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
           <Route path="/admin/documents" element={<ProtectedRoute><AdminDocumentsPage /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute><BillingPage /></ProtectedRoute>} />
