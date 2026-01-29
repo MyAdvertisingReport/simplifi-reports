@@ -525,18 +525,31 @@ router.get('/', async (req, res) => {
         CASE 
           WHEN o.term_months = 1 THEN COALESCE(o.monthly_total, 0) + COALESCE(item_stats.setup_fees_total, 0)
           ELSE COALESCE(o.monthly_total, 0) * COALESCE(o.term_months, 1) + COALESCE(item_stats.setup_fees_total, 0)
-        END as total_value
+        END as total_value,
+        item_stats.items_json as items
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.submitted_by = u.id
       LEFT JOIN users approver ON o.approved_by = approver.id
       LEFT JOIN (
         SELECT 
-          order_id,
+          oi.order_id,
           COUNT(*) as item_count,
-          COALESCE(SUM(setup_fee), 0) as setup_fees_total
-        FROM order_items
-        GROUP BY order_id
+          COALESCE(SUM(oi.setup_fee), 0) as setup_fees_total,
+          json_agg(json_build_object(
+            'id', oi.id,
+            'product_name', oi.product_name,
+            'product_category', oi.product_category,
+            'entity_id', oi.entity_id,
+            'entity_name', e.name,
+            'entity_code', e.code,
+            'unit_price', oi.unit_price,
+            'quantity', oi.quantity,
+            'line_total', oi.line_total
+          )) as items_json
+        FROM order_items oi
+        LEFT JOIN entities e ON oi.entity_id = e.id
+        GROUP BY oi.order_id
       ) item_stats ON item_stats.order_id = o.id
       WHERE 1=1
     `;
@@ -592,17 +605,30 @@ router.get('/pending-approvals', async (req, res) => {
         CASE 
           WHEN o.term_months = 1 THEN COALESCE(o.monthly_total, 0) + COALESCE(item_stats.setup_fees_total, 0)
           ELSE COALESCE(o.monthly_total, 0) * COALESCE(o.term_months, 1) + COALESCE(item_stats.setup_fees_total, 0)
-        END as total_value
+        END as total_value,
+        item_stats.items_json as items
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.submitted_by = u.id
       LEFT JOIN (
         SELECT 
-          order_id,
+          oi.order_id,
           COUNT(*) as item_count,
-          COALESCE(SUM(setup_fee), 0) as setup_fees_total
-        FROM order_items
-        GROUP BY order_id
+          COALESCE(SUM(oi.setup_fee), 0) as setup_fees_total,
+          json_agg(json_build_object(
+            'id', oi.id,
+            'product_name', oi.product_name,
+            'product_category', oi.product_category,
+            'entity_id', oi.entity_id,
+            'entity_name', e.name,
+            'entity_code', e.code,
+            'unit_price', oi.unit_price,
+            'quantity', oi.quantity,
+            'line_total', oi.line_total
+          )) as items_json
+        FROM order_items oi
+        LEFT JOIN entities e ON oi.entity_id = e.id
+        GROUP BY oi.order_id
       ) item_stats ON item_stats.order_id = o.id
       WHERE o.status = 'pending_approval'
       ORDER BY o.created_at ASC
