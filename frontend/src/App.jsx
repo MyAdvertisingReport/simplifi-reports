@@ -16156,10 +16156,11 @@ function ReportsPage() {
 // ============================================
 function CommissionsPage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('approvals');
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(null);
   const [commissions, setCommissions] = useState([]);
+  const [pendingCommissions, setPendingCommissions] = useState([]);
   const [rates, setRates] = useState([]);
   const [defaults, setDefaults] = useState([]);
   const [users, setUsers] = useState([]);
@@ -16167,11 +16168,13 @@ function CommissionsPage() {
   const [selectedUser, setSelectedUser] = useState('');
   const [showRateModal, setShowRateModal] = useState(false);
   const [editingRate, setEditingRate] = useState(null);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [splittingCommission, setSplittingCommission] = useState(null);
 
   useEffect(() => {
     loadUsers();
     loadData();
-  }, [selectedYear, selectedUser]);
+  }, [selectedYear, selectedUser, activeTab]);
 
   const loadUsers = async () => {
     try {
@@ -16183,15 +16186,25 @@ function CommissionsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [summaryData, commissionsData, ratesData] = await Promise.all([
+      const requests = [
         api.get(`/api/commissions/summary?period_year=${selectedYear}${selectedUser ? `&user_id=${selectedUser}` : ''}`),
         api.get(`/api/commissions?period_year=${selectedYear}${selectedUser ? `&user_id=${selectedUser}` : ''}`),
-        user?.role === 'admin' ? api.get('/api/commissions/rates') : Promise.resolve({ rates: [], defaults: [] })
-      ]);
-      setSummary(summaryData);
-      setCommissions(commissionsData.commissions || []);
-      setRates(ratesData.rates || []);
-      setDefaults(ratesData.defaults || []);
+      ];
+      
+      if (user?.role === 'admin') {
+        requests.push(api.get('/api/commissions/rates'));
+        requests.push(api.get('/api/commissions/pending'));
+      }
+      
+      const results = await Promise.all(requests);
+      setSummary(results[0]);
+      setCommissions(results[1].commissions || []);
+      
+      if (user?.role === 'admin') {
+        setRates(results[2].rates || []);
+        setDefaults(results[2].defaults || []);
+        setPendingCommissions(results[3].commissions || []);
+      }
     } catch (error) { console.error('Failed to load commission data:', error); }
     setLoading(false);
   };
@@ -16224,8 +16237,38 @@ function CommissionsPage() {
     } catch (error) { alert('Failed to save rate: ' + error.message); }
   };
 
+  const handleSplitCommission = async (splitData) => {
+    try {
+      await api.post(`/api/commissions/${splittingCommission.id}/split`, splitData);
+      setShowSplitModal(false);
+      setSplittingCommission(null);
+      loadData();
+    } catch (error) { alert('Failed to split commission: ' + error.message); }
+  };
+
+  const handleBulkApprove = async (ids) => {
+    try {
+      await api.post('/api/commissions/bulk-approve', { commission_ids: ids });
+      loadData();
+    } catch (error) { alert('Failed to approve: ' + error.message); }
+  };
+
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const statusColors = { pending: '#f59e0b', approved: '#3b82f6', paid: '#10b981', cancelled: '#ef4444' };
+  const roleLabels = { admin: 'Admin', sales_manager: 'Sales Manager', sales_associate: 'Sales Associate', event_manager: 'Event Manager', staff: 'Staff' };
+
+  // Get tabs based on role
+  const getTabs = () => {
+    const tabs = [{ id: 'overview', label: 'Overview' }];
+    if (user?.role === 'admin') {
+      tabs.unshift({ id: 'approvals', label: `Approvals${pendingCommissions.length > 0 ? ` (${pendingCommissions.length})` : ''}` });
+    }
+    tabs.push({ id: 'details', label: 'All Commissions' });
+    if (user?.role === 'admin') {
+      tabs.push({ id: 'rates', label: 'Rate Configuration' });
+    }
+    return tabs;
+  };
 
   return (
     <>
@@ -16234,9 +16277,9 @@ function CommissionsPage() {
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))}
             style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
-            {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+            {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          {user?.role === 'admin' && (
+          {user?.role === 'admin' && activeTab !== 'approvals' && (
             <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}
               style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
               <option value="">All Team Members</option>
@@ -16247,11 +16290,26 @@ function CommissionsPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
-        {[{ id: 'overview', label: 'Overview' }, { id: 'details', label: 'Commission Details' }, ...(user?.role === 'admin' ? [{ id: 'rates', label: 'Rate Configuration' }] : [])].map(tab => (
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid #e5e7eb', overflowX: 'auto' }}>
+        {getTabs().map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            style={{ padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer', color: activeTab === tab.id ? '#3b82f6' : '#6b7280',
-              fontWeight: 500, fontSize: '0.875rem', borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent', marginBottom: '-1px' }}>{tab.label}</button>
+            style={{ 
+              padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer', 
+              color: activeTab === tab.id ? '#3b82f6' : '#6b7280',
+              fontWeight: 500, fontSize: '0.875rem', 
+              borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent', 
+              marginBottom: '-1px', whiteSpace: 'nowrap',
+              position: 'relative'
+            }}>
+            {tab.label}
+            {tab.id === 'approvals' && pendingCommissions.length > 0 && (
+              <span style={{ 
+                position: 'absolute', top: '0.25rem', right: '-0.25rem',
+                background: '#ef4444', color: 'white', borderRadius: '9999px',
+                fontSize: '0.625rem', padding: '0.125rem 0.375rem', fontWeight: 600
+              }}>{pendingCommissions.length}</span>
+            )}
+          </button>
         ))}
       </div>
 
@@ -16259,6 +16317,82 @@ function CommissionsPage() {
         <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
       ) : (
         <>
+          {/* APPROVALS TAB - Admin Only */}
+          {activeTab === 'approvals' && user?.role === 'admin' && (
+            <div>
+              {pendingCommissions.length === 0 ? (
+                <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '3rem', textAlign: 'center' }}>
+                  <CheckCircle size={48} style={{ color: '#10b981', margin: '0 auto 1rem' }} />
+                  <h3 style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>All Caught Up!</h3>
+                  <p style={{ color: '#6b7280' }}>No commissions pending approval.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {/* Bulk Actions */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>{pendingCommissions.length} commission{pendingCommissions.length !== 1 ? 's' : ''} pending approval</span>
+                    <button onClick={() => handleBulkApprove(pendingCommissions.map(c => c.id))}
+                      style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 500, cursor: 'pointer' }}>
+                      Approve All
+                    </button>
+                  </div>
+
+                  {/* Pending Commission Cards */}
+                  {pendingCommissions.map((c) => (
+                    <div key={c.id} style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                      <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                              <span style={{ fontWeight: 600, fontSize: '1.125rem' }}>{c.client_name || 'Unknown Client'}</span>
+                              {c.order_number && <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>#{c.order_number}</span>}
+                            </div>
+                            <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                              <span>Order: {formatCurrency(c.order_amount)}</span>
+                              <span>•</span>
+                              <span>Rate: {c.rate_type === 'percentage' ? `${c.commission_rate}%` : formatCurrency(c.commission_rate)}</span>
+                              <span>•</span>
+                              <span>Signed: {c.signed_date ? new Date(c.signed_date).toLocaleDateString() : 'N/A'}</span>
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#10b981' }}>{formatCurrency(c.commission_amount)}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>Commission</div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Rep Info & Actions */}
+                      <div style={{ padding: '1rem 1.25rem', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#3b82f6', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600 }}>
+                            {c.user_name?.charAt(0) || '?'}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 500 }}>{c.user_name}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{roleLabels[c.user_role] || c.user_role}</div>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button onClick={() => { setSplittingCommission(c); setShowSplitModal(true); }}
+                            style={{ padding: '0.5rem 1rem', border: '1px solid #8b5cf6', borderRadius: '0.375rem', background: 'white', color: '#8b5cf6', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                            <Users size={16} /> Split
+                          </button>
+                          <button onClick={() => handleApprove(c.id)}
+                            style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                            <Check size={16} /> Approve
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* OVERVIEW TAB */}
           {activeTab === 'overview' && summary && (
             <div>
               {/* YTD Summary */}
@@ -16295,13 +16429,14 @@ function CommissionsPage() {
             </div>
           )}
 
+          {/* ALL COMMISSIONS TAB */}
           {activeTab === 'details' && (
             <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead><tr style={{ background: '#f9fafb' }}>
-                    {['Date', 'Rep', 'Client', 'Order Amount', 'Rate', 'Commission', 'Status', 'Actions'].map(h => (
-                      <th key={h} style={{ padding: '0.75rem 1rem', textAlign: h === 'Date' || h === 'Rep' || h === 'Client' ? 'left' : 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
+                    {['Date', 'Rep', 'Client', 'Order Amount', 'Rate', 'Commission', 'Split', 'Status', 'Actions'].map(h => (
+                      <th key={h} style={{ padding: '0.75rem 1rem', textAlign: h === 'Date' || h === 'Rep' || h === 'Client' || h === 'Split' ? 'left' : 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
                     ))}
                   </tr></thead>
                   <tbody>
@@ -16313,6 +16448,13 @@ function CommissionsPage() {
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{formatCurrency(c.order_amount)}</td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{c.rate_type === 'percentage' ? `${c.commission_rate}%` : formatCurrency(c.commission_rate)}</td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#10b981' }}>{formatCurrency(c.commission_amount)}</td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          {c.is_split ? (
+                            <span style={{ padding: '0.125rem 0.5rem', background: '#ede9fe', color: '#7c3aed', borderRadius: '0.25rem', fontSize: '0.75rem' }}>
+                              {c.split_percentage}% split
+                            </span>
+                          ) : '-'}
+                        </td>
                         <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
                           <span style={{ padding: '0.25rem 0.5rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500, background: `${statusColors[c.status]}20`, color: statusColors[c.status] }}>{c.status}</span>
                         </td>
@@ -16327,7 +16469,7 @@ function CommissionsPage() {
                       </tr>
                     ))}
                     {commissions.length === 0 && (
-                      <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No commissions found for this period</td></tr>
+                      <tr><td colSpan={9} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No commissions found for this period</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -16335,6 +16477,7 @@ function CommissionsPage() {
             </div>
           )}
 
+          {/* RATES TAB */}
           {activeTab === 'rates' && user?.role === 'admin' && (
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -16397,7 +16540,109 @@ function CommissionsPage() {
           </div>
         </div>
       )}
+
+      {/* Split Commission Modal */}
+      {showSplitModal && splittingCommission && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', width: '100%', maxWidth: 500 }}>
+            <div style={{ padding: '1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+              <h3 style={{ margin: 0, fontWeight: 600 }}>Split Commission</h3>
+              <p style={{ margin: '0.25rem 0 0', color: '#6b7280', fontSize: '0.875rem' }}>
+                {splittingCommission.client_name} - {formatCurrency(splittingCommission.commission_amount)}
+              </p>
+            </div>
+            <CommissionSplitForm 
+              commission={splittingCommission} 
+              users={users} 
+              onSave={handleSplitCommission} 
+              onCancel={() => { setShowSplitModal(false); setSplittingCommission(null); }} 
+            />
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+// Commission Split Form Component
+function CommissionSplitForm({ commission, users, onSave, onCancel }) {
+  const [splitUserId, setSplitUserId] = useState('');
+  const [splitPercentage, setSplitPercentage] = useState(50);
+  const [splitReason, setSplitReason] = useState('');
+
+  const originalAmount = parseFloat(commission.commission_amount);
+  const splitAmount = (originalAmount * splitPercentage / 100);
+  const remainingAmount = originalAmount - splitAmount;
+
+  const originalUser = users.find(u => u.id === commission.user_id);
+  const splitUser = users.find(u => u.id === splitUserId);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!splitUserId) { alert('Please select a user to split with'); return; }
+    onSave({ split_user_id: splitUserId, split_percentage: splitPercentage, split_reason: splitReason });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div style={{ padding: '1.25rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Split With *</label>
+          <select value={splitUserId} onChange={(e) => setSplitUserId(e.target.value)} required
+            style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}>
+            <option value="">Select team member...</option>
+            {users.filter(u => u.id !== commission.user_id).map(u => (
+              <option key={u.id} value={u.id}>{u.name} ({u.role?.replace('_', ' ')})</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>
+            Split Percentage: {splitPercentage}%
+          </label>
+          <input type="range" min="10" max="90" step="5" value={splitPercentage} onChange={(e) => setSplitPercentage(parseInt(e.target.value))}
+            style={{ width: '100%' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+            <span>{originalUser?.name}: {100 - splitPercentage}%</span>
+            <span>{splitUser?.name || 'Other Rep'}: {splitPercentage}%</span>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Reason</label>
+          <select value={splitReason} onChange={(e) => setSplitReason(e.target.value)}
+            style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}>
+            <option value="">Select reason...</option>
+            <option value="existing_client">Existing Client (rep already had relationship)</option>
+            <option value="referral">Referral (rep referred new client)</option>
+            <option value="team_sale">Team Sale (collaborated on deal)</option>
+            <option value="territory">Territory Split</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+
+        {/* Preview */}
+        <div style={{ background: '#f9fafb', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', marginBottom: '0.5rem', textTransform: 'uppercase' }}>Commission Preview</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <span>{originalUser?.name}</span>
+            <span style={{ fontWeight: 600, color: '#10b981' }}>${remainingAmount.toFixed(2)} ({100 - splitPercentage}%)</span>
+          </div>
+          {splitUser && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>{splitUser.name}</span>
+              <span style={{ fontWeight: 600, color: '#8b5cf6' }}>${splitAmount.toFixed(2)} ({splitPercentage}%)</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', background: '#f9fafb' }}>
+        <button type="button" onClick={onCancel} style={{ padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', background: 'white', cursor: 'pointer' }}>Cancel</button>
+        <button type="submit" style={{ padding: '0.5rem 1rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 500, cursor: 'pointer' }}>Split & Approve Both</button>
+      </div>
+    </form>
   );
 }
 

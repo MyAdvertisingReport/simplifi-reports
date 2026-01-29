@@ -423,7 +423,7 @@ app.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'All fields required' });
     }
 
-    if (!['admin', 'sales', 'sales_associate', 'sales_manager', 'staff'].includes(role)) {
+    if (!['admin', 'sales', 'sales_associate', 'sales_manager', 'staff', 'event_manager'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 
@@ -480,7 +480,7 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
     const updates = {};
     if (email) updates.email = email;
     if (name) updates.name = name;
-    if (role && ['admin', 'sales', 'sales_associate', 'sales_manager', 'staff'].includes(role)) updates.role = role;
+    if (role && ['admin', 'sales', 'sales_associate', 'sales_manager', 'staff', 'event_manager'].includes(role)) updates.role = role;
     if (password) updates.password = await bcrypt.hash(password, 10);
     
     const updatedUser = await dbHelper.updateUser(userId, updates);
@@ -4879,6 +4879,164 @@ app.post('/api/commissions/bulk-approve', authenticateToken, requireAdmin, async
   } catch (error) {
     console.error('Bulk approve commissions error:', error);
     res.status(500).json({ error: 'Failed to approve commissions' });
+  }
+});
+
+// Get pending commissions for approval (with order details)
+app.get('/api/commissions/pending', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      SELECT c.*, 
+        u.name as user_name, u.email as user_email, u.role as user_role,
+        ac.business_name as client_name,
+        o.order_number, o.contract_total, o.status as order_status,
+        o.client_signature_date as signed_date
+      FROM commissions c
+      JOIN users u ON c.user_id = u.id
+      LEFT JOIN advertising_clients ac ON c.client_id = ac.id
+      LEFT JOIN orders o ON c.order_id = o.id
+      WHERE c.status = 'pending'
+      ORDER BY c.created_at DESC
+    `);
+    
+    res.json({ commissions: result.rows });
+  } catch (error) {
+    console.error('Get pending commissions error:', error);
+    res.json({ commissions: [] });
+  }
+});
+
+// Create split commission
+app.post('/api/commissions/:id/split', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { split_user_id, split_percentage, split_reason } = req.body;
+    
+    if (!split_user_id || !split_percentage) {
+      return res.status(400).json({ error: 'Split user and percentage required' });
+    }
+    
+    // Get the original commission
+    const originalResult = await adminPool.query(
+      'SELECT * FROM commissions WHERE id = $1',
+      [req.params.id]
+    );
+    
+    if (originalResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Commission not found' });
+    }
+    
+    const original = originalResult.rows[0];
+    
+    if (original.is_split) {
+      return res.status(400).json({ error: 'Commission is already split' });
+    }
+    
+    // Calculate split amounts
+    const splitPct = parseFloat(split_percentage);
+    const originalPct = 100 - splitPct;
+    const originalAmount = parseFloat(original.commission_amount);
+    
+    const newOriginalAmount = (originalAmount * originalPct / 100).toFixed(2);
+    const splitAmount = (originalAmount * splitPct / 100).toFixed(2);
+    
+    // Update the original commission
+    await adminPool.query(`
+      UPDATE commissions 
+      SET commission_amount = $1, 
+          is_split = true, 
+          split_with_user_id = $2, 
+          split_percentage = $3,
+          split_reason = $4,
+          updated_at = NOW()
+      WHERE id = $5
+    `, [newOriginalAmount, split_user_id, originalPct, split_reason, req.params.id]);
+    
+    // Create the split commission for the other user
+    const splitResult = await adminPool.query(`
+      INSERT INTO commissions (
+        user_id, order_id, invoice_id, client_id,
+        order_amount, commission_rate, rate_type, commission_amount,
+        period_month, period_year, status,
+        is_split, split_with_user_id, split_percentage, split_reason, parent_commission_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', true, $11, $12, $13, $14)
+      RETURNING *
+    `, [
+      split_user_id, original.order_id, original.invoice_id, original.client_id,
+      original.order_amount, original.commission_rate, original.rate_type, splitAmount,
+      original.period_month, original.period_year,
+      original.user_id, splitPct, split_reason, req.params.id
+    ]);
+    
+    // Return both commissions
+    const updatedOriginal = await adminPool.query(
+      'SELECT * FROM commissions WHERE id = $1',
+      [req.params.id]
+    );
+    
+    res.json({
+      original: updatedOriginal.rows[0],
+      split: splitResult.rows[0]
+    });
+  } catch (error) {
+    console.error('Split commission error:', error);
+    res.status(500).json({ error: 'Failed to split commission' });
+  }
+});
+
+// Update commission amount (for adjustments)
+app.put('/api/commissions/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { commission_amount, adjustment_amount, adjustment_reason, notes } = req.body;
+    
+    const updates = ['updated_at = NOW()'];
+    const params = [];
+    let paramCount = 0;
+    
+    if (commission_amount !== undefined) {
+      paramCount++;
+      updates.push(`commission_amount = $${paramCount}`);
+      params.push(commission_amount);
+    }
+    if (adjustment_amount !== undefined) {
+      paramCount++;
+      updates.push(`adjustment_amount = $${paramCount}`);
+      params.push(adjustment_amount);
+    }
+    if (adjustment_reason !== undefined) {
+      paramCount++;
+      updates.push(`adjustment_reason = $${paramCount}`);
+      params.push(adjustment_reason);
+    }
+    if (notes !== undefined) {
+      paramCount++;
+      updates.push(`notes = $${paramCount}`);
+      params.push(notes);
+    }
+    
+    paramCount++;
+    params.push(req.params.id);
+    
+    const result = await adminPool.query(`
+      UPDATE commissions SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *
+    `, params);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update commission error:', error);
+    res.status(500).json({ error: 'Failed to update commission' });
+  }
+});
+
+// Delete/cancel commission
+app.delete('/api/commissions/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await adminPool.query(`
+      UPDATE commissions SET status = 'cancelled', updated_at = NOW() WHERE id = $1
+    `, [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete commission error:', error);
+    res.status(500).json({ error: 'Failed to cancel commission' });
   }
 });
 
