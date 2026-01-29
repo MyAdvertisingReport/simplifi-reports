@@ -556,11 +556,16 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
     }
     
     // Get user and verify current password
-    const user = await dbHelper.getUserById(req.user.id);
-    if (!user) {
+    const userResult = await adminPool.query(
+      'SELECT id, password_hash FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
+    if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
     
+    const user = userResult.rows[0];
     const validPassword = bcrypt.compareSync(currentPassword, user.password_hash);
     if (!validPassword) {
       return res.status(401).json({ error: 'Current password is incorrect' });
@@ -568,7 +573,11 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
     
     // Hash and update password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await dbHelper.updateUser(req.user.id, { password: hashedPassword });
+    await adminPool.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [hashedPassword, req.user.id]
+    );
+    
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     console.error('Change password error:', error);
