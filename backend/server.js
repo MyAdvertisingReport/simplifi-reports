@@ -4472,6 +4472,57 @@ app.post('/api/users/:id/goals', authenticateToken, requireAdmin, async (req, re
     res.status(500).json({ error: 'Failed to save goals' });
   }
 });
+
+// Get user meeting notes
+app.get('/api/users/:id/meeting-notes', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Check permission
+    if (req.user.role !== 'admin' && req.user.id !== userId && !req.user.is_super_admin) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    
+    const result = await adminPool.query(`
+      SELECT * FROM user_meeting_notes 
+      WHERE user_id = $1 
+      ORDER BY meeting_date DESC
+      LIMIT 20
+    `, [userId]);
+    
+    res.json({ notes: result.rows });
+  } catch (error) {
+    console.error('Get meeting notes error:', error);
+    // Return empty array if table doesn't exist yet
+    res.json({ notes: [] });
+  }
+});
+
+// Create user meeting note
+app.post('/api/users/:id/meeting-notes', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Only admins can add meeting notes
+    if (req.user.role !== 'admin' && !req.user.is_super_admin) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    
+    const { meeting_date, title, notes, action_items } = req.body;
+    
+    const result = await adminPool.query(`
+      INSERT INTO user_meeting_notes (user_id, meeting_date, title, notes, action_items, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [userId, meeting_date, title, notes, action_items, req.user.id]);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Create meeting note error:', error);
+    res.status(500).json({ error: 'Failed to save meeting note' });
+  }
+});
+
 // ============================================
 // ERROR HANDLING
 // ============================================

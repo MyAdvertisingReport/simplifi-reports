@@ -621,6 +621,7 @@ function Sidebar({ isOpen }) {
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/clients', icon: Building2, label: 'Clients' },
     { path: '/training', icon: GraduationCap, label: 'Training' },
+    { path: '/tools', icon: Wrench, label: 'Tools' },
   ];
   
   // Order Management section items (no Billing here now)
@@ -14097,6 +14098,25 @@ function UserProfilePage() {
   const [trainingProgress, setTrainingProgress] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [timeRange, setTimeRange] = useState('30'); // days
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [showMeetingModal, setShowMeetingModal] = useState(false);
+  const [meetingNotes, setMeetingNotes] = useState([]);
+  const [goalForm, setGoalForm] = useState({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+    appointments_target: 4,
+    proposals_target: 4,
+    closed_deals_target: 1,
+    new_clients_target: 1,
+    revenue_target: 2000,
+    notes: ''
+  });
+  const [meetingForm, setMeetingForm] = useState({
+    meeting_date: new Date().toISOString().split('T')[0],
+    title: '',
+    notes: '',
+    action_items: ''
+  });
   
   useEffect(() => {
     loadProfileData();
@@ -14106,21 +14126,71 @@ function UserProfilePage() {
     setLoading(true);
     try {
       // Load user profile and stats
-      const [userData, statsData, goalsData, trainingData] = await Promise.all([
+      const [userData, statsData, goalsData, trainingData, notesData] = await Promise.all([
         api.get(`/api/users/${id}`).catch(() => null),
         api.get(`/api/users/${id}/stats?days=${timeRange}`).catch(() => null),
         api.get(`/api/users/${id}/goals`).catch(() => ({ goals: [] })),
-        api.get(`/api/users/${id}/training-progress`).catch(() => ({ progress: [], summary: {} }))
+        api.get(`/api/users/${id}/training-progress`).catch(() => ({ progress: [], summary: {} })),
+        api.get(`/api/users/${id}/meeting-notes`).catch(() => ({ notes: [] }))
       ]);
       
       setProfileUser(userData);
       setStats(statsData);
       setGoals(goalsData?.goals || []);
       setTrainingProgress(trainingData);
+      setMeetingNotes(notesData?.notes || []);
+      
+      // Pre-populate goal form with current goal if exists
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+      const currentGoalData = (goalsData?.goals || []).find(g => g.month === currentMonth && g.year === currentYear);
+      if (currentGoalData) {
+        setGoalForm({
+          month: currentGoalData.month,
+          year: currentGoalData.year,
+          appointments_target: currentGoalData.appointments_target || 0,
+          proposals_target: currentGoalData.proposals_target || 0,
+          closed_deals_target: currentGoalData.closed_deals_target || 0,
+          new_clients_target: currentGoalData.new_clients_target || 0,
+          revenue_target: currentGoalData.revenue_target || 0,
+          notes: currentGoalData.notes || ''
+        });
+      }
     } catch (err) {
       console.error('Failed to load profile:', err);
     }
     setLoading(false);
+  };
+  
+  const handleSaveGoals = async () => {
+    try {
+      await api.post(`/api/users/${id}/goals`, {
+        ...goalForm,
+        year: new Date().getFullYear()
+      });
+      setShowGoalModal(false);
+      loadProfileData(); // Reload data
+    } catch (err) {
+      console.error('Failed to save goals:', err);
+      alert('Failed to save goals');
+    }
+  };
+  
+  const handleSaveMeetingNote = async () => {
+    try {
+      await api.post(`/api/users/${id}/meeting-notes`, meetingForm);
+      setShowMeetingModal(false);
+      setMeetingForm({
+        meeting_date: new Date().toISOString().split('T')[0],
+        title: '',
+        notes: '',
+        action_items: ''
+      });
+      loadProfileData(); // Reload data
+    } catch (err) {
+      console.error('Failed to save meeting note:', err);
+      alert('Failed to save meeting note');
+    }
   };
   
   // Check if user can view this profile
@@ -14399,6 +14469,7 @@ function UserProfilePage() {
       {/* KPIs Tab */}
       {activeTab === 'kpis' && (
         <>
+          {/* Monthly Goals Card */}
           <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '1rem' }}>
@@ -14406,10 +14477,10 @@ function UserProfilePage() {
               </h3>
               {(currentUser?.role === 'admin' || isSuperAdmin) && (
                 <button
-                  onClick={() => navigate(`/users/${id}/goals/edit`)}
+                  onClick={() => setShowGoalModal(true)}
                   style={{ padding: '0.375rem 0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8125rem' }}
                 >
-                  Edit Goals
+                  {currentGoal ? 'Edit Goals' : 'Set Goals'}
                 </button>
               )}
             </div>
@@ -14451,7 +14522,7 @@ function UserProfilePage() {
                 <p>No goals set for this month</p>
                 {(currentUser?.role === 'admin' || isSuperAdmin) && (
                   <button
-                    onClick={() => navigate(`/users/${id}/goals/edit`)}
+                    onClick={() => setShowGoalModal(true)}
                     style={{ marginTop: '0.5rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
                   >
                     Set Goals
@@ -14463,7 +14534,7 @@ function UserProfilePage() {
           
           {/* Revenue Goal */}
           {currentGoal?.revenue_target > 0 && (
-            <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+            <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
               <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem' }}>Revenue Target</h3>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.5rem' }}>
                 <span style={{ fontSize: '2rem', fontWeight: 700 }}>${(stats?.totals?.monthly_revenue || 0).toLocaleString()}</span>
@@ -14476,6 +14547,217 @@ function UserProfilePage() {
                   background: 'linear-gradient(90deg, #3b82f6, #10b981)',
                   borderRadius: '9999px'
                 }} />
+              </div>
+            </div>
+          )}
+          
+          {/* 1-on-1 Meeting Notes Section */}
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>1-on-1 Meeting Notes</h3>
+              {(currentUser?.role === 'admin' || isSuperAdmin) && (
+                <button
+                  onClick={() => setShowMeetingModal(true)}
+                  style={{ padding: '0.375rem 0.75rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8125rem' }}
+                >
+                  + Add Note
+                </button>
+              )}
+            </div>
+            
+            {meetingNotes.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {meetingNotes.map((note, i) => (
+                  <div key={i} style={{ padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem', borderLeft: '3px solid #10b981' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                      <span style={{ fontWeight: 600, color: '#111827' }}>{note.title || '1-on-1 Meeting'}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                        {new Date(note.meeting_date).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: '#374151', whiteSpace: 'pre-wrap' }}>
+                      {note.notes}
+                    </p>
+                    {note.action_items && (
+                      <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280' }}>Action Items:</span>
+                        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#374151' }}>{note.action_items}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                <MessageSquare size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+                <p>No meeting notes yet</p>
+                {(currentUser?.role === 'admin' || isSuperAdmin) && (
+                  <p style={{ fontSize: '0.875rem' }}>Add notes from your 1-on-1 meetings with this team member</p>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* Goal Setting Modal */}
+          {showGoalModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+              <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflow: 'auto' }}>
+                <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem' }}>
+                  Set Goals for {profileUser?.name}
+                </h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Month</label>
+                    <select 
+                      value={goalForm.month}
+                      onChange={(e) => setGoalForm({ ...goalForm, month: parseInt(e.target.value) })}
+                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {new Date(2026, i).toLocaleString('default', { month: 'long' })}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Appointments</label>
+                      <input 
+                        type="number" 
+                        value={goalForm.appointments_target}
+                        onChange={(e) => setGoalForm({ ...goalForm, appointments_target: parseInt(e.target.value) || 0 })}
+                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Proposals</label>
+                      <input 
+                        type="number" 
+                        value={goalForm.proposals_target}
+                        onChange={(e) => setGoalForm({ ...goalForm, proposals_target: parseInt(e.target.value) || 0 })}
+                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Closed Deals</label>
+                      <input 
+                        type="number" 
+                        value={goalForm.closed_deals_target}
+                        onChange={(e) => setGoalForm({ ...goalForm, closed_deals_target: parseInt(e.target.value) || 0 })}
+                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>New Clients</label>
+                      <input 
+                        type="number" 
+                        value={goalForm.new_clients_target}
+                        onChange={(e) => setGoalForm({ ...goalForm, new_clients_target: parseInt(e.target.value) || 0 })}
+                        style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Revenue Target ($)</label>
+                    <input 
+                      type="number" 
+                      value={goalForm.revenue_target}
+                      onChange={(e) => setGoalForm({ ...goalForm, revenue_target: parseInt(e.target.value) || 0 })}
+                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Notes</label>
+                    <textarea 
+                      value={goalForm.notes}
+                      onChange={(e) => setGoalForm({ ...goalForm, notes: e.target.value })}
+                      rows={3}
+                      placeholder="Any notes about these goals..."
+                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                  <button 
+                    onClick={() => setShowGoalModal(false)}
+                    style={{ padding: '0.5rem 1rem', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSaveGoals}
+                    style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
+                  >
+                    Save Goals
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Meeting Notes Modal */}
+          {showMeetingModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+              <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflow: 'auto' }}>
+                <h2 style={{ margin: '0 0 1.5rem 0', fontSize: '1.25rem' }}>
+                  Add 1-on-1 Meeting Note
+                </h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Meeting Date</label>
+                    <input 
+                      type="date" 
+                      value={meetingForm.meeting_date}
+                      onChange={(e) => setMeetingForm({ ...meetingForm, meeting_date: e.target.value })}
+                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Title (optional)</label>
+                    <input 
+                      type="text" 
+                      value={meetingForm.title}
+                      onChange={(e) => setMeetingForm({ ...meetingForm, title: e.target.value })}
+                      placeholder="e.g., Monthly Check-in, Performance Review"
+                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Meeting Notes</label>
+                    <textarea 
+                      value={meetingForm.notes}
+                      onChange={(e) => setMeetingForm({ ...meetingForm, notes: e.target.value })}
+                      rows={4}
+                      placeholder="What was discussed..."
+                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', resize: 'vertical' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.375rem', fontWeight: 500, fontSize: '0.875rem' }}>Action Items</label>
+                    <textarea 
+                      value={meetingForm.action_items}
+                      onChange={(e) => setMeetingForm({ ...meetingForm, action_items: e.target.value })}
+                      rows={2}
+                      placeholder="Follow-up tasks..."
+                      style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                  <button 
+                    onClick={() => setShowMeetingModal(false)}
+                    style={{ padding: '0.5rem 1rem', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSaveMeetingNote}
+                    style={{ padding: '0.5rem 1rem', background: '#10b981', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
+                  >
+                    Save Note
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -15083,6 +15365,462 @@ function TrainingCenterPage() {
 }
 
 // ============================================
+// TOOLS PAGE (Sales Toolbox)
+// ============================================
+function ToolsPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  
+  // Tool categories with their items
+  const toolCategories = [
+    {
+      title: 'Sales Resources',
+      description: 'Everything you need to close deals',
+      color: '#3b82f6',
+      tools: [
+        {
+          name: '2026 Pricing Guide',
+          description: 'All rates for Print, Radio, Podcast & Digital',
+          icon: DollarSign,
+          type: 'internal',
+          path: '/tools/pricing'
+        },
+        {
+          name: 'Sales FAQs',
+          description: 'Common questions and objection handling',
+          icon: MessageSquare,
+          type: 'external',
+          url: 'https://docs.google.com/document/d/1FDngsHADBdo9Ea1ZIRjDNBGmZup68gf2vRtsJ6VFP04/preview'
+        },
+        {
+          name: 'Email Templates',
+          description: 'Cold, warm, and hot lead email prompts',
+          icon: Mail,
+          type: 'external',
+          url: 'https://docs.google.com/document/d/11YsPD7Xf5XzYjhAWGYRgXNncyjyw0DO6k6A3AXKbVxg/preview'
+        },
+        {
+          name: 'Proposal Template',
+          description: 'Google Slides template for client proposals',
+          icon: FileText,
+          type: 'external',
+          url: 'https://docs.google.com/presentation/d/1I_GDdEfw8Q50mxQIIsOX_vE78hyA7eDt3Na1SM2Rrug/preview'
+        }
+      ]
+    },
+    {
+      title: 'Marketing Materials',
+      description: 'Share with prospects and clients',
+      color: '#8b5cf6',
+      tools: [
+        {
+          name: '2026 Media Kit',
+          description: 'Platform overview for prospects',
+          icon: BookOpen,
+          type: 'external',
+          url: 'https://drive.google.com/file/d/1Qk46M00j74_4QA7LzhqAbGlxtAgcic7p/view'
+        },
+        {
+          name: 'LKNW Editorial Calendar',
+          description: 'Monthly themes and deadlines',
+          icon: Calendar,
+          type: 'external',
+          url: 'https://drive.google.com/drive/folders/1PzHXuTuzUmUjlIDXWmuASwr3NBkBNVab'
+        },
+        {
+          name: '10 Reasons One-Sheet',
+          description: 'Why advertise with WSIC & LKNW',
+          icon: Star,
+          type: 'external',
+          url: 'https://drive.google.com/file/d/1Mbs24NEii5HBWgWYo8Dny0CJaVmAsiAH/view'
+        },
+        {
+          name: 'Sales One-Sheet Library',
+          description: 'All flyers and pitch materials',
+          icon: FileDown,
+          type: 'external',
+          url: 'https://drive.google.com/drive/folders/1PzHXuTuzUmUjlIDXWmuASwr3NBkBNVab'
+        }
+      ]
+    },
+    {
+      title: 'Booking & Scheduling',
+      description: 'Get clients on air and in print',
+      color: '#10b981',
+      tools: [
+        {
+          name: 'Book Good Morning LKN',
+          description: 'Schedule guest appearances',
+          icon: Radio,
+          type: 'external',
+          url: 'https://calendly.com/wsicdigital/gmlkn'
+        },
+        {
+          name: 'Home Ad Show Program',
+          description: 'Guest host opportunity details',
+          icon: Tv,
+          type: 'external',
+          url: 'https://docs.google.com/document/d/1Uqsw2BRIj-ZSF1eHuPisS7BEn2p2N-_-jpa2lcpnCkk/preview'
+        }
+      ]
+    },
+    {
+      title: 'Digital Advertising',
+      description: 'Programmatic resources',
+      color: '#f59e0b',
+      tools: [
+        {
+          name: 'What is Programmatic?',
+          description: 'Overview document for reference',
+          icon: Monitor,
+          type: 'external',
+          url: 'https://drive.google.com/file/d/1dkQbaiVQZdS12ArdJHYcgBFHk33K7J0b/view'
+        },
+        {
+          name: 'Geofencing Explainer',
+          description: 'Location-based targeting details',
+          icon: MapPin,
+          type: 'external',
+          url: 'https://drive.google.com/file/d/11Dtr0xJYxZCqSwsMCNebAO-QDg6dR79k/view'
+        },
+        {
+          name: 'Programmatic Tactics',
+          description: 'All digital tactics explained',
+          icon: Target,
+          type: 'external',
+          url: 'https://drive.google.com/file/d/1osZwi5NaDMe1AfeDQ_3451TuCj7ubpVA/view'
+        },
+        {
+          name: 'Sample Report',
+          description: 'Example programmatic report',
+          icon: BarChart3,
+          type: 'external',
+          url: 'https://digital-advertising-report.agencyanalytics.app/report/12737749/tkn.357bcb900063e991556b31ee37802260'
+        }
+      ]
+    },
+    {
+      title: 'Internal Resources',
+      description: 'Team and process information',
+      color: '#6b7280',
+      tools: [
+        {
+          name: 'Billing Guide',
+          description: 'Payment schedules and methods',
+          icon: CreditCard,
+          type: 'internal',
+          path: '/tools/billing'
+        },
+        {
+          name: 'My Leads Sheet',
+          description: 'Your assigned leads and tracking',
+          icon: Users,
+          type: 'external',
+          url: 'https://drive.google.com/drive/folders/1LS_S9inqXSJ3YEoOX19xDZ5uJ9dbH7FS'
+        },
+        {
+          name: 'Post-Sales Checklist',
+          description: 'What to do after closing a deal',
+          icon: CheckCircle,
+          type: 'external',
+          url: 'https://docs.google.com/document/d/1V7A5vFn0__aCGFzJORiceHSbcaHvYXulPIwEdji8Wpg/preview'
+        }
+      ]
+    }
+  ];
+  
+  const [selectedTool, setSelectedTool] = useState(null);
+  
+  // Internal tool content
+  const internalTools = {
+    pricing: {
+      title: '2026 Pricing Guide',
+      content: `
+## 📰 Print Pricing
+
+| Ad Size | Rate |
+|---------|------|
+| 3-Page Spread / Special Section | $3,000 |
+| 2-Page Spread | $2,500 |
+| Full Page | $1,250 |
+| 1/2 Page | $800 |
+| 1/3 Page | $660 |
+| 1/4 Page | $520 |
+| 1/8 Page | $300 |
+
+### New Advertiser Special
+- **1/4 Page – $475/month** (3-month minimum)
+- Includes 3 Good Morning LKN appearances (first 3 months)
+- Can lock in rate for renewals
+
+### Cover Track Package – $1,450/month (13 months)
+- Cover feature + 3-page editorial
+- 2 editorials per year
+- Full page ad each issue
+- Cover photoshoot + Podcast appearance
+
+---
+
+## 🎙️ Radio Pricing
+
+### New Advertiser Special – $400/month
+- 15-second ad (15× per week)
+- 3 Good Morning LKN appearances
+- 3-month minimum
+
+### Sponsorship Packages
+| Rate | Weekly Spots |
+|------|--------------|
+| $1,500/mo | 45×15s or 30×30s or 15×60s |
+| $1,000/mo | 30×15s or 20×30s or 10×60s |
+| $500/mo | 15×15s or 10×30s or 5×60s |
+
+**Add-on:** +$250/month for premium placement
+
+---
+
+## 🎧 Podcast Creation
+
+| Package | Rate |
+|---------|------|
+| Audio + Video + Social | $2,000/mo |
+| Audio + Video | $1,500/mo |
+| Audio Only | $750/mo |
+
+Setup Fee: $499
+
+---
+
+## 💻 Programmatic Pricing
+
+| Product | CPM | Minimum |
+|---------|-----|---------|
+| Display | $10 | $500/mo |
+| Dynamic Display | $11 | $750/mo |
+| OTT/CTV Standard | $35 | $2,500/mo |
+| OTT/CTV Premium | $42 | $3,000/mo |
+
+Setup Fee: $299 | 6-month minimum
+
+---
+
+## 📧 Newsletter & Website
+
+| Product | Rate | Minimum |
+|---------|------|---------|
+| 1 Newsletter | $300/mo | 3 months |
+| 2 Newsletters | $600/mo | 3 months |
+| 1 Website | $300/mo | 6 months |
+| 2 Websites | $600/mo | 6 months |
+| All 3 Websites | $800/mo | 6 months |
+
+📌 *Custom pricing requires management approval*
+      `
+    },
+    billing: {
+      title: 'Billing & Payment Guide',
+      content: `
+## Billing Questions
+
+For questions about billing, payments, or invoices, contact **Lalaine**: admin@wsicnews.com
+
+---
+
+## 🗓️ Billing Schedule
+
+| Type | Billing Date | Covers |
+|------|--------------|--------|
+| **Print** | 15th of month | Following month |
+| **Radio** | Last business day | Same month |
+| **Programmatic** | Last business day | Following month |
+
+**Note:** Setup/design fees are billed with the first campaign invoice.
+
+---
+
+## 💰 Payment Methods
+
+**Preferred:** ACH or Credit Card (faster processing)
+
+Clients may choose their preferred method, but ACH and CC are recommended for efficiency.
+
+---
+
+## Tips for Sales Associates
+
+✅ Double-check contract terms before discussing billing
+
+✅ If clients ask about invoice status, refer them to Lalaine
+
+✅ For billing disputes, document details and escalate to Lalaine
+
+✅ Late payments can affect campaigns and commissions—follow up politely if needed
+      `
+    }
+  };
+  
+  // Render internal tool content
+  if (selectedTool) {
+    const tool = internalTools[selectedTool];
+    return (
+      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <button 
+          onClick={() => setSelectedTool(null)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '1rem' }}
+        >
+          <ArrowLeft size={18} />
+          Back to Tools
+        </button>
+        
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+            <h1 style={{ margin: 0, fontSize: '1.5rem' }}>{tool.title}</h1>
+          </div>
+          <div style={{ padding: '1.5rem' }}>
+            <div style={{ 
+              lineHeight: 1.7, 
+              color: '#374151',
+              whiteSpace: 'pre-wrap'
+            }}>
+              {tool.content.split('\n').map((line, i) => {
+                if (line.startsWith('## ')) {
+                  return <h2 key={i} style={{ fontSize: '1.25rem', fontWeight: 600, marginTop: i > 0 ? '1.5rem' : 0, marginBottom: '0.75rem', color: '#111827' }}>{line.replace('## ', '')}</h2>;
+                }
+                if (line.startsWith('### ')) {
+                  return <h3 key={i} style={{ fontSize: '1rem', fontWeight: 600, marginTop: '1rem', marginBottom: '0.5rem', color: '#374151' }}>{line.replace('### ', '')}</h3>;
+                }
+                if (line.startsWith('| ') && line.includes('|')) {
+                  const cells = line.split('|').filter(c => c.trim());
+                  const isHeader = line.includes('---');
+                  if (isHeader) return null;
+                  return (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: `repeat(${cells.length}, 1fr)`, gap: '0.5rem', padding: '0.5rem', background: i % 2 === 0 ? '#f9fafb' : 'white', borderBottom: '1px solid #e5e7eb' }}>
+                      {cells.map((cell, j) => (
+                        <span key={j} style={{ fontWeight: j === 0 ? 500 : 400 }}>{cell.trim()}</span>
+                      ))}
+                    </div>
+                  );
+                }
+                if (line.startsWith('- **') || line.startsWith('- ')) {
+                  return <div key={i} style={{ paddingLeft: '1rem', marginBottom: '0.25rem' }}>• {line.replace(/^- \*\*|\*\*$/g, '').replace('- ', '')}</div>;
+                }
+                if (line.startsWith('✅') || line.startsWith('📌') || line.startsWith('**')) {
+                  return <p key={i} style={{ margin: '0.5rem 0', fontWeight: line.startsWith('**') ? 500 : 400 }}>{line.replace(/\*\*/g, '')}</p>;
+                }
+                if (line.trim() === '---') {
+                  return <hr key={i} style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '1.5rem 0' }} />;
+                }
+                if (line.trim()) {
+                  return <p key={i} style={{ margin: '0.5rem 0' }}>{line}</p>;
+                }
+                return null;
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '1.5rem' }}>Sales Toolbox</h1>
+        <p style={{ margin: 0, color: '#6b7280' }}>
+          Quick access to everything you need in the field
+        </p>
+      </div>
+      
+      {/* Tool Categories */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        {toolCategories.map((category, catIndex) => (
+          <div key={catIndex} style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+            {/* Category Header */}
+            <div style={{ 
+              padding: '1rem 1.25rem', 
+              borderBottom: '1px solid #e5e7eb',
+              background: `linear-gradient(135deg, ${category.color}10, ${category.color}05)`
+            }}>
+              <h2 style={{ margin: 0, fontSize: '1.125rem', color: category.color }}>{category.title}</h2>
+              <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.875rem', color: '#6b7280' }}>{category.description}</p>
+            </div>
+            
+            {/* Tools Grid */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+              gap: '1px',
+              background: '#e5e7eb'
+            }}>
+              {category.tools.map((tool, toolIndex) => {
+                const IconComponent = tool.icon;
+                return (
+                  <button
+                    key={toolIndex}
+                    onClick={() => {
+                      if (tool.type === 'external') {
+                        window.open(tool.url, '_blank');
+                      } else if (tool.type === 'internal') {
+                        const toolKey = tool.path.split('/').pop();
+                        setSelectedTool(toolKey);
+                      }
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.75rem',
+                      padding: '1rem 1.25rem',
+                      background: 'white',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'white'}
+                  >
+                    <div style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: '0.5rem',
+                      background: `${category.color}15`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <IconComponent size={20} color={category.color} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ 
+                        fontWeight: 500, 
+                        color: '#111827',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem'
+                      }}>
+                        {tool.name}
+                        {tool.type === 'external' && (
+                          <ExternalLink size={12} color="#9ca3af" />
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: '0.125rem' }}>
+                        {tool.description}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ============================================
 // MAIN APP
 // ============================================
 function App() {
@@ -15247,6 +15985,7 @@ function App() {
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
           <Route path="/users/:id/profile" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
           <Route path="/training" element={<ProtectedRoute><TrainingCenterPage /></ProtectedRoute>} />
+          <Route path="/tools" element={<ProtectedRoute><ToolsPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/system" element={<ProtectedRoute><SystemDiagnosticsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />
