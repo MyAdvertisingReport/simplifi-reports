@@ -8,7 +8,7 @@ import {
   GripVertical, Save, MessageSquare, Pin, Trash2, Edit3, Video, Radio, Code,
   CheckCircle, AlertCircle, Clock, Bookmark, Flag, Download, History, Award,
   TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List,
-  Database, RefreshCw
+  Database, RefreshCw, Shield, EyeOff, UserCheck, Activity
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
 import OrderForm from './components/OrderForm';
@@ -99,6 +99,7 @@ export const useAuth = () => useContext(AuthContext);
 function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [viewingAs, setViewingAs] = useState(null); // Super Admin "View As" user
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -106,6 +107,16 @@ function AuthProvider({ children }) {
       fetchUser(token);
     } else {
       setLoading(false);
+    }
+    
+    // Check for active View As session
+    const storedViewAs = localStorage.getItem('viewingAs');
+    if (storedViewAs) {
+      try {
+        setViewingAs(JSON.parse(storedViewAs));
+      } catch (e) {
+        localStorage.removeItem('viewingAs');
+      }
     }
   }, []);
 
@@ -145,11 +156,56 @@ function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('viewingAs');
     setUser(null);
+    setViewingAs(null);
+  };
+
+  // Super Admin: Start viewing as another user
+  const startViewAs = async (targetUser) => {
+    try {
+      // Call backend to log the action and get user context
+      await api.get(`/api/super-admin/view-as/${targetUser.id}`);
+      const viewAsData = {
+        id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        role: targetUser.role,
+        startedAt: new Date().toISOString()
+      };
+      localStorage.setItem('viewingAs', JSON.stringify(viewAsData));
+      setViewingAs(viewAsData);
+      return true;
+    } catch (err) {
+      console.error('Failed to start View As:', err);
+      return false;
+    }
+  };
+
+  // Super Admin: Stop viewing as another user
+  const endViewAs = async () => {
+    if (viewingAs) {
+      try {
+        await api.post(`/api/super-admin/view-as/${viewingAs.id}/end`, {});
+      } catch (err) {
+        console.error('Failed to log end View As:', err);
+      }
+    }
+    localStorage.removeItem('viewingAs');
+    setViewingAs(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      login, 
+      logout, 
+      viewingAs, 
+      startViewAs, 
+      endViewAs,
+      isSuperAdmin: user?.is_super_admin === true
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -537,7 +593,7 @@ function LoginPage() {
 // SIDEBAR
 // ============================================
 function Sidebar({ isOpen }) {
-  const { user, logout } = useAuth();
+  const { user, logout, viewingAs, endViewAs, isSuperAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -603,8 +659,46 @@ function Sidebar({ isOpen }) {
         <span style={{ color: 'white', fontWeight: 600, fontSize: '1.125rem' }}>Ad Reports</span>
       </div>
       
+      {/* Super Admin View As Indicator */}
+      {viewingAs && (
+        <div style={{
+          background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+          borderRadius: '0.5rem',
+          padding: '0.75rem',
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem'
+        }}>
+          <Eye size={18} color="white" />
+          <div style={{ flex: 1 }}>
+            <div style={{ color: 'white', fontWeight: 600, fontSize: '0.75rem', opacity: 0.9 }}>VIEWING AS</div>
+            <div style={{ color: 'white', fontWeight: 600, fontSize: '0.875rem' }}>{viewingAs.name}</div>
+          </div>
+          <button 
+            onClick={endViewAs}
+            style={{ 
+              background: 'rgba(255,255,255,0.2)', 
+              border: 'none', 
+              borderRadius: '0.25rem', 
+              padding: '0.375rem 0.75rem', 
+              color: 'white', 
+              fontSize: '0.75rem', 
+              cursor: 'pointer',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.25rem'
+            }}
+          >
+            <EyeOff size={14} />
+            Exit
+          </button>
+        </div>
+      )}
+      
       {/* Client View Mode Indicator */}
-      {clientViewActive && (
+      {clientViewActive && !viewingAs && (
         <div style={{
           background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
           borderRadius: '0.5rem',
@@ -637,7 +731,7 @@ function Sidebar({ isOpen }) {
       )}
       
       {/* Client View Toggle Button - when NOT active */}
-      {!clientViewActive && (
+      {!clientViewActive && !viewingAs && (
         <button 
           onClick={() => {
             localStorage.setItem('clientViewMode', 'true');
@@ -798,11 +892,54 @@ function Sidebar({ isOpen }) {
       </nav>
       <div style={{ borderTop: '1px solid #374151', paddingTop: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6, #0d9488)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 600 }}>
+          <div style={{ 
+            width: 36, 
+            height: 36, 
+            borderRadius: '50%', 
+            background: isSuperAdmin 
+              ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' 
+              : 'linear-gradient(135deg, #3b82f6, #0d9488)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            color: 'white', 
+            fontWeight: 600,
+            position: 'relative'
+          }}>
             {user?.name?.charAt(0) || 'U'}
+            {isSuperAdmin && (
+              <div style={{
+                position: 'absolute',
+                bottom: -2,
+                right: -2,
+                background: '#7c3aed',
+                borderRadius: '50%',
+                width: 14,
+                height: 14,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '2px solid #111827'
+              }}>
+                <Shield size={8} color="white" />
+              </div>
+            )}
           </div>
           <div>
-            <div style={{ color: 'white', fontWeight: 500, fontSize: '0.875rem' }}>{user?.name}</div>
+            <div style={{ color: 'white', fontWeight: 500, fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {user?.name}
+              {isSuperAdmin && (
+                <span style={{
+                  background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                  color: 'white',
+                  padding: '0.125rem 0.375rem',
+                  borderRadius: '0.25rem',
+                  fontSize: '0.625rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em'
+                }}>SA</span>
+              )}
+            </div>
             <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>{user?.role === 'admin' ? 'Admin' : 'Sales'}</div>
           </div>
         </div>
@@ -10453,7 +10590,7 @@ function EditClientForm({ client, onSave, onCancel }) {
 // OTHER PAGES
 // ============================================
 function UsersPage() {
-  const { user } = useAuth();
+  const { user, startViewAs, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const [clients, setClients] = useState([]);
@@ -10461,7 +10598,7 @@ function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'sales_associate' });
-  const [activeTab, setActiveTab] = useState('team'); // 'team', 'assignments', or 'bulk'
+  const [activeTab, setActiveTab] = useState('team'); // 'team', 'assignments', 'bulk', or 'audit'
   const [selectedUser, setSelectedUser] = useState(null);
   const [userDetail, setUserDetail] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -10479,6 +10616,11 @@ function UsersPage() {
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferFromUser, setTransferFromUser] = useState(null);
   const [transferToUser, setTransferToUser] = useState('');
+  
+  // Audit log states (Super Admin only)
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilter, setAuditFilter] = useState('all');
 
   useEffect(() => { 
     loadData();
@@ -10499,6 +10641,26 @@ function UsersPage() {
     }
     setLoading(false);
   };
+
+  // Load audit logs (Super Admin only)
+  const loadAuditLogs = async () => {
+    if (!isSuperAdmin) return;
+    setAuditLoading(true);
+    try {
+      const data = await api.get('/api/super-admin/audit-log');
+      setAuditLogs(data.logs || []);
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    }
+    setAuditLoading(false);
+  };
+
+  // Load audit logs when tab changes
+  useEffect(() => {
+    if (activeTab === 'audit' && isSuperAdmin && auditLogs.length === 0) {
+      loadAuditLogs();
+    }
+  }, [activeTab, isSuperAdmin]);
 
   const loadUserDetail = async (userId) => {
     setLoadingDetail(true);
@@ -10658,6 +10820,61 @@ function UsersPage() {
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount || 0);
+  };
+
+  // Handle View As action
+  const handleViewAs = async (targetUser) => {
+    if (!isSuperAdmin) return;
+    const success = await startViewAs(targetUser);
+    if (success) {
+      navigate('/dashboard');
+    } else {
+      alert('Failed to start View As mode');
+    }
+  };
+
+  // Get Super Admin badge
+  const getSuperAdminBadge = (u) => {
+    if (!u.is_super_admin) return null;
+    return (
+      <span style={{
+        background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+        color: 'white',
+        padding: '0.125rem 0.375rem',
+        borderRadius: '0.25rem',
+        fontSize: '0.625rem',
+        fontWeight: 700,
+        letterSpacing: '0.05em',
+        marginLeft: '0.5rem'
+      }}>SA</span>
+    );
+  };
+
+  // Format audit action for display
+  const formatAuditAction = (action) => {
+    const actionLabels = {
+      'view_as_start': 'Started View As',
+      'view_as_end': 'Ended View As',
+      'bulk_assign': 'Bulk Assigned Clients',
+      'transfer_clients': 'Transferred Clients',
+      'user_update': 'Updated User',
+      'user_create': 'Created User',
+      'user_delete': 'Deleted User'
+    };
+    return actionLabels[action] || action;
+  };
+
+  // Format relative time
+  const formatTimeAgo = (date) => {
+    const now = new Date();
+    const then = new Date(date);
+    const seconds = Math.floor((now - then) / 1000);
+    
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+    return then.toLocaleDateString();
   };
 
   // Filter users
@@ -10859,6 +11076,26 @@ function UsersPage() {
           >
             Bulk Assign {selectedClients.length > 0 && `(${selectedClients.length})`}
           </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setActiveTab('audit')}
+              style={{
+                padding: '0.75rem 0',
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === 'audit' ? '2px solid #7c3aed' : '2px solid transparent',
+                color: activeTab === 'audit' ? '#7c3aed' : '#6b7280',
+                fontWeight: 500,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+            >
+              <Shield size={16} />
+              Audit Log
+            </button>
+          )}
         </nav>
       </div>
 
@@ -10915,7 +11152,10 @@ function UsersPage() {
                 {filteredUsers.map(u => (
                   <tr key={u.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '0.75rem 1rem' }}>
-                      <div style={{ fontWeight: 500 }}>{u.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ fontWeight: 500 }}>{u.name}</div>
+                        {getSuperAdminBadge(u)}
+                      </div>
                       <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{u.email}</div>
                     </td>
                     <td style={{ padding: '0.75rem 1rem' }}>{getRoleBadge(u.role)}</td>
@@ -10935,14 +11175,36 @@ function UsersPage() {
                       {u.recent_activities || 0}
                     </td>
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
-                      {u.is_sales && (
-                        <button
-                          onClick={() => handleSelectUser(u)}
-                          style={{ padding: '0.375rem 0.75rem', background: '#eff6ff', color: '#1e40af', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500 }}
-                        >
-                          View Clients
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                        {u.is_sales && (
+                          <button
+                            onClick={() => handleSelectUser(u)}
+                            style={{ padding: '0.375rem 0.75rem', background: '#eff6ff', color: '#1e40af', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500 }}
+                          >
+                            View Clients
+                          </button>
+                        )}
+                        {isSuperAdmin && u.id !== user.id && (
+                          <button
+                            onClick={() => handleViewAs(u)}
+                            title={`View as ${u.name}`}
+                            style={{ 
+                              padding: '0.375rem 0.5rem', 
+                              background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', 
+                              color: 'white', 
+                              border: 'none', 
+                              borderRadius: '0.375rem', 
+                              cursor: 'pointer', 
+                              fontSize: '0.75rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem'
+                            }}
+                          >
+                            <Eye size={14} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -11149,6 +11411,147 @@ function UsersPage() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Audit Log Tab (Super Admin only) */}
+      {activeTab === 'audit' && isSuperAdmin && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb' }}>
+          {/* Header */}
+          <div style={{ 
+            padding: '1rem 1.5rem', 
+            borderBottom: '1px solid #e5e7eb', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <Shield size={20} color="#7c3aed" />
+              <div>
+                <h3 style={{ margin: 0, color: '#5b21b6' }}>Super Admin Audit Log</h3>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#7c3aed' }}>Track all privileged actions</p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <select
+                value={auditFilter}
+                onChange={(e) => setAuditFilter(e.target.value)}
+                style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}
+              >
+                <option value="all">All Actions</option>
+                <option value="view_as_start">View As Started</option>
+                <option value="view_as_end">View As Ended</option>
+                <option value="bulk_assign">Bulk Assigns</option>
+                <option value="transfer_clients">Client Transfers</option>
+                <option value="user_update">User Updates</option>
+              </select>
+              <button
+                onClick={loadAuditLogs}
+                style={{ 
+                  padding: '0.5rem 0.75rem', 
+                  background: '#7c3aed', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '0.375rem', 
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.875rem'
+                }}
+              >
+                <RefreshCw size={14} />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Audit Log Table */}
+          {auditLoading ? (
+            <div style={{ padding: '3rem', textAlign: 'center' }}>
+              <div className="spinner" />
+            </div>
+          ) : auditLogs.length === 0 ? (
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+              <Activity size={48} style={{ opacity: 0.3, marginBottom: '1rem' }} />
+              <p>No audit log entries yet</p>
+              <p style={{ fontSize: '0.875rem' }}>Super Admin actions will be recorded here</p>
+            </div>
+          ) : (
+            <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ position: 'sticky', top: 0, background: '#f9fafb' }}>
+                  <tr>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>When</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Admin</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Action</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Target</th>
+                    <th style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogs
+                    .filter(log => auditFilter === 'all' || log.action_type === auditFilter)
+                    .map(log => (
+                    <tr key={log.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{formatTimeAgo(log.created_at)}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                          {new Date(log.created_at).toLocaleString()}
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <div style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '0.75rem',
+                            fontWeight: 600
+                          }}>
+                            {log.admin_name?.charAt(0) || '?'}
+                          </div>
+                          <span style={{ fontWeight: 500 }}>{log.admin_name || 'Unknown'}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        <span style={{
+                          padding: '0.25rem 0.75rem',
+                          borderRadius: '9999px',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          background: log.action_type.includes('view_as') ? '#f5f3ff' : 
+                                      log.action_type.includes('bulk') ? '#dbeafe' :
+                                      log.action_type.includes('transfer') ? '#fef3c7' : '#f3f4f6',
+                          color: log.action_type.includes('view_as') ? '#7c3aed' : 
+                                 log.action_type.includes('bulk') ? '#1e40af' :
+                                 log.action_type.includes('transfer') ? '#92400e' : '#374151'
+                        }}>
+                          {formatAuditAction(log.action_type)}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem' }}>
+                        {log.target_user_name ? (
+                          <span style={{ fontWeight: 500 }}>{log.target_user_name}</span>
+                        ) : (
+                          <span style={{ color: '#9ca3af' }}>—</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                        {log.description || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Add User Modal */}

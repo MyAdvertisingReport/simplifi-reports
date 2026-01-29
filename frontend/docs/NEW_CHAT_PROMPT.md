@@ -1,6 +1,6 @@
 # WSIC Advertising Platform - New Chat Context
 ## Upload this file at the START of every new Claude chat
-## Last Updated: January 28, 2026 (Afternoon)
+## Last Updated: January 28, 2026 (Evening)
 
 ---
 
@@ -12,15 +12,14 @@
 simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
 │   ├── server.js              ← Main server with all endpoints ⭐
-│   ├── auth.js                ← Authentication & session management
 │   ├── package.json
 │   ├── routes/
-│   │   ├── order.js           ← Order API endpoints
-│   │   ├── billing.js         ← Invoice management ⭐
+│   │   ├── order.js           
+│   │   ├── billing.js         
 │   │   └── ...
 │   └── services/
-│       ├── email-service.js   ← Postmark emails
-│       └── stripe-service.js  ← Stripe payments
+│       ├── email-service.js   
+│       └── stripe-service.js  
 │
 └── frontend/                  ← Vercel deployment
     └── src/
@@ -56,49 +55,121 @@ git add server.js App.jsx
 
 ---
 
+## 🔐 Super Admin System (NEW - January 28, 2026)
+
+### Super Admins (3 users)
+| Name | Email | Role |
+|------|-------|------|
+| Justin Ckezepis | justin@wsicnews.com | admin |
+| Mamie Lee | mamie@wsicnews.com | admin |
+| Bill Blakely | bill@wsicnews.com | staff |
+
+### Super Admin Capabilities
+- **View As**: See the app as any user would see it (read-only)
+- **Audit Log**: View all Super Admin actions
+- **All Admin powers**: Plus audit trail access
+
+### Backend Endpoints (✅ Working)
+```
+GET  /api/super-admin/view-as/:userId     - Enter View As mode
+POST /api/super-admin/view-as/:userId/end - Exit View As mode
+GET  /api/super-admin/audit-log           - Get audit trail
+GET  /api/super-admin/list                - List all Super Admins
+```
+
+### Audit Log Tracks
+- `view_as_start` / `view_as_end` - View As sessions
+- `bulk_assign` - Bulk client assignments
+- `transfer_clients` - Client transfers between reps
+- `user_update`, `user_create`, `user_delete`
+
+---
+
 ## 📊 Current State (January 28, 2026)
 
-### ✅ CRM System
+### CRM Data
 - **2,812 total clients** (imported from RAB)
 - **122 active clients** (verified from RAB revenue data)
 - **2,690 prospects** for sales pipeline
+- **~2,135 open/unassigned** clients
 
-### ✅ CRM View Features
-- **Dual views:** CRM View (sales pipeline) + Client View (operations)
-- **Owner filter toggle:** All | Open | Mine
-- **Sort options:** A-Z, Revenue, Recently Active, Needs Attention
-- **Claim button:** Sales reps can claim open accounts
-- **Activity count:** Shows logged activities per client
-- **Last touch indicator:** Color-coded (green/yellow/red)
-- **Status badges:** Prospect, Lead, Active, Inactive
+### Team
+- **18 team members**
+- **3 Super Admins** (Justin, Mamie, Bill)
+- **4,652 logged activities**
 
-### ✅ Working Features
-- User authentication (Supabase Auth + JWT)
-- Role-based access (admin, sales_manager, sales_associate)
-- 6 Order Types with signing workflow
-- Invoice management with auto-generate
-- Payment collection (Card + ACH via Stripe)
-- Client public report pages
-- Simpli.fi campaign reporting
+---
+
+## 🎯 IMMEDIATE PRIORITY: Frontend Updates
+
+### 1. Super Admin UI (Backend Ready ✅)
+
+**View As Feature:**
+- Purple eye icon button on Users page
+- Click → see what that user sees (read-only)
+- Small indicator in sidebar when active: `👁️ Viewing as [Name] | Exit`
+- All actions logged to audit trail
+
+**Audit Log Tab:**
+- New tab on Users page (Super Admins only): `🔒 Audit Log`
+- Shows: who, what, when, target user
+- Filter by action type
+
+**Visual Indicators:**
+- Purple "SA" badge next to Super Admin names
+
+### 2. User Management Enhancements (Backend Ready ✅)
+
+**Stats columns already in API:**
+```javascript
+// GET /api/users/extended returns:
+{
+  client_count,           // Total assigned
+  active_client_count,    // Status = 'active'
+  prospect_client_count,  // Status = 'prospect'/'lead'
+  active_orders,          // Orders in signed/active
+  total_revenue,          // Revenue from their clients
+  recent_activities,      // Last 30 days
+  is_super_admin          // Super Admin flag
+}
+```
+
+**Frontend needs:**
+- Display these new stat columns
+- Bulk Assign tab with checkbox selection
+- Transfer All Clients button
+
+### 3. Sales KPI Tracking (NEW)
+
+**Activity types to track:**
+- `touchpoint` - Generic contacts (goal: 100/week)
+- `appointment_set` - Meetings scheduled
+- `proposal_sent` - Proposals created
+- `deal_closed` - Closed sales with $ amount
+
+**Reports needed:**
+- Per-rep metrics with time filters
+- 1-on-1 exportable reports
+
+### 4. Sales Training Center (NEW)
+
+**In-house training hub with:**
+- Sales Process Guide (3 stages)
+- Product Knowledge
+- Pricing Guide
+- FAQs & Objection Handling
 
 ---
 
 ## 👤 User System
 
-### Current Users Table
+### Users Table
 ```sql
--- Key fields
 id (UUID)           -- MUST match Supabase Auth ID
-email               -- Unique
-name                -- Display name
-role                -- 'admin', 'sales_manager', 'sales_associate'
-first_name, last_name
-password_hash       -- bcrypt
+email, name, role   -- 'admin', 'sales_manager', 'sales_associate', 'staff'
+is_super_admin      -- Boolean (NEW)
+is_sales            -- Boolean (can be assigned clients)
 ```
-
-### Important: Auth ID Matching
-The `users.id` MUST match the Supabase Auth user ID for "Mine" filters to work.
-Browser stores auth ID in localStorage, compares against `assigned_to` field.
 
 ### Justin's User ID
 ```
@@ -107,87 +178,56 @@ Browser stores auth ID in localStorage, compares against `assigned_to` field.
 
 ---
 
-## 🎯 NEXT SESSION PRIORITIES
-
-### 1. 🔥 Sales Associate User Management (HIGH PRIORITY)
-
-**Admin needs to:**
-- View all users with their assigned client counts
-- Toggle between: All Users | Individual User view
-- See each rep's: clients, active orders, revenue, activities
-- Assign/reassign clients between reps
-- Bulk assign open accounts
-
-**Suggested UI:**
-```
-Users Management
-├── User list with stats
-│   ├── Justin (Admin) - 6 clients, $X revenue
-│   ├── Stephanie (Sales) - 45 clients, $X revenue
-│   └── ...
-├── Click user → see their clients
-└── Bulk actions: Assign selected to rep
-```
-
-### 2. 🔥 Admin Diagnostics Dashboard (HIGH PRIORITY)
-
-**For non-technical users, need:**
-- Simple health status (✅ All Systems Go / ⚠️ Issues)
-- Database connection status
-- API status indicators
-- Recent errors (simplified)
-- Storage/usage metrics
-- One-click common fixes
-
-**Current diagnostics are too technical** - need user-friendly version
-
-### 3. Duplicate Client Cleanup
-- ~20-30 duplicate pairs identified
-- Need merge functionality
-- Preserve activities when merging
-
----
-
 ## 🗄️ Key Database Tables
 
 ### advertising_clients
 ```sql
-id, business_name, slug, status, tier, industry
+id, business_name, slug, status, industry
 tags[]                -- ['WSIC', 'LKNW', 'Print', etc.]
 assigned_to           -- FK to users.id (sales rep)
-annual_contract_value -- From RAB data
+annual_contract_value
 last_activity_at
-primary_contact_name
 ```
 
-### users
+### super_admin_audit_log (NEW)
 ```sql
-id                    -- MUST match Supabase Auth ID
-email, name, role
-first_name, last_name
-password_hash
+id, super_admin_id, action_type
+target_user_id, target_user_name
+description, metadata (JSONB)
+ip_address, user_agent, created_at
 ```
 
 ### client_activities
 ```sql
 id, client_id, user_id
 activity_type         -- 'call_logged', 'email_sent', 'meeting_scheduled', etc.
-description, metadata
-created_at
+description, metadata, created_at
 ```
 
 ---
 
-## 📈 Current Metrics
+## 📝 API Endpoints Reference
 
-| Metric | Count |
-|--------|-------|
-| Total Clients | 2,812 |
-| Active Clients | 122 |
-| Prospect Clients | 2,690 |
-| Open (unassigned) | ~2,135 |
-| Team Members | 18 |
-| Activities Logged | 4,652 |
+### Users & Super Admin
+```
+GET  /api/auth/me                        - Current user (includes is_super_admin)
+GET  /api/users/extended                 - All users with full stats
+GET  /api/users/:id/stats                - Individual user details + clients
+GET  /api/users/sales                    - Sales team only
+POST /api/clients/bulk-assign            - Bulk assign clients
+POST /api/users/:id/transfer-clients     - Transfer all clients
+GET  /api/super-admin/view-as/:userId    - View As mode
+POST /api/super-admin/view-as/:userId/end - Exit View As
+GET  /api/super-admin/audit-log          - Audit trail
+```
+
+### Clients
+```
+GET  /api/clients                  - List with stats
+POST /api/clients/:id/claim        - Claim open account
+POST /api/clients/:id/reassign     - Reassign to different rep
+POST /api/clients/:id/release      - Release back to open
+```
 
 ---
 
@@ -202,47 +242,26 @@ created_at
 ```cmd
 cd simplifi-reports
 copy C:\Users\Justin\Downloads\filename.js backend\filename.js
-git add backend/filename.js
+git add backend/filename.js frontend/src/App.jsx
 git commit -m "Description"
 git push origin main
 ```
 
 ---
 
-## 📝 Quick Reference
+## 📚 Session Docs to Upload
 
-### Key File Paths
-| What | Path |
-|------|------|
-| Main Server | `backend/server.js` |
-| Main App | `frontend/src/App.jsx` |
-| Billing | `backend/routes/billing.js` |
-
-### App.jsx Sections (approx lines)
-| Section | Lines |
-|---------|-------|
-| ClientsPage | 1763-2500 |
-| Client Detail | 2700-3500 |
-| Routes | end of file |
-
-### Client Status Values
-- `prospect` - In pipeline, no contract
-- `lead` - Qualified lead
-- `active` - Has contract/orders
-- `inactive` - Paused
-- `churned` - Lost
-
-### API Endpoints for Users
-```
-GET  /api/users              - List all users (admin)
-GET  /api/users/:id          - Get user details
-GET  /api/users/sales        - Get sales team only
-POST /api/clients/:id/claim  - Claim open account
-PUT  /api/clients/:id/assign - Assign to different rep
-```
+1. **NEW_CHAT_PROMPT.md** - This file (always upload first)
+2. **ROADMAP.md** - Current priorities
+3. **SESSION_SUMMARY.md** - Last session's work
+4. **App.jsx** - For frontend changes
+5. **server.js** - For backend reference
 
 ---
 
 ## 🔒 Security Status: 8.5/10 ✅
 
-See SECURITY_AUDIT.md for details.
+- Helmet security headers ✅
+- Rate limiting ✅
+- JWT validation ✅
+- Super Admin audit logging ✅
