@@ -340,10 +340,17 @@ const loginHandler = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
     
-    const user = await dbHelper.getUserByEmail(email);
-    if (!user) {
+    // Direct SQL query to get user with password_hash
+    const result = await adminPool.query(
+      'SELECT id, email, name, role, password_hash, is_super_admin, is_sales FROM users WHERE LOWER(email) = LOWER($1)',
+      [email]
+    );
+    
+    if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+    
+    const user = result.rows[0];
 
     const validPassword = bcrypt.compareSync(password, user.password_hash);
     if (!validPassword) {
@@ -356,9 +363,12 @@ const loginHandler = async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    // Update last login
+    await adminPool.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+
     res.json({
       token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role }
+      user: { id: user.id, email: user.email, name: user.name, role: user.role, is_super_admin: user.is_super_admin, is_sales: user.is_sales }
     });
   } catch (error) {
     console.error('Login error:', error);
