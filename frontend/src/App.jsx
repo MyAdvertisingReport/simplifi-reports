@@ -11,7 +11,7 @@ import {
   Database, RefreshCw, Shield, EyeOff, UserCheck, Activity, Cpu, HardDrive, 
   Mail, CreditCard, Wifi, Server, Lock, AlertTriangle, CheckCircle2, XCircle,
   BookOpen, GraduationCap, User, Briefcase, Package, Wrench, PlayCircle,
-  FileQuestion, BarChart2, Phone, Send, UserPlus, ThumbsUp
+  FileQuestion, BarChart2, Phone, Send, UserPlus, ThumbsUp, Edit2
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
 import OrderForm from './components/OrderForm';
@@ -11722,6 +11722,8 @@ function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [newUser, setNewUser] = useState({ email: '', password: '', name: '', role: 'sales_associate' });
+  const [editingUser, setEditingUser] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [activeTab, setActiveTab] = useState('team'); // 'team', 'assignments', 'bulk', or 'audit'
   const [selectedUser, setSelectedUser] = useState(null);
   const [userDetail, setUserDetail] = useState(null);
@@ -11831,6 +11833,30 @@ function UsersPage() {
     } catch (err) { alert(err.message); }
   };
 
+  const handleEditUser = async (e) => {
+    e.preventDefault();
+    try {
+      const updateData = {
+        name: editingUser.name,
+        email: editingUser.email,
+        role: editingUser.role
+      };
+      // Only include password if it was changed
+      if (editingUser.newPassword) {
+        updateData.password = editingUser.newPassword;
+      }
+      await api.put(`/api/users/${editingUser.id}`, updateData);
+      setShowEditModal(false);
+      setEditingUser(null);
+      loadData();
+    } catch (err) { alert('Failed to update user: ' + err.message); }
+  };
+
+  const openEditModal = (u) => {
+    setEditingUser({ ...u, newPassword: '' });
+    setShowEditModal(true);
+  };
+
   const handleReassignClient = async (clientId, newOwnerId) => {
     try {
       if (newOwnerId) {
@@ -11909,14 +11935,16 @@ function UsersPage() {
       sales_manager: { background: '#dbeafe', color: '#1e40af' },
       sales_associate: { background: '#fef3c7', color: '#92400e' },
       sales: { background: '#f3f4f6', color: '#374151' },
-      staff: { background: '#f3e8ff', color: '#6b21a8' }
+      staff: { background: '#f3e8ff', color: '#6b21a8' },
+      event_manager: { background: '#fce7f3', color: '#9d174d' }
     };
     const labels = {
       admin: 'Admin',
       sales_manager: 'Sales Manager',
       sales_associate: 'Sales Associate',
       sales: 'Sales',
-      staff: 'Staff'
+      staff: 'Staff',
+      event_manager: 'Event Manager'
     };
     const style = styles[role] || styles.sales;
     return (
@@ -12300,6 +12328,13 @@ function UsersPage() {
                     </td>
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                        <button
+                          onClick={() => openEditModal(u)}
+                          title={`Edit ${u.name}`}
+                          style={{ padding: '0.375rem 0.5rem', background: '#fef3c7', color: '#92400e', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.75rem' }}
+                        >
+                          <Edit2 size={14} />
+                        </button>
                         <button
                           onClick={() => navigate(`/users/${u.id}/profile`)}
                           title={`View ${u.name}'s profile`}
@@ -12698,12 +12733,49 @@ function UsersPage() {
                 style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}>
                 <option value="sales_associate">Sales Associate (View Assigned Clients Only)</option>
                 <option value="sales_manager">Sales Manager (View All Clients)</option>
+                <option value="event_manager">Event Manager (Events Focus)</option>
+                <option value="staff">Staff (Non-Sales)</option>
                 <option value="admin">Admin (Full Access)</option>
               </select>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button type="button" onClick={() => setShowModal(false)} style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
               <button type="submit" style={{ padding: '0.625rem 1.25rem', background: '#1e3a8a', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Create</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && editingUser && (
+        <Modal title={`Edit User: ${editingUser.name}`} onClose={() => { setShowEditModal(false); setEditingUser(null); }}>
+          <form onSubmit={handleEditUser}>
+            <FormField label="Name" value={editingUser.name} onChange={(v) => setEditingUser({ ...editingUser, name: v })} required />
+            <FormField label="Email" value={editingUser.email} onChange={(v) => setEditingUser({ ...editingUser, email: v })} type="email" required />
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Role</label>
+              <select value={editingUser.role} onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}>
+                <option value="sales_associate">Sales Associate (View Assigned Clients Only)</option>
+                <option value="sales_manager">Sales Manager (View All Clients)</option>
+                <option value="event_manager">Event Manager (Events Focus)</option>
+                <option value="staff">Staff (Non-Sales)</option>
+                <option value="admin">Admin (Full Access)</option>
+              </select>
+            </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>New Password (leave blank to keep current)</label>
+              <input 
+                type="password" 
+                value={editingUser.newPassword || ''} 
+                onChange={(e) => setEditingUser({ ...editingUser, newPassword: e.target.value })}
+                placeholder="Enter new password to change"
+                style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => { setShowEditModal(false); setEditingUser(null); }} style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
+              <button type="submit" style={{ padding: '0.625rem 1.25rem', background: '#1e3a8a', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Save Changes</button>
             </div>
           </form>
         </Modal>
