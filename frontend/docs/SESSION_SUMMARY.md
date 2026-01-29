@@ -1,179 +1,193 @@
-# Session Summary - January 29, 2026 (Commission & User Management)
+# Session Summary - January 29, 2026 (Late Evening)
+## Email Design System & Orders Page Visual Updates
+
+---
 
 ## 🎯 Session Goals
-1. Implement commission tracking system
-2. Set up Erin Connair as Event Manager
-3. Add Edit User functionality
-4. Fix various authentication issues
+1. ✅ Fix ACH payment "must be verified" error
+2. ✅ Update emails with better formatting and recipients
+3. ✅ Add brand/category bubbles to Orders page
+4. ✅ Show clear approval reasons in order modal
+5. ✅ Create Universal Email Design System principles
 
 ---
 
 ## ✅ What We Accomplished
 
-### 1. Commission System - COMPLETE
+### 1. ACH Payment Fix - COMPLETE
 
-**Database Tables:**
-- `commission_rates` - User-specific commission rates
-- `commission_rate_defaults` - Company-wide default rates
-- `commissions` - Individual commission records with split support
+**Problem:** Stripe ACH returned "must be verified" error with test credentials
 
-**Commission Rates Configured:**
-| Category | Rate |
-|----------|------|
-| Print | 30% |
-| Broadcast | 30% |
-| Podcast | 30% |
-| Digital/Programmatic | 18% |
-| Web & Social | 30% |
-| Events | 20% |
-| Default (other) | 10% |
+**Solution:** Implemented Stripe Financial Connections
+- Instant bank verification via customer's online banking login
+- Fallback to micro-deposits if instant not available
+- Removed manual routing/account number entry form
 
-**Features:**
-- Commission Approvals tab (Admin only)
-- Split commission functionality
-- Commission rate configuration UI
-- YTD summary and monthly breakdown
-
-### 2. Event Manager Role - COMPLETE
-
-**Erin Connair Setup:**
-- Email: erin@lakenormanwoman.com
-- Role: `event_manager` (new role type)
-- Commission: 20% on Events
-- Password: `TempPass123!`
-
-**Database Changes:**
-- Added `event_manager` to `users_role_check` constraint
-- Created Erin's user account
-- Set up her commission rate
-
-### 3. Edit User Feature - COMPLETE
-
-**New UI on `/users` page:**
-- Edit button (pencil icon) on each user row
-- Edit User Modal with:
-  - Name field
-  - Email field
-  - Role dropdown (includes Event Manager, Staff)
-  - Password reset (optional)
-
-**Role Options:**
-- Sales Associate
-- Sales Manager
-- Event Manager ← NEW
-- Staff
-- Admin
-
-### 4. Preferences Page Removal - COMPLETE
-
-- Removed "Preferences" from sidebar
-- Added "Change Password" button to sidebar footer
-- Password change modal in sidebar
-- Removed `/settings` route (kept `/settings/system` for Super Admin)
-
-### 5. Authentication Fixes - COMPLETE
-
-**Issues Fixed:**
-- Rate limiter crash (`trust proxy` setting for Railway)
-- Login endpoint using broken `dbHelper` functions → Direct SQL
-- Change password endpoint using broken `dbHelper` → Direct SQL
-- User update endpoint using broken `dbHelper` → Direct SQL
-
-**Password Reset Process:**
-- Must generate hash locally: `node -e "require('bcrypt').hash('PASSWORD', 10, (err, hash) => console.log(hash));"`
-- Update via SQL: `UPDATE users SET password_hash = 'HASH' WHERE email = 'EMAIL'`
+**Files Changed:**
+- `ClientSigningPage.jsx` - New "Connect Bank Account" flow
+- `server.js` - New endpoint `/api/orders/sign/:token/setup-intent/ach`
 
 ---
 
-## 🗄️ Database Changes
+### 2. Universal Email Design System - COMPLETE
 
-### New Tables
-```sql
-commission_rates (user_id, product_category, rate_type, rate_value, effective_date)
-commission_rate_defaults (product_category, rate_type, rate_value, is_active)
-commissions (user_id, order_id, order_amount, commission_rate, commission_amount, status, is_split, split_with_user_id, split_percentage, parent_commission_id, split_reason)
+**Anti-Phishing Principles:**
+1. NEVER use order numbers in emails (backend only)
+2. Consistent subject format: `[ACTION] - [CLIENT] - [BRANDS]`
+3. Always include brand bubbles (dark blue #1e3a8a)
+4. Always include category bubbles with icons
+5. Single clear CTA button
+
+**Subject Line Format:**
+```
+New Order Submitted - ABC Company - WSIC + Lake Norman Woman
+⚠️ Approval Required - ABC Company - WSIC
+✓ Approved - ABC Company - WSIC + Lake Norman Woman
+↩️ Revision Needed - ABC Company - WSIC
+🎉 Contract Signed - ABC Company - WSIC
 ```
 
-### Schema Updates
-```sql
--- Added event_manager to allowed roles
-ALTER TABLE users DROP CONSTRAINT users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check 
-  CHECK (role IN ('admin', 'sales_manager', 'sales_associate', 'staff', 'sales', 'event_manager'));
+**Category Icons:**
+| Category | Icon | Color |
+|----------|------|-------|
+| Print | 📰 | Blue |
+| Broadcast | 📻 | Pink |
+| Podcast | 🎙️ | Purple |
+| Digital | 💻 | Green |
+| Events | 🎪 | Amber |
+| Web | 🌐 | Indigo |
+| Social | 📱 | Rose |
 
--- Auto-generate UUIDs for new users
-ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid();
+**Email Recipients:**
+- Order Submitted: Justin, Mamie, Lalaine + Bill (if WSIC included)
+- Approval Required: Approvers only
+- Order Approved: Order submitter
+- Contract Signed: Justin, Mamie, Lalaine + Sales Rep
+
+---
+
+### 3. Orders Page Visual Updates - COMPLETE
+
+**Table Changes:**
+- Added **Brands column** with brand bubbles
+- Added **category bubbles** with icons under product count
+- Removed order numbers from client column
+- Client name now displays alone
+
+**Order Detail Modal Changes:**
+- Header shows **Client Name** (not "Order ORD-2026-XXXX")
+- Brand bubbles displayed prominently
+- Category bubbles with icons
+- **Clear Approval Reasons** showing:
+  - Book price vs adjusted price (strikethrough)
+  - Discount percentage badge
+  - Setup fee waivers
+
+**Approval Alert Example:**
+```
+⚠️ Approval Required
+The following products have price adjustments that require approval:
+
+🎙️ Create Your Own Podcast - Full Package
+   $2,000.00 → $1,500.00  [-25%]
 ```
 
 ---
 
-## 📁 Files Modified
+### 4. Email Content Enhancements - COMPLETE
 
-### Frontend
-| File | Changes |
-|------|---------|
-| `App.jsx` | CommissionsPage with Approvals tab, split modal, Edit User feature, Change Password in sidebar, removed Preferences |
-
-### Backend
-| File | Changes |
-|------|---------|
-| `server.js` | Trust proxy, direct SQL for login/change-password/update-user, commission endpoints, event_manager role support |
-
----
-
-## 🐛 Bugs Fixed
-
-| Issue | Cause | Fix |
-|-------|-------|-----|
-| Login always fails | Rate limiter crash on Railway | Added `app.set('trust proxy', 1)` |
-| "User not found" on login | `dbHelper.getUserByEmail` broken | Direct SQL query |
-| Change password 500 error | `dbHelper.updateUser` broken | Direct SQL query |
-| Edit user 404 error | `dbHelper.getUserById` broken | Direct SQL query |
-| Can't create users | `id` column no default | `ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid()` |
-| event_manager rejected | Not in role constraint | Updated `users_role_check` constraint |
+**New Order Submitted Email includes:**
+- Brand bubbles at top
+- Category bubbles with counts
+- Contract period (start → end dates)
+- Product details table:
+  - Product name with category icon
+  - Monthly price
+  - Setup fee
+- Monthly Total + Setup Fees + Contract Value grid
 
 ---
 
-## 👥 User Accounts Status
+## 📁 Files Created/Modified
 
-| User | Email | Role | Password |
-|------|-------|------|----------|
-| Justin Ckezepis | justin@wsicnews.com | admin | (user's new password) |
-| Lalaine Agustin | admin@wsicnews.com | admin | `TempPass123!` |
-| Erin Connair | erin@lakenormanwoman.com | event_manager | `TempPass123!` |
+### New Files
+| File | Purpose |
+|------|---------|
+| `EMAIL_DESIGN_SYSTEM.md` | Universal email principles documentation |
+
+### Modified Files
+| File | Changes |
+|------|---------|
+| `email-service.js` | All subject lines, brand extraction, category bubbles, product details |
+| `OrderList.jsx` | Brand column, category bubbles, approval reasons, removed order numbers |
+| `ClientSigningPage.jsx` | Stripe Financial Connections for ACH |
+| `server.js` | New ACH setup-intent endpoint, updated ACH payment-method endpoint |
+
+---
+
+## 🗄️ Database Fields Used
+
+### order_items table (for approval display)
+```sql
+book_price          -- Original product price from catalog
+book_setup_fee      -- Original setup fee from catalog  
+unit_price          -- Adjusted price (what client pays)
+setup_fee           -- Adjusted setup fee
+discount_percent    -- Discount percentage applied
+```
+
+These fields enable showing: `$2,000 → $1,500 [-25%]`
 
 ---
 
 ## 🎯 Next Session Goals
 
-### Primary: Order Testing & Data Import
-1. **Test Order Creation Flow**
-   - New Order (Electronic)
-   - Upload Order (Pre-Signed)
-   - Change Order
-   - Kill Order
+### 1. Email System Verification
+- Test all email types with real orders
+- Verify brand bubbles appear in all emails
+- Ensure `order.items` is populated when emails are triggered
 
-2. **Import Client Order Data**
-   - Use completed Excel templates
-   - Import orders from QuickBooks data
-   - Update client statuses
+### 2. Role-Based Dashboards
+Create custom dashboards for each user type:
 
-3. **Verify Commission Calculations**
-   - Test commission generation on order approval
-   - Test split commission workflow
+| User | Dashboard Focus |
+|------|-----------------|
+| Justin & Mamie | Macro - All metrics, team performance |
+| Bill | Radio - WSIC Broadcast, programming |
+| Lalaine | Operational - Action items, processing queue |
+| Erin | Events - LKN Woman events, calendar |
+| Sales Associates | Personal - Their clients, pipeline, commissions |
+
+### 3. Continue Order Testing
+- Complete signing flow
+- Commission auto-generation
+- Change/Kill orders
 
 ---
 
-## 💻 Deploy Commands
+## 💻 Deploy Commands Used
 
 ```cmd
 cd simplifi-reports
+
+REM Email service
+del backend\services\email-service.js
+copy "C:\Users\WSIC BILLING\Downloads\email-service.js" backend\services\email-service.js
+
+REM Orders page
+del frontend\src\components\OrderList.jsx
+copy "C:\Users\WSIC BILLING\Downloads\OrderList.jsx" frontend\src\components\OrderList.jsx
+
+REM Client signing (ACH fix)
+del frontend\src\components\ClientSigningPage.jsx
+copy "C:\Users\WSIC BILLING\Downloads\ClientSigningPage.jsx" frontend\src\components\ClientSigningPage.jsx
+
+REM Server (ACH endpoints)
 del backend\server.js
-del frontend\src\App.jsx
 copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
-copy "C:\Users\WSIC BILLING\Downloads\App.jsx" frontend\src\App.jsx
+
 git add -A
-git commit -m "Description"
+git commit -m "Email design system, orders page bubbles, ACH Financial Connections"
 git push origin main
 ```
 
@@ -181,16 +195,29 @@ git push origin main
 
 ## 📚 Files for Next Chat
 
-### Required
-1. **NEW_CHAT_PROMPT.md** - Updated context
-2. **ROADMAP.md** - Updated priorities
-3. **SESSION_SUMMARY.md** - This file
-4. **ORDER_IMPORT_INSTRUCTIONS.md** - For data import
+### Required Documentation
+1. `NEW_CHAT_PROMPT.md` - Updated context
+2. `ROADMAP.md` - Dashboard priorities
+3. `SESSION_SUMMARY.md` - This file
+4. `EMAIL_DESIGN_SYSTEM.md` - Email principles
 
-### For Testing
-- Order templates (Print, Broadcast, Podcast, Events, WebSocial)
-- Sample completed templates with test data
+### Code Files
+- `App.jsx` - For dashboard customization
+- `server.js` - For backend reference
+- `email-service.js` - For email fine-tuning
+- `OrderList.jsx` - For orders page reference
 
-### Optional
-- **App.jsx** - Current frontend
-- **server.js** - Current backend
+---
+
+## 🔐 Security Improvements
+
+### Anti-Phishing Measures
+- Order numbers removed from all emails
+- Consistent visual format (brand bubbles, category icons)
+- Standard subject line format
+- Team training point: "We NEVER use order numbers in emails"
+
+### ACH Security
+- Bank verification via Stripe Financial Connections
+- No manual routing/account number handling
+- Instant verification via customer's online banking

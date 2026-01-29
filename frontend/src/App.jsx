@@ -27,6 +27,7 @@ import KillOrderUploadForm from './components/KillOrderUploadForm';
 import AdminDocumentsPage from './components/AdminDocumentsPage';
 import BillingPage from './components/BillingPage';
 import InvoiceForm from './components/InvoiceForm';
+import RoleDashboardRouter from './components/RoleDashboards';
 import { 
   ResponsiveContainer, 
   AreaChart as RechartsAreaChart, 
@@ -1118,9 +1119,19 @@ function ProtectedRoute({ children }) {
 }
 
 // ============================================
-// DASHBOARD PAGE
+// DASHBOARD PAGE - Role-Based Router
 // ============================================
 function DashboardPage() {
+  const { user } = useAuth();
+  
+  // Use the role-based dashboard router, passing SimplifiDashboard as fallback
+  return <RoleDashboardRouter user={user} SimplifiDashboard={SimplifiDashboard} />;
+}
+
+// ============================================
+// SIMPLI.FI DASHBOARD (Original metrics dashboard)
+// ============================================
+function SimplifiDashboard() {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);

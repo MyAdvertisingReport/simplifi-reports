@@ -5772,6 +5772,272 @@ app.get('/api/email/stats', authenticateToken, async (req, res) => {
 });
 
 // ============================================
+// ROLE-BASED DASHBOARD ENDPOINTS
+// ============================================
+
+// Get dashboard type for current user
+app.get('/api/dashboard/my-type', authenticateToken, (req, res) => {
+  const email = req.user.email?.toLowerCase();
+  let dashboardType = 'simpli';
+  
+  if (email === 'bill@wsicnews.com') dashboardType = 'radio';
+  else if (email === 'admin@wsicnews.com') dashboardType = 'operations';
+  else if (email === 'leslie@lakenormanwoman.com') dashboardType = 'creative';
+  else if (email === 'erin@lakenormanwoman.com') dashboardType = 'events';
+  else if (req.user.is_super_admin) dashboardType = 'super_admin';
+  else if (req.user.role === 'admin') dashboardType = 'operations';
+  else if (req.user.is_sales || req.user.role === 'sales_associate') dashboardType = 'sales';
+  
+  res.json({ dashboardType, user: { id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role, is_super_admin: req.user.is_super_admin, is_sales: req.user.is_sales }});
+});
+
+// Super Admin Dashboard
+app.get('/api/dashboard/super-admin', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user.is_super_admin) return res.status(403).json({ error: 'Access denied' });
+
+    const [orderStats, pendingApprovals, recentOrders, revenueByEntity, pendingCommissions, teamActivity, invoiceStats] = await Promise.all([
+      adminPool.query(`SELECT status, COUNT(*) as count, COALESCE(SUM(contract_total), 0) as contract_value FROM orders GROUP BY status`),
+      adminPool.query(`SELECT COUNT(*) as count FROM orders WHERE status = 'pending_approval'`),
+      adminPool.query(`SELECT o.*, ac.business_name as client_name, u.name as submitted_by_name FROM orders o LEFT JOIN advertising_clients ac ON o.client_id = ac.id LEFT JOIN users u ON o.submitted_by = u.id WHERE o.created_at >= NOW() - INTERVAL '7 days' ORDER BY o.created_at DESC LIMIT 10`),
+      adminPool.query(`SELECT e.name as entity_name, e.code as entity_code, COUNT(DISTINCT o.id) as order_count, COALESCE(SUM(oi.line_total), 0) as revenue FROM entities e LEFT JOIN order_items oi ON oi.entity_id = e.id LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('signed', 'active') GROUP BY e.id, e.name, e.code ORDER BY revenue DESC`),
+      adminPool.query(`SELECT COUNT(*) as count, COALESCE(SUM(commission_amount), 0) as total FROM commissions WHERE status = 'pending'`),
+      adminPool.query(`SELECT id, name, email, role, last_login, is_sales, is_super_admin FROM users WHERE is_active = true ORDER BY last_login DESC NULLS LAST LIMIT 10`),
+      adminPool.query(`SELECT COUNT(CASE WHEN status = 'draft' THEN 1 END) as draft, COUNT(CASE WHEN status = 'sent' THEN 1 END) as sent, COUNT(CASE WHEN status = 'overdue' THEN 1 END) as overdue, COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid, COALESCE(SUM(CASE WHEN status IN ('sent', 'overdue') THEN balance_due END), 0) as outstanding_balance FROM invoices`)
+    ]);
+
+    res.json({
+      orderStats: orderStats.rows,
+      pendingApprovals: parseInt(pendingApprovals.rows[0]?.count || 0),
+      recentOrders: recentOrders.rows,
+      revenueByEntity: revenueByEntity.rows,
+      pendingCommissions: { count: parseInt(pendingCommissions.rows[0]?.count || 0), total: parseFloat(pendingCommissions.rows[0]?.total || 0) },
+      teamActivity: teamActivity.rows,
+      invoiceStats: invoiceStats.rows[0] || {}
+    });
+  } catch (error) {
+    console.error('Super admin dashboard error:', error);
+    res.status(500).json({ error: 'Failed to load dashboard' });
+  }
+});
+
+// Operations Dashboard (Lalaine)
+app.get('/api/dashboard/operations', authenticateToken, async (req, res) => {
+  try {
+    const [ordersToProcess, invoicesNeedingAction, pendingCommissions, myTasks] = await Promise.all([
+      adminPool.query(`SELECT o.*, ac.business_name as client_name, u.name as submitted_by_name,
+        (SELECT json_agg(json_build_object('id', oi.id, 'product_name', oi.product_name, 'product_category', oi.product_category, 'entity_id', oi.entity_id, 'e_name', e.name))
+        FROM order_items oi LEFT JOIN entities e ON oi.entity_id = e.id WHERE oi.order_id = o.id) as items
+        FROM orders o LEFT JOIN advertising_clients ac ON o.client_id = ac.id LEFT JOIN users u ON o.submitted_by = u.id
+        WHERE o.status IN ('pending_approval', 'approved', 'sent')
+        ORDER BY CASE o.status WHEN 'pending_approval' THEN 1 WHEN 'approved' THEN 2 WHEN 'sent' THEN 3 END, o.created_at ASC`),
+      adminPool.query(`SELECT i.*, ac.business_name as client_name,
+        CASE WHEN i.status = 'draft' THEN 'Send to client' WHEN i.status = 'overdue' THEN 'Follow up' WHEN i.last_payment_error IS NOT NULL THEN 'Payment failed' ELSE 'Review' END as action_needed
+        FROM invoices i LEFT JOIN advertising_clients ac ON i.client_id = ac.id
+        WHERE i.status IN ('draft', 'overdue') OR i.last_payment_error IS NOT NULL
+        ORDER BY CASE WHEN i.last_payment_error IS NOT NULL THEN 1 WHEN i.status = 'overdue' THEN 2 ELSE 3 END, i.due_date ASC LIMIT 20`),
+      adminPool.query(`SELECT c.*, u.name as user_name, ac.business_name as client_name FROM commissions c JOIN users u ON c.user_id = u.id LEFT JOIN advertising_clients ac ON c.client_id = ac.id WHERE c.status = 'pending' ORDER BY c.created_at ASC LIMIT 20`),
+      adminPool.query(`SELECT t.*, ac.business_name as client_name FROM tasks t LEFT JOIN advertising_clients ac ON t.client_id = ac.id WHERE t.status != 'completed' AND (t.assigned_to = $1 OR t.assigned_role IN ('admin', 'operations')) ORDER BY CASE t.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, t.due_date ASC NULLS LAST`, [req.user.id])
+    ]);
+
+    const orders = ordersToProcess.rows;
+    res.json({
+      summary: {
+        pendingApproval: orders.filter(o => o.status === 'pending_approval').length,
+        readyToSend: orders.filter(o => o.status === 'approved').length,
+        awaitingSignature: orders.filter(o => o.status === 'sent').length,
+        overdueInvoices: invoicesNeedingAction.rows.filter(i => i.status === 'overdue').length,
+        failedPayments: invoicesNeedingAction.rows.filter(i => i.last_payment_error).length,
+        pendingCommissions: pendingCommissions.rows.length,
+        openTasks: myTasks.rows.length
+      },
+      ordersToProcess: orders,
+      invoicesNeedingAction: invoicesNeedingAction.rows,
+      pendingCommissions: pendingCommissions.rows,
+      tasks: myTasks.rows
+    });
+  } catch (error) {
+    console.error('Operations dashboard error:', error);
+    res.status(500).json({ error: 'Failed to load dashboard' });
+  }
+});
+
+// Radio Dashboard (Bill)
+app.get('/api/dashboard/radio', authenticateToken, async (req, res) => {
+  try {
+    const wsicEntity = await adminPool.query(`SELECT id FROM entities WHERE code = 'WSIC' OR name ILIKE '%wsic%' LIMIT 1`);
+    const wsicEntityId = wsicEntity.rows[0]?.id;
+
+    const [broadcastOrders, productionTasks, wsicRevenue, upcomingSpots] = await Promise.all([
+      adminPool.query(`SELECT DISTINCT o.*, ac.business_name as client_name, u.name as submitted_by_name,
+        (SELECT json_agg(json_build_object('id', oi.id, 'product_name', oi.product_name, 'product_category', oi.product_category, 'line_total', oi.line_total, 'entity_name', e.name))
+        FROM order_items oi LEFT JOIN entities e ON oi.entity_id = e.id WHERE oi.order_id = o.id AND (oi.entity_id = $1 OR oi.product_category ILIKE '%broadcast%' OR oi.product_category ILIKE '%radio%')) as items
+        FROM orders o LEFT JOIN advertising_clients ac ON o.client_id = ac.id LEFT JOIN users u ON o.submitted_by = u.id
+        WHERE EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND (oi.entity_id = $1 OR oi.product_category ILIKE '%broadcast%' OR oi.product_category ILIKE '%radio%'))
+        AND o.status IN ('signed', 'active', 'approved', 'sent') ORDER BY o.contract_start_date ASC LIMIT 30`, [wsicEntityId]),
+      adminPool.query(`SELECT t.*, ac.business_name as client_name FROM tasks t LEFT JOIN advertising_clients ac ON t.client_id = ac.id WHERE t.status != 'completed' AND (t.assigned_to = $1 OR t.assigned_role = 'radio' OR t.task_type IN ('production', 'radio_spot', 'commercial')) ORDER BY t.due_date ASC NULLS LAST`, [req.user.id]),
+      adminPool.query(`SELECT COALESCE(SUM(oi.line_total), 0) as monthly_revenue, COUNT(DISTINCT o.id) as order_count FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE oi.entity_id = $1 AND o.status IN ('signed', 'active') AND o.contract_start_date <= CURRENT_DATE AND o.contract_end_date >= CURRENT_DATE`, [wsicEntityId]),
+      adminPool.query(`SELECT o.*, ac.business_name as client_name FROM orders o JOIN order_items oi ON oi.order_id = o.id LEFT JOIN advertising_clients ac ON o.client_id = ac.id WHERE oi.entity_id = $1 AND o.status IN ('signed', 'active') AND o.contract_start_date >= CURRENT_DATE AND o.contract_start_date <= CURRENT_DATE + INTERVAL '30 days' ORDER BY o.contract_start_date ASC LIMIT 10`, [wsicEntityId])
+    ]);
+
+    res.json({
+      broadcastOrders: broadcastOrders.rows,
+      productionTasks: productionTasks.rows,
+      wsicRevenue: wsicRevenue.rows[0] || { monthly_revenue: 0, order_count: 0 },
+      upcomingSpots: upcomingSpots.rows,
+      summary: { activeOrders: broadcastOrders.rows.filter(o => o.status === 'active').length, pendingProduction: productionTasks.rows.length, upcomingStarts: upcomingSpots.rows.length }
+    });
+  } catch (error) {
+    console.error('Radio dashboard error:', error);
+    res.status(500).json({ error: 'Failed to load dashboard' });
+  }
+});
+
+// Creative Dashboard (Leslie)
+app.get('/api/dashboard/creative', authenticateToken, async (req, res) => {
+  try {
+    const lknEntity = await adminPool.query(`SELECT id FROM entities WHERE code = 'LKN' OR name ILIKE '%lake norman woman%' LIMIT 1`);
+    const lknEntityId = lknEntity.rows[0]?.id;
+
+    const [creativeTasks, printOrders, adBreakdown, broadcastNeedingCreative] = await Promise.all([
+      adminPool.query(`SELECT t.*, ac.business_name as client_name FROM tasks t LEFT JOIN advertising_clients ac ON t.client_id = ac.id WHERE t.status != 'completed' AND (t.assigned_to = $1 OR t.assigned_role IN ('creative', 'editorial') OR t.task_type IN ('creative_brief', 'art_collection', 'copy_writing')) ORDER BY CASE t.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 ELSE 3 END, t.due_date ASC NULLS LAST`, [req.user.id]),
+      adminPool.query(`SELECT DISTINCT o.*, ac.business_name as client_name, ac.primary_contact_email,
+        (SELECT json_agg(json_build_object('id', oi.id, 'product_name', oi.product_name, 'product_category', oi.product_category, 'line_total', oi.line_total, 'entity_name', e.name))
+        FROM order_items oi LEFT JOIN entities e ON oi.entity_id = e.id WHERE oi.order_id = o.id AND (oi.entity_id = $1 OR oi.product_category ILIKE '%print%')) as items
+        FROM orders o LEFT JOIN advertising_clients ac ON o.client_id = ac.id
+        WHERE EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND (oi.entity_id = $1 OR oi.product_category ILIKE '%print%'))
+        AND o.status IN ('signed', 'active') ORDER BY o.contract_start_date ASC LIMIT 30`, [lknEntityId]),
+      adminPool.query(`SELECT oi.product_name, COUNT(*) as count, COALESCE(SUM(oi.line_total), 0) as revenue FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE oi.entity_id = $1 AND o.status IN ('signed', 'active') AND oi.product_category ILIKE '%print%' GROUP BY oi.product_name ORDER BY revenue DESC`, [lknEntityId]),
+      adminPool.query(`SELECT DISTINCT o.*, ac.business_name as client_name, ac.primary_contact_email FROM orders o LEFT JOIN advertising_clients ac ON o.client_id = ac.id JOIN order_items oi ON oi.order_id = o.id WHERE (oi.product_category ILIKE '%broadcast%' OR oi.product_category ILIKE '%radio%') AND o.status IN ('signed', 'active') AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.order_id = o.id AND t.task_type = 'creative_brief' AND t.status = 'completed') ORDER BY o.contract_start_date ASC LIMIT 20`)
+    ]);
+
+    res.json({
+      tasks: creativeTasks.rows,
+      printOrders: printOrders.rows,
+      adBreakdown: adBreakdown.rows,
+      broadcastNeedingCreative: broadcastNeedingCreative.rows,
+      summary: { openTasks: creativeTasks.rows.length, activePrintOrders: printOrders.rows.length, needsCreativeBrief: broadcastNeedingCreative.rows.length }
+    });
+  } catch (error) {
+    console.error('Creative dashboard error:', error);
+    res.status(500).json({ error: 'Failed to load dashboard' });
+  }
+});
+
+// Events Dashboard (Erin)
+app.get('/api/dashboard/events', authenticateToken, async (req, res) => {
+  try {
+    const [eventOrders, eventRevenue, upcomingEvents, eventTasks, eventClients] = await Promise.all([
+      adminPool.query(`SELECT DISTINCT o.*, ac.business_name as client_name, u.name as submitted_by_name,
+        (SELECT json_agg(json_build_object('id', oi.id, 'product_name', oi.product_name, 'product_category', oi.product_category, 'line_total', oi.line_total, 'entity_name', e.name))
+        FROM order_items oi LEFT JOIN entities e ON oi.entity_id = e.id WHERE oi.order_id = o.id AND oi.product_category ILIKE '%event%') as items
+        FROM orders o LEFT JOIN advertising_clients ac ON o.client_id = ac.id LEFT JOIN users u ON o.submitted_by = u.id
+        WHERE EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id = o.id AND oi.product_category ILIKE '%event%')
+        AND o.status IN ('pending_approval', 'approved', 'sent', 'signed', 'active') ORDER BY o.contract_start_date ASC`),
+      adminPool.query(`SELECT TO_CHAR(o.contract_start_date, 'YYYY-MM') as month, COUNT(DISTINCT o.id) as order_count, COALESCE(SUM(oi.line_total), 0) as revenue FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE oi.product_category ILIKE '%event%' AND o.status IN ('signed', 'active') AND o.contract_start_date >= CURRENT_DATE - INTERVAL '6 months' GROUP BY TO_CHAR(o.contract_start_date, 'YYYY-MM') ORDER BY month DESC`),
+      adminPool.query(`SELECT DISTINCT o.*, ac.business_name as client_name FROM orders o JOIN order_items oi ON oi.order_id = o.id LEFT JOIN advertising_clients ac ON o.client_id = ac.id WHERE oi.product_category ILIKE '%event%' AND o.status IN ('signed', 'active') AND o.contract_start_date >= CURRENT_DATE ORDER BY o.contract_start_date ASC LIMIT 10`),
+      adminPool.query(`SELECT t.*, ac.business_name as client_name FROM tasks t LEFT JOIN advertising_clients ac ON t.client_id = ac.id WHERE t.status != 'completed' AND (t.assigned_to = $1 OR t.assigned_role = 'event_manager' OR t.task_type ILIKE '%event%') ORDER BY t.due_date ASC NULLS LAST`, [req.user.id]),
+      adminPool.query(`SELECT DISTINCT ac.id, ac.business_name, ac.primary_contact_name, ac.primary_contact_email, COUNT(o.id) as order_count, COALESCE(SUM(oi.line_total), 0) as total_revenue FROM advertising_clients ac JOIN orders o ON o.client_id = ac.id JOIN order_items oi ON oi.order_id = o.id WHERE oi.product_category ILIKE '%event%' AND o.status IN ('signed', 'active') GROUP BY ac.id, ac.business_name, ac.primary_contact_name, ac.primary_contact_email ORDER BY total_revenue DESC LIMIT 20`)
+    ]);
+
+    res.json({
+      eventOrders: eventOrders.rows,
+      eventRevenue: eventRevenue.rows,
+      upcomingEvents: upcomingEvents.rows,
+      tasks: eventTasks.rows,
+      eventClients: eventClients.rows,
+      summary: { totalEvents: eventOrders.rows.length, upcomingCount: upcomingEvents.rows.length, openTasks: eventTasks.rows.length, totalClients: eventClients.rows.length }
+    });
+  } catch (error) {
+    console.error('Events dashboard error:', error);
+    res.status(500).json({ error: 'Failed to load dashboard' });
+  }
+});
+
+// Sales Dashboard
+app.get('/api/dashboard/sales', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [myClients, myOrders, myCommissions, recentCommissions] = await Promise.all([
+      adminPool.query(`SELECT ac.*, (SELECT COUNT(*) FROM orders o WHERE o.client_id = ac.id AND o.status IN ('signed', 'active')) as active_orders, (SELECT COALESCE(SUM(contract_total), 0) FROM orders o WHERE o.client_id = ac.id AND o.status IN ('signed', 'active')) as total_contract_value FROM advertising_clients ac WHERE ac.sales_associate_id = $1 OR ac.assigned_to = $1 ORDER BY ac.last_activity_at DESC NULLS LAST LIMIT 50`, [userId]),
+      adminPool.query(`SELECT o.*, ac.business_name as client_name,
+        (SELECT json_agg(json_build_object('product_name', oi.product_name, 'product_category', oi.product_category, 'entity_name', e.name))
+        FROM order_items oi LEFT JOIN entities e ON oi.entity_id = e.id WHERE oi.order_id = o.id) as items
+        FROM orders o LEFT JOIN advertising_clients ac ON o.client_id = ac.id WHERE o.sales_associate_id = $1 OR o.submitted_by = $1
+        ORDER BY CASE o.status WHEN 'draft' THEN 1 WHEN 'pending_approval' THEN 2 WHEN 'approved' THEN 3 WHEN 'sent' THEN 4 WHEN 'signed' THEN 5 WHEN 'active' THEN 6 ELSE 7 END, o.created_at DESC LIMIT 30`, [userId]),
+      adminPool.query(`SELECT COALESCE(SUM(CASE WHEN status = 'approved' AND period_year = EXTRACT(YEAR FROM CURRENT_DATE) THEN commission_amount END), 0) as ytd_approved, COALESCE(SUM(CASE WHEN status = 'pending' THEN commission_amount END), 0) as pending, COALESCE(SUM(CASE WHEN status = 'paid' AND period_year = EXTRACT(YEAR FROM CURRENT_DATE) THEN commission_amount END), 0) as ytd_paid, COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count FROM commissions WHERE user_id = $1`, [userId]),
+      adminPool.query(`SELECT c.*, ac.business_name as client_name FROM commissions c LEFT JOIN advertising_clients ac ON c.client_id = ac.id WHERE c.user_id = $1 ORDER BY c.created_at DESC LIMIT 10`, [userId])
+    ]);
+
+    const orders = myOrders.rows;
+    const pipelineSummary = {
+      draft: orders.filter(o => o.status === 'draft').length,
+      pending_approval: orders.filter(o => o.status === 'pending_approval').length,
+      approved: orders.filter(o => o.status === 'approved').length,
+      sent: orders.filter(o => o.status === 'sent').length,
+      signed: orders.filter(o => o.status === 'signed').length,
+      active: orders.filter(o => o.status === 'active').length
+    };
+    const pipelineValue = orders.filter(o => ['draft', 'pending_approval', 'approved', 'sent'].includes(o.status)).reduce((sum, o) => sum + parseFloat(o.contract_total || 0), 0);
+
+    res.json({
+      myClients: myClients.rows,
+      myOrders: orders,
+      commissions: { ...myCommissions.rows[0], recent: recentCommissions.rows },
+      pipelineSummary,
+      pipelineValue,
+      summary: { totalClients: myClients.rows.length, activeOrders: orders.filter(o => o.status === 'active').length, pipelineOrders: orders.filter(o => ['draft', 'pending_approval', 'approved', 'sent'].includes(o.status)).length }
+    });
+  } catch (error) {
+    console.error('Sales dashboard error:', error);
+    res.status(500).json({ error: 'Failed to load dashboard' });
+  }
+});
+
+// Task management
+app.post('/api/tasks', authenticateToken, async (req, res) => {
+  try {
+    const { title, description, task_type, assigned_to, assigned_role, priority, due_date, order_id, invoice_id, client_id } = req.body;
+    const result = await adminPool.query(`INSERT INTO tasks (title, description, task_type, assigned_to, assigned_role, priority, due_date, order_id, invoice_id, client_id, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending') RETURNING *`,
+      [title, description, task_type, assigned_to, assigned_role, priority || 'normal', due_date, order_id, invoice_id, client_id]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Create task error:', error);
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+});
+
+app.put('/api/tasks/:id', authenticateToken, async (req, res) => {
+  try {
+    const { status, notes } = req.body;
+    const completedClause = status === 'completed' ? `, completed_at = NOW(), completed_by = '${req.user.id}'` : '';
+    const result = await adminPool.query(`UPDATE tasks SET status = $1, notes = COALESCE($2, notes), updated_at = NOW()${completedClause} WHERE id = $3 RETURNING *`, [status, notes, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update task error:', error);
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
+app.get('/api/tasks', authenticateToken, async (req, res) => {
+  try {
+    const { status, assigned_to, task_type } = req.query;
+    let query = `SELECT t.*, ac.business_name as client_name, assignee.name as assigned_to_name FROM tasks t LEFT JOIN advertising_clients ac ON t.client_id = ac.id LEFT JOIN users assignee ON t.assigned_to = assignee.id WHERE 1=1`;
+    const params = [];
+    if (status) { params.push(status); query += ` AND t.status = $${params.length}`; }
+    if (assigned_to) { params.push(assigned_to); query += ` AND t.assigned_to = $${params.length}`; }
+    if (task_type) { params.push(task_type); query += ` AND t.task_type = $${params.length}`; }
+    query += ` ORDER BY t.created_at DESC LIMIT 100`;
+    const result = await adminPool.query(query, params);
+    res.json({ tasks: result.rows });
+  } catch (error) {
+    console.error('Get tasks error:', error);
+    res.status(500).json({ error: 'Failed to get tasks' });
+  }
+});
+
+// ============================================
 // ERROR HANDLING
 // ============================================
 

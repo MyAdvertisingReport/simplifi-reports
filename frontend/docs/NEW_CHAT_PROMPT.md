@@ -1,6 +1,6 @@
 # WSIC Advertising Platform - New Chat Context
 ## Upload this file at the START of every new Claude chat
-## Last Updated: January 29, 2026 (Evening)
+## Last Updated: January 29, 2026 (Late Evening)
 
 ---
 
@@ -11,21 +11,22 @@
 ```
 simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
-│   ├── server.js              ← Main server (~5,700 lines) ⭐
+│   ├── server.js              ← Main server (~5,800 lines) ⭐
 │   ├── package.json
 │   ├── routes/
 │   │   ├── order.js           
 │   │   ├── billing.js         
 │   │   └── ...
 │   └── services/
-│       ├── email-service.js   
+│       ├── email-service.js   ← Universal Email Design System ⭐
 │       └── stripe-service.js  
 │
 └── frontend/                  ← Vercel deployment
     └── src/
         ├── App.jsx            ← Main app (~17k lines) ⭐
         └── components/
-            ├── BillingPage.jsx
+            ├── OrderList.jsx  ← Orders page with brand bubbles ⭐
+            ├── ClientSigningPage.jsx ← Stripe Financial Connections
             └── ...
 ```
 
@@ -49,9 +50,37 @@ git add server.js App.jsx
 | Database | PostgreSQL | Supabase |
 | Auth | JWT + bcrypt | Custom |
 | Email | Postmark | ✅ Working |
-| Payments | Stripe | ✅ Working |
+| Payments | Stripe | ✅ Working (Financial Connections) |
 | Ad Platform | Simpli.fi API | ✅ Working |
 | Domain | myadvertisingreport.com | Vercel |
+
+---
+
+## 📧 UNIVERSAL EMAIL DESIGN SYSTEM ⭐ NEW
+
+### Anti-Phishing Principles
+1. **NEVER use Order Numbers** in emails - backend only
+2. **Subject Format**: `[ACTION] - [CLIENT NAME] - [BRANDS]`
+3. **Always include Brand Bubbles** (dark blue #1e3a8a)
+4. **Always include Category Bubbles** with icons
+5. **Single clear CTA button**
+
+### Subject Line Examples
+```
+New Order Submitted - ABC Company - WSIC + Lake Norman Woman
+⚠️ Approval Required - ABC Company - WSIC
+✓ Approved - ABC Company - WSIC + Lake Norman Woman
+🎉 Contract Signed - ABC Company - WSIC
+```
+
+### Category Icons
+- 📰 Print (blue)
+- 📻 Broadcast (pink)  
+- 🎙️ Podcast (purple)
+- 💻 Digital (green)
+- 🎪 Events (amber)
+- 🌐 Web (indigo)
+- 📱 Social (rose)
 
 ---
 
@@ -64,17 +93,55 @@ git add server.js App.jsx
 | `contacts` | Contact people (first_name, last_name) |
 | `users` | Team members |
 | `orders` | Advertising orders |
+| `order_items` | Line items with `book_price`, `book_setup_fee` |
 | `invoices` | Billing invoices |
 | `commissions` | Commission records with split support |
-| `commission_rates` | User-specific rates |
-| `commission_rate_defaults` | Company-wide rates |
-| `training_modules` | Training content |
-| `training_progress` | User completion tracking |
+
+### Order Items Fields (for approval display)
+```sql
+order_items:
+  - book_price         -- Original product price
+  - book_setup_fee     -- Original setup fee
+  - unit_price         -- Adjusted price (what client pays)
+  - setup_fee          -- Adjusted setup fee
+  - discount_percent   -- Discount applied
+```
 
 ### User Roles
 ```sql
 CHECK (role IN ('admin', 'sales_manager', 'sales_associate', 'staff', 'sales', 'event_manager'))
 ```
+
+---
+
+## 👥 Team Structure & Dashboard Requirements
+
+### Super Admins (Macro Dashboard)
+| User | Email | Dashboard Focus |
+|------|-------|-----------------|
+| Justin Ckezepis | justin@wsicnews.com | All metrics, team performance, revenue, approvals |
+| Mamie Lee | mamie@wsicnews.com | All metrics, team performance, revenue, approvals |
+| Bill Blakely | bill@wsicnews.com | Radio/Programming focused (WSIC Broadcast) |
+
+### Admin (Operational Dashboard)
+| User | Email | Dashboard Focus |
+|------|-------|-----------------|
+| Lalaine Agustin | admin@wsicnews.com | Orders to process, pending payments, action items |
+
+### Event Manager (Events Dashboard)
+| User | Email | Dashboard Focus |
+|------|-------|-----------------|
+| Erin Connair | erin@lakenormanwoman.com | Events calendar, event orders, LKN Woman events |
+
+### Sales Associates (Sales Dashboard)
+- Their clients only
+- Their pipeline
+- Their commissions
+- CRM capabilities
+
+### Staff
+- Chelsea Bren, CJ Schrader, Reese Smith
+- Non-sales access, specialized views
 
 ---
 
@@ -91,98 +158,77 @@ CHECK (role IN ('admin', 'sales_manager', 'sales_associate', 'staff', 'sales', '
 | Events | 20% |
 | Default | 10% |
 
-### Features
-- Approvals tab on Commissions page
-- Split commission modal
-- Rate configuration UI
-- YTD summary
-
 ---
 
-## 👥 Key User Accounts
+## 🎯 CURRENT PRIORITIES
 
-| User | Email | Role |
-|------|-------|------|
-| Justin Ckezepis | justin@wsicnews.com | admin (Super Admin) |
-| Mamie Lee | mamie@wsicnews.com | admin (Super Admin) |
-| Lalaine Agustin | admin@wsicnews.com | admin |
-| Erin Connair | erin@lakenormanwoman.com | event_manager |
+### 1. Email System Fine-Tuning (In Progress)
+- [ ] Verify brand bubbles show on all email types
+- [ ] Ensure `order.items` is populated when emails are sent
+- [ ] Test all email templates with real orders
 
-**Password Reset Process:**
-```cmd
-cd simplifi-reports\backend
-node -e "require('bcrypt').hash('NewPassword', 10, (err, hash) => console.log(hash));"
-```
-Then in Supabase SQL:
-```sql
-UPDATE users SET password_hash = 'HASH' WHERE email = 'EMAIL';
-```
+### 2. Role-Based Dashboards (Next)
+- [ ] **Bill's Dashboard** - WSIC Radio/Programming focus
+- [ ] **Lalaine's Dashboard** - Operational action items
+- [ ] **Erin's Dashboard** - Events Manager view
+- [ ] **Sales Associate Dashboard** - Personal CRM
 
----
-
-## 🎯 CURRENT PRIORITY: Order Testing & Data Import
-
-### Testing Checklist
+### 3. Order Testing
 - [ ] New Order (Electronic) - Full signing flow
-- [ ] Upload Order (Pre-Signed) - PDF upload
-- [ ] Change Order - Modify existing
-- [ ] Kill Order - Cancel existing
-- [ ] Commission auto-generates
-
-### Data Import
-- Excel templates ready for: Print, Broadcast, Podcast, Events, Web/Social
-- Import to update client statuses
+- [ ] ACH with Stripe Financial Connections
+- [ ] Commission auto-generates on approval
 
 ---
 
-## ✅ Recently Completed (January 29, 2026)
+## ✅ Completed This Session (January 29, 2026 - Late Evening)
 
-### Commission System
-- Commission rates configuration
-- Approvals workflow with split support
-- YTD tracking and reporting
+### Email System Updates
+- Universal Email Design System principles
+- Subject lines: `[ACTION] - [CLIENT] - [BRANDS]` format
+- Brand bubbles in all order-related emails
+- Category bubbles with icons (📰📻🎙️💻🎪🌐📱)
+- Removed order numbers from all emails
+- Multiple recipients: Justin, Mamie, Lalaine + Bill (if WSIC)
+- Product details table in order submitted emails
 
-### User Management
-- Edit User feature on Users page
-- Event Manager role for Erin
-- Change Password in sidebar
-- Removed Preferences page
+### Orders Page Updates
+- Brand bubbles column in orders table
+- Category bubbles with icons under product count
+- Removed order numbers from display
+- Order detail modal shows client name (not order number)
+- Clear approval reasons showing:
+  - Book price vs adjusted price
+  - Discount percentage
+  - Setup fee waivers
 
-### Auth Fixes
-- Trust proxy for Railway rate limiter
-- Direct SQL for login/update endpoints
-- UUID auto-generation for new users
+### ACH Payment Fix
+- Implemented Stripe Financial Connections
+- Instant bank verification via customer's online banking
+- Replaced manual routing/account number entry
 
 ---
 
 ## 📝 API Endpoints Reference
 
-### Commissions
-```
-GET  /api/commissions                    - List commissions
-GET  /api/commissions/summary            - YTD summary
-GET  /api/commissions/pending            - Pending approvals
-GET  /api/commissions/rates              - Rate configuration
-POST /api/commissions/rates              - Add/update rate
-POST /api/commissions/:id/approve        - Approve commission
-POST /api/commissions/:id/split          - Split commission
-POST /api/commissions/:id/paid           - Mark as paid
-```
-
-### Users
-```
-GET  /api/users                          - List users
-GET  /api/users/:id                      - Get user
-PUT  /api/users/:id                      - Update user (admin)
-PUT  /api/auth/change-password           - Change own password
+### Email Recipients Logic
+```javascript
+// Order Submitted - always these three + conditional Bill
+const recipients = [
+  'justin@wsicnews.com',
+  'mamie@wsicnews.com', 
+  'admin@wsicnews.com'  // Lalaine
+];
+if (includesWSIC) {
+  recipients.push('bill@wsicnews.com');
+}
 ```
 
-### Orders
+### Key Endpoints
 ```
-GET  /api/orders                         - List orders
-POST /api/orders                         - Create order
-PUT  /api/orders/:id/approve             - Approve order
-POST /api/orders/:id/send-to-client      - Send for signing
+GET  /api/orders                         - List orders with items
+POST /api/orders/:id/status              - Update status (triggers emails)
+GET  /api/orders/:id                     - Get order with items
+POST /api/orders/sign/:token/setup-intent/ach - ACH Financial Connections
 ```
 
 ---
@@ -199,8 +245,12 @@ POST /api/orders/:id/send-to-client      - Send for signing
 cd simplifi-reports
 del backend\server.js
 del frontend\src\App.jsx
+del frontend\src\components\OrderList.jsx
+del backend\services\email-service.js
 copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
 copy "C:\Users\WSIC BILLING\Downloads\App.jsx" frontend\src\App.jsx
+copy "C:\Users\WSIC BILLING\Downloads\OrderList.jsx" frontend\src\components\OrderList.jsx
+copy "C:\Users\WSIC BILLING\Downloads\email-service.js" backend\services\email-service.js
 git add -A
 git commit -m "Description"
 git push origin main
@@ -208,27 +258,26 @@ git push origin main
 
 ---
 
-## 📚 Session Docs to Upload
+## 📚 Files to Upload for Next Session
 
-1. **NEW_CHAT_PROMPT.md** - This file (always upload first)
+### Required
+1. **NEW_CHAT_PROMPT.md** - This file (always first)
 2. **ROADMAP.md** - Current priorities
 3. **SESSION_SUMMARY.md** - Last session's work
-4. **ORDER_IMPORT_INSTRUCTIONS.md** - For data import work
+4. **EMAIL_DESIGN_SYSTEM.md** - Email principles
 
-### For Order Testing
-- Order templates (Excel files)
-- Sample test data
-
-### Optional
-- **App.jsx** - For frontend changes
+### Code Files (for dashboard work)
+- **App.jsx** - For dashboard customization
 - **server.js** - For backend reference
+- **email-service.js** - For email fine-tuning
+- **OrderList.jsx** - For orders page reference
 
 ---
 
 ## 🔒 Security Notes
 
+- Order numbers: NEVER in client/public emails (phishing prevention)
 - Passwords hashed with bcrypt (10 rounds)
 - JWT authentication with 24h expiry
-- Rate limiting on login (10 attempts/15 min)
-- Trust proxy enabled for Railway
-- Super Admin audit logging enabled
+- Stripe Financial Connections for secure bank verification
+- No card/bank data stored locally (Stripe handles all)

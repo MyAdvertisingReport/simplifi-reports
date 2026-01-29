@@ -1,114 +1,146 @@
 # WSIC Advertising Platform - Development Roadmap
-## Updated: January 29, 2026 (Evening)
+## Updated: January 29, 2026 (Late Evening)
 
 ---
 
 ## ✅ COMPLETED
 
-### Commission System (January 29, 2026 - Evening)
-- [x] Commission rates table with user-specific rates
-- [x] Default commission rates (Print 30%, Broadcast 30%, Digital 18%, Events 20%)
-- [x] Commissions page with Approvals tab
-- [x] Split commission functionality
-- [x] Commission rate configuration UI
-- [x] YTD summary and monthly breakdown
+### Email Design System (January 29, 2026 - Late Evening)
+- [x] Universal Email Design System principles
+- [x] Subject format: `[ACTION] - [CLIENT] - [BRANDS]`
+- [x] Brand bubbles in all order emails
+- [x] Category bubbles with icons (📰📻🎙️💻🎪🌐📱)
+- [x] Removed order numbers from all emails (anti-phishing)
+- [x] Multi-recipient logic (Justin, Mamie, Lalaine + Bill if WSIC)
+- [x] Product details table with book price vs adjusted price
 
-### User Management Enhancements (January 29, 2026)
-- [x] Edit User feature (pencil icon on Users page)
-- [x] Role dropdown with Event Manager, Staff options
-- [x] Password reset capability for admins
-- [x] Change Password moved to sidebar
-- [x] Removed Preferences page
+### Orders Page Visual Updates (January 29, 2026)
+- [x] Brand bubbles column in orders table
+- [x] Category bubbles with icons
+- [x] Removed order numbers from UI display
+- [x] Order modal shows client name as header
+- [x] Clear approval reasons (book price → adjusted price, discount %)
 
-### Event Manager Role (January 29, 2026)
-- [x] Added `event_manager` to role constraint
-- [x] Created Erin Connair account
-- [x] Set up 20% events commission rate
+### ACH Payment Fix (January 29, 2026)
+- [x] Stripe Financial Connections integration
+- [x] Instant bank verification via online banking
+- [x] Removed manual routing/account entry
 
-### Authentication Fixes (January 29, 2026)
-- [x] Fixed rate limiter for Railway (`trust proxy`)
-- [x] Fixed login endpoint (direct SQL)
-- [x] Fixed change password endpoint (direct SQL)
-- [x] Fixed user update endpoint (direct SQL)
-- [x] Fixed user creation (UUID default)
+### Commission System (January 29, 2026 - Earlier)
+- [x] Commission rates configuration
+- [x] Approvals workflow with split support
+- [x] YTD tracking and reporting
 
-### Training Center & Tools (January 29, 2026 - Earlier)
-- [x] Training Center with 4 categories, 21 modules
-- [x] Tools Page (`/tools`) with 5 resource categories
-- [x] User Profile goals and 1-on-1 meeting notes
-
-### Super Admin System (January 28-29, 2026)
-- [x] View As functionality with audit logging
-- [x] System Diagnostics page
-- [x] Audit Log tab on Users page
+### User Management (January 29, 2026)
+- [x] Edit User feature
+- [x] Event Manager role for Erin
+- [x] Change Password in sidebar
+- [x] Auth fixes (trust proxy, direct SQL)
 
 ---
 
-## 🎯 CURRENT PRIORITY
+## 🎯 CURRENT PRIORITY: Role-Based Dashboards
 
-### Phase 1: Order Testing & Data Import
-**Goal:** Verify order system works and import real client data
+### Phase 1: Dashboard Customization
+**Goal:** Each user type sees a dashboard relevant to their role
 
-**Testing Checklist:**
-- [ ] New Order (Electronic) - Full signing flow
-- [ ] Upload Order (Pre-Signed) - PDF upload
-- [ ] Change Order - Modify existing order
-- [ ] Kill Order - Cancel existing order
-- [ ] Client signing page works
-- [ ] Commission auto-generates on approval
+#### Super Admin Dashboard (Justin, Mamie)
+- [ ] All metrics overview
+- [ ] Team performance summary
+- [ ] Revenue by brand/category
+- [ ] Pending approvals count
+- [ ] Recent activity feed
 
-**Data Import:**
-- [ ] Import Print orders from template
-- [ ] Import Broadcast orders from template
-- [ ] Import Podcast orders from template
-- [ ] Import Events orders from template
-- [ ] Import Web/Social orders from template
-- [ ] Update client statuses based on orders
+#### Radio/Programming Dashboard (Bill)
+- [ ] WSIC Broadcast orders only
+- [ ] Station programming calendar
+- [ ] Radio spot inventory
+- [ ] Broadcast revenue metrics
 
-**Excel Templates Ready:**
-- `Print_Orders_Template.xlsx`
-- `Broadcast_Orders_Template.xlsx`
-- `Podcast_Orders_Template.xlsx`
-- `Events_Orders_Template.xlsx`
-- `WebSocial_Orders_Template.xlsx`
+#### Operational Dashboard (Lalaine)
+- [ ] Action items queue:
+  - Orders to process
+  - Contracts awaiting signature
+  - Invoices to send
+  - Payments pending
+  - Failed payments to follow up
+- [ ] Today's tasks checklist
+- [ ] Commissions to approve
+
+#### Event Manager Dashboard (Erin)
+- [ ] Upcoming events calendar
+- [ ] Event orders (LKN Woman focus)
+- [ ] Event revenue tracking
+- [ ] Event client list
+
+#### Sales Associate Dashboard (All Sales Reps)
+- [ ] My clients only
+- [ ] My pipeline
+- [ ] My commissions (YTD, pending)
+- [ ] My activity metrics
+- [ ] CRM quick actions
 
 ---
 
 ## 📋 NEXT PHASES
 
-### Phase 2: Reporting & Analytics
-**Goal:** Sales performance visibility
+### Phase 2: Email System Polish
+- [ ] Verify brand bubbles appear in all email types
+- [ ] Ensure `order.items` populated when emails sent
+- [ ] Test complete order flow with real data
+- [ ] Invoice emails with brand bubbles
 
-**Reports Needed:**
-- Sales Rep Performance (deals, revenue, commission)
-- Pipeline Report (prospects by stage)
-- Activity Report (calls, meetings, proposals)
-- Revenue by Product/Brand
-- Commission Reports by period
+### Phase 3: Order Testing Complete
+- [ ] New Order (Electronic) - Full flow
+- [ ] Upload Order (Pre-Signed)
+- [ ] Change Order
+- [ ] Kill Order
+- [ ] Commission auto-generation
 
-### Phase 3: Email Integration Enhancement
-**Goal:** Better email functionality from platform
-
-**Features:**
-- Email templates for common scenarios
-- Send from client detail page
-- Log emails as activities
-- Track opens/clicks (via Postmark)
+### Phase 4: Reporting & Analytics
+- [ ] Sales Rep Performance report
+- [ ] Pipeline Report
+- [ ] Revenue by Product/Brand
+- [ ] Commission Reports
 
 ---
 
-## 📊 Current Data State
+## 👥 User Dashboard Matrix
 
-| Metric | Count |
-|--------|-------|
-| Total Clients | 2,812 |
-| Active Clients | ~122 |
-| Prospect Clients | ~2,690 |
-| Open (unassigned) | ~2,135 |
-| Team Members | 19 (including Erin) |
-| Super Admins | 3 |
-| Training Modules | 21 active |
-| System Health | ✅ All Green |
+| User | Role | Dashboard Type | Key Focus |
+|------|------|----------------|-----------|
+| Justin Ckezepis | Super Admin | Macro | Everything |
+| Mamie Lee | Super Admin | Macro | Everything |
+| Bill Blakely | Super Admin | Radio | WSIC Broadcast, Programming |
+| Lalaine Agustin | Admin | Operational | Action items, processing |
+| Erin Connair | Event Manager | Events | LKN Woman events |
+| Sales Reps (10+) | Sales Associate | Personal | Their book of business |
+| Staff (3) | Staff | Minimal | Non-sales access |
+
+---
+
+## 📧 Email System Status
+
+### Working ✅
+- New Order Submitted (with brands, categories, product details)
+- Approval Required
+- Order Approved
+- Order Rejected
+- Contract Signed Internal
+
+### Need Verification 🔍
+- Contract to Client (brand bubbles showing?)
+- Invoice to Client
+- Payment Reminder
+- Payment Receipt
+
+### Email Recipients
+| Email Type | Recipients |
+|------------|------------|
+| Order Submitted | Justin, Mamie, Lalaine + Bill (if WSIC) |
+| Approval Required | Justin, Mamie, Lalaine, Bill |
+| Order Approved | Order submitter |
+| Contract Signed | Justin, Mamie, Lalaine + Sales Rep |
 
 ---
 
@@ -124,45 +156,38 @@
 | Events | 20% |
 | Other (fallback) | 10% |
 
-**Special Rates:**
-- Erin Connair: 20% on Events (with split rules)
-
 ---
 
-## 👥 User Roles
+## 📊 Current Data State
 
-| Role | Access Level |
-|------|--------------|
-| Admin | Full access |
-| Sales Manager | View all clients, approve orders |
-| Sales Associate | View assigned clients only |
-| Event Manager | Events focus, CRM access |
-| Staff | Non-sales access |
+| Metric | Count |
+|--------|-------|
+| Total Clients | 2,815 |
+| Active Clients | ~122 |
+| Team Members | 19 |
+| Super Admins | 3 (Justin, Mamie, Bill) |
+| Training Modules | 21 active |
+| System Health | ✅ All Green |
 
 ---
 
 ## 🗓️ Session History
 
+### January 29, 2026 (Late Evening) - Email & Orders
+- Universal Email Design System
+- Orders page brand/category bubbles
+- Clear approval reasons
+- ACH Financial Connections fix
+- Anti-phishing measures (no order numbers)
+
 ### January 29, 2026 (Evening) - Commission & Auth
 - Commission tracking system
-- Erin Connair event_manager setup
 - Edit User feature
-- Authentication fixes (trust proxy, direct SQL)
-- Change Password in sidebar
+- Authentication fixes
 
-### January 29, 2026 (Late Night) - Training & Tools
+### January 29, 2026 (Earlier) - Training & Tools
 - Training Center: 4 categories, 21 modules
 - Tools Page: 5 categories of resources
-- User Profiles: Goal setting + 1-on-1 notes
-
-### January 29, 2026 (Evening) - System Diagnostics
-- System Diagnostics page (/settings/system)
-- Visual health dashboard
-
-### January 28, 2026 - Super Admin & CRM
-- Super Admin role system
-- View As endpoints
-- Imported 2,800+ clients
 
 ---
 
@@ -172,6 +197,11 @@
 - **Always provide complete files**
 - No code snippets to insert
 - User replaces entire file
+
+### Key Files for Dashboard Work
+1. `App.jsx` - Dashboard components
+2. `server.js` - Dashboard data endpoints
+3. `email-service.js` - Email templates
 
 ### Git Workflow
 ```cmd
@@ -184,11 +214,3 @@ git add -A
 git commit -m "Description"
 git push origin main
 ```
-
-### Password Reset (if needed)
-```cmd
-cd simplifi-reports\backend
-npm install bcrypt
-node -e "require('bcrypt').hash('NewPassword123!', 10, (err, hash) => console.log(hash));"
-```
-Then update via Supabase SQL Editor.
