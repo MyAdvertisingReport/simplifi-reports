@@ -1914,6 +1914,29 @@ function ClientsPage() {
   const { user, viewingAs, isSuperAdmin } = useAuth();
   const { isMobile } = useResponsive();
   
+  // Add Contact modal states
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [addContactType, setAddContactType] = useState(null); // 'prospect' or 'lead'
+  const [newProspect, setNewProspect] = useState({
+    business_name: '',
+    industry: '',
+    phone: '',
+    website: '',
+    notes: ''
+  });
+  const [newLead, setNewLead] = useState({
+    business_name: '',
+    industry: '',
+    phone: '',
+    website: '',
+    notes: '',
+    contact_name: '',
+    contact_title: '',
+    contact_email: '',
+    contact_phone: ''
+  });
+  const [addingContact, setAddingContact] = useState(false);
+  
   // Determine the "effective user" - either the user being viewed as, or the actual user
   const effectiveUser = viewingAs || user;
   
@@ -2055,6 +2078,88 @@ function ClientsPage() {
     setClaimingId(null);
   };
 
+  // Add a new prospect (business only, no contact required)
+  const handleAddProspect = async (e) => {
+    e.preventDefault();
+    setAddingContact(true);
+    try {
+      // Create client with prospect status, auto-assign to current effective user
+      const clientData = {
+        name: newProspect.business_name,
+        business_name: newProspect.business_name,
+        status: 'prospect',
+        industry: newProspect.industry,
+        phone: newProspect.phone,
+        website: newProspect.website,
+        notes: newProspect.notes,
+        assigned_to: effectiveUser?.id // Auto-assign to the person adding it
+      };
+      await api.post('/api/clients', clientData);
+      
+      // Reset form and close modal
+      setNewProspect({ business_name: '', industry: '', phone: '', website: '', notes: '' });
+      setShowAddContactModal(false);
+      setAddContactType(null);
+      
+      // Reload data
+      await loadData();
+      alert('Prospect added successfully!');
+    } catch (err) {
+      alert('Failed to add prospect: ' + (err.message || 'Unknown error'));
+    }
+    setAddingContact(false);
+  };
+
+  // Add a new lead (business + decision maker contact)
+  const handleAddLead = async (e) => {
+    e.preventDefault();
+    setAddingContact(true);
+    try {
+      // First create the client with lead status
+      const clientData = {
+        name: newLead.business_name,
+        business_name: newLead.business_name,
+        status: 'lead',
+        industry: newLead.industry,
+        phone: newLead.phone,
+        website: newLead.website,
+        notes: newLead.notes,
+        assigned_to: effectiveUser?.id // Auto-assign to the person adding it
+      };
+      const newClient = await api.post('/api/clients', clientData);
+      
+      // Then add the contact if we have contact info
+      if (newLead.contact_name) {
+        try {
+          await api.post('/api/contacts', {
+            client_id: newClient.id,
+            name: newLead.contact_name,
+            title: newLead.contact_title,
+            email: newLead.contact_email,
+            phone: newLead.contact_phone,
+            is_primary: true,
+            is_decision_maker: true
+          });
+        } catch (contactErr) {
+          console.error('Failed to add contact:', contactErr);
+          // Client was created, just couldn't add contact
+        }
+      }
+      
+      // Reset form and close modal
+      setNewLead({ business_name: '', industry: '', phone: '', website: '', notes: '', contact_name: '', contact_title: '', contact_email: '', contact_phone: '' });
+      setShowAddContactModal(false);
+      setAddContactType(null);
+      
+      // Reload data
+      await loadData();
+      alert('Lead added successfully!');
+    } catch (err) {
+      alert('Failed to add lead: ' + (err.message || 'Unknown error'));
+    }
+    setAddingContact(false);
+  };
+
   const loadOrganizations = async () => {
     try {
       const [orgsData, clientsData] = await Promise.all([
@@ -2157,12 +2262,16 @@ function ClientsPage() {
   // Filter clients based on current filters
   const filteredClients = clients.filter(c => {
     // FIRST: Apply role-based visibility restrictions
-    // If viewing as a non-admin user (or is a non-admin user), only show their own assigned clients in CRM
+    // If viewing as a non-admin user (or is a non-admin user), only show their own assigned clients OR open accounts
     if (!effectiveCanSeeAll && viewMode === 'crm') {
-      // Non-admin users can only see: their own clients, OR open accounts they could claim
       const isMyClient = c.assigned_to === effectiveUser?.id;
       const isOpenAccount = !c.assigned_to;
-      if (!isMyClient && !isOpenAccount) return false;
+      
+      // Apply the owner filter toggle for non-admins
+      if (ownerFilter === 'mine' && !isMyClient) return false;
+      if (ownerFilter === 'open' && !isOpenAccount) return false;
+      // If 'all' (default), show both mine and open
+      if (ownerFilter === 'all' && !isMyClient && !isOpenAccount) return false;
     }
     
     // If viewing as a non-admin user in Client View, only show their assigned ACTIVE clients
@@ -2199,12 +2308,20 @@ function ClientsPage() {
       if (brandFilter === 'LKNW' && !hasLKNW) return false;
       if (brandFilter === 'multi' && !(hasWSIC && hasLKNW)) return false;
     }
-    // Client view only shows active clients (has orders or status = active)
+    // Client view shows clients that are active OR have assigned_to match (for non-admin, filtering already applied above)
     if (viewMode === 'client') {
       const orderStats = clientOrderStats[c.id];
       const hasOrders = orderStats?.totalOrders > 0;
       const isActive = c.status === 'active';
-      if (!hasOrders && !isActive) return false;
+      // For non-admins viewing their own clients, also include "assigned to them" regardless of status
+      const isAssignedToEffectiveUser = c.assigned_to === effectiveUser?.id;
+      if (!effectiveCanSeeAll) {
+        // Non-admin: show their clients that are active OR have orders OR are assigned to them (their book of business)
+        if (!hasOrders && !isActive && !isAssignedToEffectiveUser) return false;
+      } else {
+        // Admin: standard active/has orders filter
+        if (!hasOrders && !isActive) return false;
+      }
     }
     return true;
   }).sort((a, b) => {
@@ -2262,8 +2379,27 @@ function ClientsPage() {
           <h1 style={{ margin: 0 }}>Clients</h1>
           <p style={{ color: '#6b7280', margin: '0.25rem 0 0' }}>Manage your advertising clients and prospects</p>
         </div>
-        {effectiveCanSeeAll && (
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {/* Add Contact button - available to everyone */}
+          <button 
+            onClick={() => setShowAddContactModal(true)} 
+            style={{ 
+              padding: '0.625rem 1.25rem', 
+              background: '#10b981', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '0.5rem', 
+              fontWeight: 500, 
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}
+          >
+            <Users size={18} />
+            Add Contact
+          </button>
+          {effectiveCanSeeAll && (
             <button 
               onClick={() => setShowModal(true)} 
               style={{ 
@@ -2278,8 +2414,8 @@ function ClientsPage() {
             >
               Add Client Manually
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* View Toggle & Filters Bar */}
@@ -2412,17 +2548,41 @@ function ClientsPage() {
               </div>
             )}
             
-            {/* For non-admins, just show their client count */}
+            {/* For non-admins, toggle between Mine and Open */}
             {!effectiveCanSeeAll && (
-              <div style={{ 
-                padding: '0.375rem 0.75rem', 
-                background: '#dbeafe', 
-                borderRadius: '0.375rem',
-                fontSize: '0.8125rem',
-                fontWeight: 500,
-                color: '#1e40af'
-              }}>
-                👤 My Clients ({ownerCounts.mine}) + 🟡 Open ({ownerCounts.open})
+              <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+                <button
+                  onClick={() => setOwnerFilter('mine')}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    background: ownerFilter === 'mine' ? '#dbeafe' : 'transparent',
+                    color: ownerFilter === 'mine' ? '#1e40af' : '#6b7280',
+                    boxShadow: ownerFilter === 'mine' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  👤 Mine ({ownerCounts.mine})
+                </button>
+                <button
+                  onClick={() => setOwnerFilter('open')}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    border: 'none',
+                    borderRadius: '0.375rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    background: ownerFilter === 'open' ? '#fef3c7' : 'transparent',
+                    color: ownerFilter === 'open' ? '#92400e' : '#6b7280',
+                    boxShadow: ownerFilter === 'open' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                  }}
+                >
+                  🟡 Open ({ownerCounts.open})
+                </button>
               </div>
             )}
             
@@ -2929,6 +3089,326 @@ function ClientsPage() {
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
               <button type="button" onClick={() => setShowModal(false)} style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer' }}>Cancel</button>
               <button type="submit" style={{ padding: '0.625rem 1.25rem', background: '#1e3a8a', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}>Create</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Add Contact Modal - Type Selection */}
+      {showAddContactModal && !addContactType && (
+        <Modal onClose={() => setShowAddContactModal(false)} title="Add Contact">
+          <div style={{ padding: '1rem 0' }}>
+            <div style={{ 
+              background: '#fef3c7', 
+              border: '1px solid #fde68a', 
+              borderRadius: '0.5rem', 
+              padding: '1rem', 
+              marginBottom: '1.5rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.75rem'
+            }}>
+              <AlertCircle size={20} color="#d97706" style={{ flexShrink: 0, marginTop: '0.125rem' }} />
+              <div>
+                <strong style={{ color: '#92400e', fontSize: '0.875rem' }}>Before You Add</strong>
+                <p style={{ color: '#92400e', fontSize: '0.8125rem', margin: '0.25rem 0 0' }}>
+                  Please search the Master List first to confirm this business isn't already in our system.
+                </p>
+              </div>
+            </div>
+            
+            <p style={{ color: '#6b7280', marginBottom: '1.5rem', fontSize: '0.9375rem' }}>
+              What type of contact would you like to add?
+            </p>
+            
+            {/* Prospect Option */}
+            <button
+              onClick={() => setAddContactType('prospect')}
+              style={{
+                width: '100%',
+                padding: '1.25rem',
+                background: 'white',
+                border: '2px solid #e5e7eb',
+                borderRadius: '0.75rem',
+                cursor: 'pointer',
+                textAlign: 'left',
+                marginBottom: '1rem',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.background = '#f5f3ff'; }}
+              onMouseOut={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.background = 'white'; }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ 
+                  width: 48, height: 48, borderRadius: '0.75rem', 
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <Building2 size={24} color="white" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '1rem', color: '#111827', marginBottom: '0.25rem' }}>
+                    Add a Prospect
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.4 }}>
+                    A business you've identified and would like to pursue advertising opportunities with.
+                  </div>
+                </div>
+              </div>
+            </button>
+            
+            {/* Lead Option */}
+            <button
+              onClick={() => setAddContactType('lead')}
+              style={{
+                width: '100%',
+                padding: '1.25rem',
+                background: 'white',
+                border: '2px solid #e5e7eb',
+                borderRadius: '0.75rem',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseOver={(e) => { e.currentTarget.style.borderColor = '#f59e0b'; e.currentTarget.style.background = '#fffbeb'; }}
+              onMouseOut={(e) => { e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.background = 'white'; }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ 
+                  width: 48, height: 48, borderRadius: '0.75rem', 
+                  background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <UserCheck size={24} color="white" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '1rem', color: '#111827', marginBottom: '0.25rem' }}>
+                    Add a Lead
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.4 }}>
+                    A business where you've identified the Decision Maker — includes business + contact info.
+                  </div>
+                </div>
+              </div>
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Add Prospect Form */}
+      {showAddContactModal && addContactType === 'prospect' && (
+        <Modal onClose={() => { setShowAddContactModal(false); setAddContactType(null); }} title="Add a Prospect">
+          <form onSubmit={handleAddProspect}>
+            <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+              Add a business you'd like to pursue. You can add contact details later.
+            </p>
+            
+            <FormField 
+              label="Business Name" 
+              value={newProspect.business_name} 
+              onChange={(v) => setNewProspect({ ...newProspect, business_name: v })} 
+              placeholder="e.g., Acme Corporation" 
+              required 
+            />
+            <FormField 
+              label="Industry" 
+              value={newProspect.industry} 
+              onChange={(v) => setNewProspect({ ...newProspect, industry: v })} 
+              placeholder="e.g., Healthcare, Retail, Restaurant" 
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <FormField 
+                label="Phone" 
+                value={newProspect.phone} 
+                onChange={(v) => setNewProspect({ ...newProspect, phone: v })} 
+                placeholder="(555) 123-4567" 
+              />
+              <FormField 
+                label="Website" 
+                value={newProspect.website} 
+                onChange={(v) => setNewProspect({ ...newProspect, website: v })} 
+                placeholder="www.example.com" 
+              />
+            </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Notes</label>
+              <textarea 
+                value={newProspect.notes} 
+                onChange={(e) => setNewProspect({ ...newProspect, notes: e.target.value })}
+                placeholder="Any additional notes about this prospect..."
+                style={{ 
+                  width: '100%', 
+                  padding: '0.625rem', 
+                  border: '1px solid #d1d5db', 
+                  borderRadius: '0.5rem',
+                  minHeight: '80px',
+                  resize: 'vertical',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                onClick={() => { setShowAddContactModal(false); setAddContactType(null); }} 
+                style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                disabled={addingContact}
+                style={{ 
+                  padding: '0.625rem 1.25rem', 
+                  background: '#6366f1', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '0.5rem', 
+                  cursor: addingContact ? 'wait' : 'pointer',
+                  opacity: addingContact ? 0.7 : 1
+                }}
+              >
+                {addingContact ? 'Adding...' : 'Add Prospect'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Add Lead Form */}
+      {showAddContactModal && addContactType === 'lead' && (
+        <Modal onClose={() => { setShowAddContactModal(false); setAddContactType(null); }} title="Add a Lead">
+          <form onSubmit={handleAddLead}>
+            <p style={{ color: '#6b7280', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+              Add a business with a known Decision Maker contact.
+            </p>
+            
+            {/* Business Info Section */}
+            <div style={{ 
+              background: '#f9fafb', 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '0.5rem', 
+              padding: '1rem', 
+              marginBottom: '1rem' 
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', fontWeight: 600, color: '#374151' }}>
+                📍 Business Information
+              </h4>
+              <FormField 
+                label="Business Name" 
+                value={newLead.business_name} 
+                onChange={(v) => setNewLead({ ...newLead, business_name: v })} 
+                placeholder="e.g., Acme Corporation" 
+                required 
+              />
+              <FormField 
+                label="Industry" 
+                value={newLead.industry} 
+                onChange={(v) => setNewLead({ ...newLead, industry: v })} 
+                placeholder="e.g., Healthcare, Retail, Restaurant" 
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <FormField 
+                  label="Business Phone" 
+                  value={newLead.phone} 
+                  onChange={(v) => setNewLead({ ...newLead, phone: v })} 
+                  placeholder="(555) 123-4567" 
+                />
+                <FormField 
+                  label="Website" 
+                  value={newLead.website} 
+                  onChange={(v) => setNewLead({ ...newLead, website: v })} 
+                  placeholder="www.example.com" 
+                />
+              </div>
+            </div>
+            
+            {/* Contact Info Section */}
+            <div style={{ 
+              background: '#fffbeb', 
+              border: '1px solid #fde68a', 
+              borderRadius: '0.5rem', 
+              padding: '1rem', 
+              marginBottom: '1rem' 
+            }}>
+              <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', fontWeight: 600, color: '#92400e' }}>
+                👤 Decision Maker Contact
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <FormField 
+                  label="Contact Name" 
+                  value={newLead.contact_name} 
+                  onChange={(v) => setNewLead({ ...newLead, contact_name: v })} 
+                  placeholder="John Smith" 
+                  required
+                />
+                <FormField 
+                  label="Title" 
+                  value={newLead.contact_title} 
+                  onChange={(v) => setNewLead({ ...newLead, contact_title: v })} 
+                  placeholder="Owner, GM, Marketing Dir" 
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <FormField 
+                  label="Email" 
+                  value={newLead.contact_email} 
+                  onChange={(v) => setNewLead({ ...newLead, contact_email: v })} 
+                  placeholder="john@example.com" 
+                  type="email"
+                />
+                <FormField 
+                  label="Phone" 
+                  value={newLead.contact_phone} 
+                  onChange={(v) => setNewLead({ ...newLead, contact_phone: v })} 
+                  placeholder="(555) 123-4567" 
+                />
+              </div>
+            </div>
+            
+            {/* Notes */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Notes</label>
+              <textarea 
+                value={newLead.notes} 
+                onChange={(e) => setNewLead({ ...newLead, notes: e.target.value })}
+                placeholder="Any additional notes about this lead..."
+                style={{ 
+                  width: '100%', 
+                  padding: '0.625rem', 
+                  border: '1px solid #d1d5db', 
+                  borderRadius: '0.5rem',
+                  minHeight: '80px',
+                  resize: 'vertical',
+                  fontFamily: 'inherit'
+                }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                onClick={() => { setShowAddContactModal(false); setAddContactType(null); }} 
+                style={{ padding: '0.625rem 1.25rem', background: 'white', border: '1px solid #d1d5db', borderRadius: '0.5rem', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                disabled={addingContact}
+                style={{ 
+                  padding: '0.625rem 1.25rem', 
+                  background: '#f59e0b', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '0.5rem', 
+                  cursor: addingContact ? 'wait' : 'pointer',
+                  opacity: addingContact ? 0.7 : 1
+                }}
+              >
+                {addingContact ? 'Adding...' : 'Add Lead'}
+              </button>
             </div>
           </form>
         </Modal>
