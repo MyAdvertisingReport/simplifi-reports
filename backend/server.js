@@ -279,6 +279,48 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+// Super Admin-only middleware
+const requireSuperAdmin = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Super Admin access required' });
+    }
+    const result = await adminPool.query(
+      'SELECT is_super_admin FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0 || !result.rows[0].is_super_admin) {
+      return res.status(403).json({ error: 'Super Admin access required' });
+    }
+    next();
+  } catch (error) {
+    console.error('Super admin check error:', error);
+    res.status(500).json({ error: 'Authorization check failed' });
+  }
+};
+
+// Log Super Admin actions
+const logSuperAdminAction = async (superAdminId, actionType, targetUserId, targetUserName, description, metadata = {}, req = null) => {
+  try {
+    await adminPool.query(`
+      INSERT INTO super_admin_audit_log 
+      (super_admin_id, action_type, target_user_id, target_user_name, description, metadata, ip_address, user_agent)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      superAdminId,
+      actionType,
+      targetUserId,
+      targetUserName,
+      description,
+      JSON.stringify(metadata),
+      req?.ip || req?.connection?.remoteAddress || null,
+      req?.headers?.['user-agent'] || null
+    ]);
+  } catch (error) {
+    console.error('Failed to log super admin action:', error);
+  }
+};
+
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -333,18 +375,24 @@ if (app.loginLimiter) {
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    // Fetch fresh user data from database instead of using stale JWT data
-    const user = await dbHelper.getUserById(req.user.id);
-    if (!user) {
+    // Fetch fresh user data from database including super admin flag
+    const result = await adminPool.query(
+      'SELECT id, email, name, role, is_super_admin, is_sales, title FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    // Don't send password_hash to client
+    const user = result.rows[0];
     res.json({ 
       user: { 
         id: user.id, 
         email: user.email, 
         name: user.name, 
-        role: user.role 
+        role: user.role,
+        is_super_admin: user.is_super_admin || false,
+        is_sales: user.is_sales || false,
+        title: user.title
       } 
     });
   } catch (error) {
@@ -481,7 +529,7 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
 // ENHANCED USER MANAGEMENT ROUTES
 // ============================================
 
-// Get all users with extended info including full stats (Admin only)
+// Get all users with extended info including stats (Admin only)
 app.get('/api/users/extended', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const result = await adminPool.query(`
@@ -491,6 +539,7 @@ app.get('/api/users/extended', authenticateToken, requireAdmin, async (req, res)
         u.name, 
         u.role, 
         u.is_sales,
+        u.is_super_admin,
         u.title,
         u.rab_name,
         u.is_active,
@@ -506,7 +555,6 @@ app.get('/api/users/extended', authenticateToken, requireAdmin, async (req, res)
         -- Activity stats (last 30 days)
         COALESCE(activity_stats.recent_activities, 0) as recent_activities
       FROM users u
-      -- Client stats subquery
       LEFT JOIN (
         SELECT 
           assigned_to,
@@ -517,7 +565,6 @@ app.get('/api/users/extended', authenticateToken, requireAdmin, async (req, res)
         WHERE assigned_to IS NOT NULL
         GROUP BY assigned_to
       ) client_stats ON u.id = client_stats.assigned_to
-      -- Order stats via assigned clients
       LEFT JOIN (
         SELECT 
           c.assigned_to,
@@ -528,11 +575,8 @@ app.get('/api/users/extended', authenticateToken, requireAdmin, async (req, res)
         WHERE c.assigned_to IS NOT NULL
         GROUP BY c.assigned_to
       ) order_stats ON u.id = order_stats.assigned_to
-      -- Activity stats (last 30 days)
       LEFT JOIN (
-        SELECT 
-          user_id,
-          COUNT(*) as recent_activities
+        SELECT user_id, COUNT(*) as recent_activities
         FROM client_activities
         WHERE created_at > NOW() - INTERVAL '30 days'
         GROUP BY user_id
@@ -543,214 +587,6 @@ app.get('/api/users/extended', authenticateToken, requireAdmin, async (req, res)
   } catch (error) {
     console.error('Get extended users error:', error);
     res.status(500).json({ error: 'Failed to get users' });
-  }
-});
-
-// Get individual user stats and assigned clients (Admin only)
-app.get('/api/users/:id/stats', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    
-    // Get user info
-    const userResult = await adminPool.query(
-      'SELECT id, name, email, role, title, is_sales, is_active, last_login, created_at FROM users WHERE id = $1',
-      [userId]
-    );
-    
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    
-    const user = userResult.rows[0];
-    
-    // Get assigned clients with stats
-    const clientsResult = await adminPool.query(`
-      SELECT 
-        c.id, c.business_name, c.slug, c.status, c.industry, c.tags,
-        c.annual_contract_value, c.last_activity_at,
-        COALESCE(order_stats.active_orders, 0) as active_orders,
-        COALESCE(order_stats.total_revenue, 0) as total_revenue,
-        COALESCE(activity_stats.activity_count, 0) as activity_count
-      FROM advertising_clients c
-      LEFT JOIN (
-        SELECT 
-          client_id,
-          COUNT(*) FILTER (WHERE status IN ('signed', 'active')) as active_orders,
-          COALESCE(SUM(contract_total) FILTER (WHERE status IN ('signed', 'active', 'completed')), 0) as total_revenue
-        FROM orders
-        GROUP BY client_id
-      ) order_stats ON c.id = order_stats.client_id
-      LEFT JOIN (
-        SELECT client_id, COUNT(*) as activity_count
-        FROM client_activities
-        GROUP BY client_id
-      ) activity_stats ON c.id = activity_stats.client_id
-      WHERE c.assigned_to = $1
-      ORDER BY c.business_name ASC
-    `, [userId]);
-    
-    // Get recent activity summary
-    const activityResult = await adminPool.query(`
-      SELECT 
-        activity_type,
-        COUNT(*) as count
-      FROM client_activities
-      WHERE user_id = $1 AND created_at > NOW() - INTERVAL '30 days'
-      GROUP BY activity_type
-      ORDER BY count DESC
-    `, [userId]);
-    
-    // Calculate totals
-    const totals = {
-      total_clients: clientsResult.rows.length,
-      active_clients: clientsResult.rows.filter(c => c.status === 'active').length,
-      prospect_clients: clientsResult.rows.filter(c => ['prospect', 'lead'].includes(c.status)).length,
-      total_revenue: clientsResult.rows.reduce((sum, c) => sum + parseFloat(c.total_revenue || 0), 0),
-      active_orders: clientsResult.rows.reduce((sum, c) => sum + parseInt(c.active_orders || 0), 0),
-      total_activities: clientsResult.rows.reduce((sum, c) => sum + parseInt(c.activity_count || 0), 0)
-    };
-    
-    res.json({
-      user,
-      clients: clientsResult.rows,
-      activity_summary: activityResult.rows,
-      totals
-    });
-  } catch (error) {
-    console.error('Get user stats error:', error);
-    res.status(500).json({ error: 'Failed to get user stats' });
-  }
-});
-
-// Bulk assign clients to a user (Admin only)
-app.post('/api/clients/bulk-assign', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { clientIds, userId } = req.body;
-    
-    if (!clientIds || !Array.isArray(clientIds) || clientIds.length === 0) {
-      return res.status(400).json({ error: 'Client IDs array is required' });
-    }
-    
-    // userId can be null to unassign
-    let newOwnerName = 'Open Account';
-    if (userId) {
-      const userResult = await adminPool.query(
-        'SELECT id, name, is_sales FROM users WHERE id = $1 AND is_active = true',
-        [userId]
-      );
-      
-      if (userResult.rows.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      
-      if (!userResult.rows[0].is_sales) {
-        return res.status(400).json({ error: 'Target user must be a sales user' });
-      }
-      
-      newOwnerName = userResult.rows[0].name;
-    }
-    
-    // Update all clients
-    const updateResult = await adminPool.query(`
-      UPDATE advertising_clients 
-      SET assigned_to = $1,
-          date_reassigned = NOW(),
-          updated_at = NOW()
-      WHERE id = ANY($2::uuid[])
-      RETURNING id, business_name
-    `, [userId, clientIds]);
-    
-    // Log activities for each client
-    for (const client of updateResult.rows) {
-      try {
-        await adminPool.query(`
-          INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
-          VALUES ($1, $2, 'assignment_change', 'Bulk Assignment', $3)
-        `, [client.id, req.user.id, `Bulk assigned to ${newOwnerName} by ${req.user.name}`]);
-      } catch (actErr) {
-        console.log('Activity logging skipped:', actErr.message);
-      }
-    }
-    
-    res.json({ 
-      success: true, 
-      message: `${updateResult.rowCount} clients assigned to ${newOwnerName}`,
-      count: updateResult.rowCount
-    });
-  } catch (error) {
-    console.error('Bulk assign error:', error);
-    res.status(500).json({ error: 'Failed to bulk assign clients' });
-  }
-});
-
-// Transfer all clients from one user to another (Admin only)
-app.post('/api/users/:fromId/transfer-clients', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { fromId } = req.params;
-    const { toUserId } = req.body;
-    
-    // Verify from user exists
-    const fromUserResult = await adminPool.query(
-      'SELECT id, name FROM users WHERE id = $1',
-      [fromId]
-    );
-    
-    if (fromUserResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Source user not found' });
-    }
-    
-    const fromUser = fromUserResult.rows[0];
-    
-    // Verify to user exists and is sales (or null for unassign)
-    let toUserName = 'Open Account';
-    if (toUserId) {
-      const toUserResult = await adminPool.query(
-        'SELECT id, name, is_sales FROM users WHERE id = $1 AND is_active = true',
-        [toUserId]
-      );
-      
-      if (toUserResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Target user not found' });
-      }
-      
-      if (!toUserResult.rows[0].is_sales) {
-        return res.status(400).json({ error: 'Target user must be a sales user' });
-      }
-      
-      toUserName = toUserResult.rows[0].name;
-    }
-    
-    // Transfer all clients
-    const updateResult = await adminPool.query(`
-      UPDATE advertising_clients 
-      SET assigned_to = $1,
-          previous_owner = $2,
-          date_reassigned = NOW(),
-          updated_at = NOW()
-      WHERE assigned_to = $3
-      RETURNING id, business_name
-    `, [toUserId, fromUser.name, fromId]);
-    
-    // Log activities
-    for (const client of updateResult.rows) {
-      try {
-        await adminPool.query(`
-          INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
-          VALUES ($1, $2, 'assignment_change', 'Client Transfer', $3)
-        `, [client.id, req.user.id, `Transferred from ${fromUser.name} to ${toUserName} by ${req.user.name}`]);
-      } catch (actErr) {
-        console.log('Activity logging skipped:', actErr.message);
-      }
-    }
-    
-    res.json({ 
-      success: true, 
-      message: `${updateResult.rowCount} clients transferred from ${fromUser.name} to ${toUserName}`,
-      count: updateResult.rowCount
-    });
-  } catch (error) {
-    console.error('Transfer clients error:', error);
-    res.status(500).json({ error: 'Failed to transfer clients' });
   }
 });
 
@@ -4135,6 +3971,134 @@ app.get('/api/stripe/publishable-key/:entity', (req, res) => {
   }
   
   res.json({ key, entity });
+});
+
+// ============================================
+// SUPER ADMIN ROUTES
+// ============================================
+
+// Get user data for "View As" mode (Super Admin only)
+app.get('/api/super-admin/view-as/:userId', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    
+    const userResult = await adminPool.query(
+      'SELECT id, name, email, role, is_sales, is_super_admin, title FROM users WHERE id = $1',
+      [targetUserId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const targetUser = userResult.rows[0];
+    
+    // Log the view-as action
+    await logSuperAdminAction(
+      req.user.id, 'view_as_start', targetUserId, targetUser.name,
+      `Started viewing as ${targetUser.name}`, { targetRole: targetUser.role }, req
+    );
+    
+    // Get clients this user would see
+    let clients = [];
+    if (targetUser.role === 'admin' || targetUser.role === 'sales_manager') {
+      const clientsResult = await adminPool.query(`
+        SELECT c.*, u.name as assigned_to_name
+        FROM advertising_clients c
+        LEFT JOIN users u ON c.assigned_to = u.id
+        ORDER BY c.business_name ASC LIMIT 100
+      `);
+      clients = clientsResult.rows;
+    } else if (targetUser.is_sales) {
+      const clientsResult = await adminPool.query(`
+        SELECT c.*, u.name as assigned_to_name
+        FROM advertising_clients c
+        LEFT JOIN users u ON c.assigned_to = u.id
+        WHERE c.assigned_to = $1
+        ORDER BY c.business_name ASC
+      `, [targetUserId]);
+      clients = clientsResult.rows;
+    }
+    
+    // Get their recent activities
+    const activitiesResult = await adminPool.query(`
+      SELECT ca.*, c.business_name as client_name
+      FROM client_activities ca
+      JOIN advertising_clients c ON ca.client_id = c.id
+      WHERE ca.user_id = $1
+      ORDER BY ca.created_at DESC LIMIT 20
+    `, [targetUserId]);
+    
+    res.json({
+      viewing_as: targetUser,
+      clients,
+      recent_activities: activitiesResult.rows
+    });
+  } catch (error) {
+    console.error('View as error:', error);
+    res.status(500).json({ error: 'Failed to load user view' });
+  }
+});
+
+// Log end of "View As" session
+app.post('/api/super-admin/view-as/:userId/end', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const targetUserId = req.params.userId;
+    const userResult = await adminPool.query('SELECT name FROM users WHERE id = $1', [targetUserId]);
+    const targetUserName = userResult.rows[0]?.name || 'Unknown';
+    
+    await logSuperAdminAction(
+      req.user.id, 'view_as_end', targetUserId, targetUserName,
+      `Stopped viewing as ${targetUserName}`, {}, req
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('End view-as error:', error);
+    res.status(500).json({ error: 'Failed to log end of view-as session' });
+  }
+});
+
+// Get Super Admin audit log
+app.get('/api/super-admin/audit-log', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const { limit = 100, offset = 0 } = req.query;
+    
+    const result = await adminPool.query(`
+      SELECT sal.*, u.name as super_admin_name, u.email as super_admin_email
+      FROM super_admin_audit_log sal
+      JOIN users u ON sal.super_admin_id = u.id
+      ORDER BY sal.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [parseInt(limit), parseInt(offset)]);
+    
+    const countResult = await adminPool.query('SELECT COUNT(*) FROM super_admin_audit_log');
+    
+    res.json({
+      logs: result.rows,
+      total: parseInt(countResult.rows[0].count),
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+  } catch (error) {
+    console.error('Get audit log error:', error);
+    res.status(500).json({ error: 'Failed to get audit log' });
+  }
+});
+
+// Get list of Super Admins
+app.get('/api/super-admin/list', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      SELECT id, name, email, role, title, last_login, created_at
+      FROM users WHERE is_super_admin = TRUE AND is_active = TRUE
+      ORDER BY name ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get super admins error:', error);
+    res.status(500).json({ error: 'Failed to get super admins' });
+  }
 });
 
 // ============================================
