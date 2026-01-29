@@ -135,57 +135,154 @@ function emailTemplate({ title, preheader, content, footerText }) {
 // ORDER WORKFLOW EMAILS
 // ============================================================
 
+// Category color mapping for visual indicators
+const CATEGORY_COLORS = {
+  'Print': { bg: '#dbeafe', color: '#1e40af', icon: '📰' },
+  'Broadcast': { bg: '#fce7f3', color: '#9d174d', icon: '📻' },
+  'Podcast': { bg: '#f3e8ff', color: '#7c3aed', icon: '🎙️' },
+  'Digital': { bg: '#dcfce7', color: '#166534', icon: '💻' },
+  'Programmatic': { bg: '#dcfce7', color: '#166534', icon: '📊' },
+  'Events': { bg: '#fef3c7', color: '#92400e', icon: '🎪' },
+  'Web': { bg: '#e0e7ff', color: '#3730a3', icon: '🌐' },
+  'Social': { bg: '#ffe4e6', color: '#be123c', icon: '📱' },
+  'Default': { bg: '#f3f4f6', color: '#374151', icon: '📋' }
+};
+
+// Get category info with fallback
+function getCategoryStyle(category) {
+  if (!category) return CATEGORY_COLORS.Default;
+  const normalized = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+  return CATEGORY_COLORS[normalized] || CATEGORY_COLORS.Default;
+}
+
+// Build product category bubbles HTML
+function buildCategoryBubbles(items) {
+  if (!items || items.length === 0) return '';
+  
+  const categories = {};
+  items.forEach(item => {
+    const cat = item.category || item.product_category || 'Other';
+    if (!categories[cat]) {
+      categories[cat] = { count: 0, total: 0 };
+    }
+    categories[cat].count++;
+    categories[cat].total += parseFloat(item.line_total || item.monthly_price || 0);
+  });
+  
+  const bubbles = Object.entries(categories).map(([cat, data]) => {
+    const style = getCategoryStyle(cat);
+    return `
+      <div style="display: inline-block; background: ${style.bg}; color: ${style.color}; padding: 8px 16px; border-radius: 20px; margin: 4px; font-size: 13px; font-weight: 600;">
+        ${style.icon} ${cat} <span style="opacity: 0.7;">(${data.count})</span>
+      </div>
+    `;
+  }).join('');
+  
+  return `<div style="margin: 16px 0; text-align: center;">${bubbles}</div>`;
+}
+
+// Build brand logo bubbles
+function buildBrandBubbles(items) {
+  if (!items || items.length === 0) return '';
+  
+  const brands = {};
+  items.forEach(item => {
+    const brand = item.entity_name || 'WSIC';
+    if (!brands[brand]) {
+      brands[brand] = { logo: item.entity_logo, count: 0 };
+    }
+    brands[brand].count++;
+  });
+  
+  const bubbles = Object.entries(brands).map(([brand, data]) => {
+    if (data.logo) {
+      return `
+        <div style="display: inline-block; background: white; border: 2px solid #e5e7eb; padding: 8px 16px; border-radius: 12px; margin: 4px;">
+          <img src="${data.logo}" alt="${brand}" style="height: 32px; max-width: 100px; object-fit: contain; vertical-align: middle;" />
+        </div>
+      `;
+    }
+    return `
+      <div style="display: inline-block; background: #1e3a8a; color: white; padding: 10px 20px; border-radius: 12px; margin: 4px; font-weight: 600;">
+        ${brand}
+      </div>
+    `;
+  }).join('');
+  
+  return `<div style="margin: 16px 0; text-align: center;">${bubbles}</div>`;
+}
+
 /**
  * Send order confirmation to internal team when order is submitted
  */
 async function sendOrderSubmittedInternal({ order, submittedBy }) {
-  const subject = `New Order Submitted: ${order.order_number} - ${order.client_name}`;
+  // Build visual elements
+  const brandBubbles = buildBrandBubbles(order.items);
+  const categoryBubbles = buildCategoryBubbles(order.items);
+  
+  // Status styling
+  const statusConfig = {
+    'pending_approval': { bg: '#fef3c7', color: '#92400e', text: 'Needs Approval', icon: '⏳' },
+    'approved': { bg: '#d1fae5', color: '#065f46', text: 'Approved', icon: '✓' },
+    'pending': { bg: '#dbeafe', color: '#1e40af', text: 'Processing', icon: '📋' },
+    'sent_to_client': { bg: '#e0e7ff', color: '#3730a3', text: 'Sent to Client', icon: '📧' },
+  };
+  const status = statusConfig[order.status] || statusConfig['pending'];
+  
+  // Subject without order number
+  const subject = `New Order: ${order.client_name} - $${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo`;
   
   const content = `
-    <div class="header">
-      <h1>New Order Submitted</h1>
-      <p>Order requires ${order.status === 'pending_approval' ? 'approval' : 'processing'}</p>
+    <div class="header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px; font-weight: 600;">📋 New Order Submitted</h1>
+      <p style="color: #e0e7ff !important; margin: 8px 0 0; font-size: 14px;">by ${submittedBy.name}</p>
     </div>
-    <div class="body">
-      <p>A new order has been submitted by <strong>${submittedBy.name}</strong>.</p>
+    <div class="body" style="background-color: #ffffff; color: #374151; padding: 32px;">
       
-      <table class="details-table">
-        <tr>
-          <td>Order Number</td>
-          <td><strong>${order.order_number}</strong></td>
-        </tr>
-        <tr>
-          <td>Client</td>
-          <td>${order.client_name}</td>
-        </tr>
-        <tr>
-          <td>Status</td>
-          <td><span class="status-badge ${order.status === 'pending_approval' ? 'status-pending' : 'status-approved'}">${order.status === 'pending_approval' ? 'Pending Approval' : 'Approved'}</span></td>
-        </tr>
-        <tr>
-          <td>Contract Term</td>
-          <td>${order.term_months} month${order.term_months !== 1 ? 's' : ''}</td>
-        </tr>
-        <tr>
-          <td>Monthly Total</td>
-          <td>$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>
-        <tr>
-          <td>Contract Total</td>
-          <td class="amount">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>
-      </table>
+      <!-- Client Name - Hero -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 28px;">${order.client_name}</h2>
+        <span style="display: inline-block; background: ${status.bg}; color: ${status.color}; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">
+          ${status.icon} ${status.text}
+        </span>
+      </div>
+      
+      <!-- Brand Logos -->
+      ${brandBubbles}
+      
+      <!-- Product Categories -->
+      ${categoryBubbles}
+      
+      <!-- Key Details Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0;">
+        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center;">
+          <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Monthly</div>
+          <div style="color: #1e3a8a; font-size: 24px; font-weight: 700;">$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+        </div>
+        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center;">
+          <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Contract Term</div>
+          <div style="color: #1e293b; font-size: 24px; font-weight: 700;">${order.term_months} mo</div>
+        </div>
+      </div>
+      
+      <!-- Contract Total -->
+      <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+        <div style="color: #166534; font-size: 13px; margin-bottom: 4px;">Total Contract Value</div>
+        <div style="color: #166534; font-size: 32px; font-weight: 700;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+      </div>
       
       ${order.status === 'pending_approval' ? `
-        <p class="text-muted">⚠️ This order has price adjustments and requires management approval.</p>
+        <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 12px; padding: 16px; margin-bottom: 20px; text-align: center;">
+          <span style="color: #92400e; font-weight: 600;">⚠️ Price adjustments require management approval</span>
+        </div>
       ` : ''}
       
       <div style="text-align: center;">
-        <a href="${BASE_URL}/orders/${order.id}/edit" class="button">Review Order</a>
+        <a href="${BASE_URL}/clients/${order.client_id}" class="button" style="background: #1e3a8a; color: white !important; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; display: inline-block;">View Client</a>
       </div>
     </div>
-    <div class="footer">
-      Submitted on ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+    <div class="footer" style="padding: 20px; background: #f9fafb; text-align: center; color: #64748b; font-size: 13px;">
+      ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
     </div>
   `;
 
@@ -193,7 +290,7 @@ async function sendOrderSubmittedInternal({ order, submittedBy }) {
     to: process.env.ADMIN_EMAIL || 'justin@wsicnews.com',
     from: FROM_ADDRESSES.noreply,
     subject,
-    htmlBody: emailTemplate({ title: subject, preheader: `Order ${order.order_number} from ${order.client_name}`, content }),
+    htmlBody: emailTemplate({ title: subject, preheader: `${order.client_name} - $${parseFloat(order.contract_total || 0).toLocaleString()} contract`, content }),
     tag: 'order-submitted',
     metadata: { orderId: order.id, orderNumber: order.order_number }
   });
@@ -203,67 +300,72 @@ async function sendOrderSubmittedInternal({ order, submittedBy }) {
  * Send approval request to manager when price adjustments need approval
  */
 async function sendApprovalRequest({ order, submittedBy, adjustments }) {
-  const subject = `Approval Required: ${order.order_number} - Price Adjustments`;
+  const brandBubbles = buildBrandBubbles(order.items);
   
-  const adjustmentsList = adjustments.map(adj => `
-    <tr>
-      <td>${adj.product_name}</td>
-      <td style="text-decoration: line-through; color: #9ca3af;">$${adj.original_price}</td>
-      <td style="color: #dc2626; font-weight: 600;">$${adj.adjusted_price}</td>
-      <td>${adj.discount_percent ? `-${adj.discount_percent}%` : 'Custom'}</td>
-    </tr>
-  `).join('');
+  const subject = `⚠️ Approval Needed: ${order.client_name} - $${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}`;
+  
+  const adjustmentsList = adjustments.map(adj => {
+    const style = getCategoryStyle(adj.category || adj.product_category);
+    return `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+          <span style="display: inline-block; background: ${style.bg}; color: ${style.color}; padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-right: 8px;">${style.icon}</span>
+          ${adj.product_name}
+        </td>
+        <td style="padding: 12px; text-decoration: line-through; color: #9ca3af; text-align: right; border-bottom: 1px solid #e5e7eb;">$${adj.original_price}</td>
+        <td style="padding: 12px; color: #dc2626; font-weight: 600; text-align: right; border-bottom: 1px solid #e5e7eb;">$${adj.adjusted_price}</td>
+        <td style="padding: 12px; text-align: right; border-bottom: 1px solid #e5e7eb;">
+          <span style="background: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+            ${adj.discount_percent ? `-${adj.discount_percent}%` : 'Custom'}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #92400e 0%, #f59e0b 100%);">
-      <h1>⚠️ Approval Required</h1>
-      <p>Price adjustments need your review</p>
+    <div class="header" style="background: linear-gradient(135deg, #92400e 0%, #f59e0b 100%); padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px;">⚠️ Approval Required</h1>
+      <p style="color: #fef3c7 !important; margin: 8px 0 0;">Price adjustments need your review</p>
     </div>
-    <div class="body">
-      <p><strong>${submittedBy.name}</strong> has submitted an order with price adjustments that require approval.</p>
+    <div class="body" style="padding: 32px; background: white;">
       
-      <table class="details-table">
-        <tr>
-          <td>Order Number</td>
-          <td><strong>${order.order_number}</strong></td>
-        </tr>
-        <tr>
-          <td>Client</td>
-          <td>${order.client_name}</td>
-        </tr>
-        <tr>
-          <td>Contract Total</td>
-          <td class="amount">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>
-      </table>
+      <!-- Client Hero -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 28px;">${order.client_name}</h2>
+        <p style="color: #64748b; margin: 0;">Submitted by ${submittedBy.name}</p>
+      </div>
       
-      <div class="divider"></div>
+      ${brandBubbles}
       
-      <h3 style="margin-bottom: 12px;">Price Adjustments</h3>
-      <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+      <!-- Contract Value -->
+      <div style="background: #fef3c7; border: 2px solid #fcd34d; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
+        <div style="color: #92400e; font-size: 13px; margin-bottom: 4px;">Adjusted Contract Value</div>
+        <div style="color: #92400e; font-size: 32px; font-weight: 700;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+      </div>
+      
+      <!-- Adjustments Table -->
+      <h3 style="color: #1e293b; margin: 24px 0 12px 0; font-size: 16px;">Price Adjustments</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; background: #f8fafc; border-radius: 8px; overflow: hidden;">
         <thead>
-          <tr style="background: #f9fafb;">
-            <th style="padding: 8px; text-align: left;">Product</th>
-            <th style="padding: 8px; text-align: left;">Book Price</th>
-            <th style="padding: 8px; text-align: left;">Adjusted</th>
-            <th style="padding: 8px; text-align: left;">Discount</th>
+          <tr style="background: #1e293b;">
+            <th style="padding: 12px; text-align: left; color: white; font-weight: 500;">Product</th>
+            <th style="padding: 12px; text-align: right; color: white; font-weight: 500;">Book</th>
+            <th style="padding: 12px; text-align: right; color: white; font-weight: 500;">Adjusted</th>
+            <th style="padding: 12px; text-align: right; color: white; font-weight: 500;">Discount</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody style="background: white;">
           ${adjustmentsList}
         </tbody>
       </table>
       
-      <div style="text-align: center; margin-top: 24px;">
-        <a href="${BASE_URL}/orders/${order.id}/edit" class="button">Review & Approve</a>
+      <div style="text-align: center; margin-top: 32px;">
+        <a href="${BASE_URL}/approvals" class="button" style="background: #f59e0b; color: white !important; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; display: inline-block;">Review & Approve</a>
       </div>
-      
-      <p class="text-muted text-small" style="margin-top: 24px;">
-        You can approve or reject this order from the order details page.
-      </p>
     </div>
-    <div class="footer">
-      Submitted by ${submittedBy.name} on ${new Date().toLocaleDateString()}
+    <div class="footer" style="padding: 20px; background: #f9fafb; text-align: center; color: #64748b; font-size: 13px;">
+      ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
     </div>
   `;
 
@@ -281,37 +383,44 @@ async function sendApprovalRequest({ order, submittedBy, adjustments }) {
  * Send order approved notification
  */
 async function sendOrderApproved({ order, approvedBy }) {
-  const subject = `Order Approved: ${order.order_number}`;
+  const brandBubbles = buildBrandBubbles(order.items);
+  const categoryBubbles = buildCategoryBubbles(order.items);
+  
+  const subject = `✓ Approved: ${order.client_name} - Ready to Send`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%);">
-      <h1>✓ Order Approved</h1>
-      <p>Ready to send to client</p>
+    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px;">✓ Order Approved</h1>
+      <p style="color: #d1fae5 !important; margin: 8px 0 0;">Ready to send to client</p>
     </div>
-    <div class="body">
-      <p>Great news! Order <strong>${order.order_number}</strong> has been approved by ${approvedBy.name}.</p>
+    <div class="body" style="padding: 32px; background: white;">
       
-      <table class="details-table">
-        <tr>
-          <td>Client</td>
-          <td><strong>${order.client_name}</strong></td>
-        </tr>
-        <tr>
-          <td>Contract Total</td>
-          <td class="amount">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>
-      </table>
+      <!-- Client Hero -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 28px;">${order.client_name}</h2>
+        <span style="display: inline-block; background: #d1fae5; color: #065f46; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">
+          ✓ Approved by ${approvedBy.name}
+        </span>
+      </div>
       
-      <div style="text-align: center;">
-        <a href="${BASE_URL}/orders/${order.id}/edit" class="button button-secondary">Send to Client</a>
+      ${brandBubbles}
+      ${categoryBubbles}
+      
+      <!-- Contract Value -->
+      <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
+        <div style="color: #166534; font-size: 13px; margin-bottom: 4px;">Contract Value</div>
+        <div style="color: #166534; font-size: 32px; font-weight: 700;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+      </div>
+      
+      <div style="text-align: center; margin-top: 24px;">
+        <a href="${BASE_URL}/clients/${order.client_id}" class="button button-secondary" style="background: #059669; color: white !important; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; display: inline-block;">Send to Client</a>
       </div>
     </div>
-    <div class="footer">
-      Approved on ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+    <div class="footer" style="padding: 20px; background: #f9fafb; text-align: center; color: #64748b; font-size: 13px;">
+      ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
     </div>
   `;
 
-  // Notify the person who submitted the order
   return sendEmail({
     to: order.submitted_by_email || process.env.ADMIN_EMAIL,
     from: FROM_ADDRESSES.orders,
@@ -326,40 +435,46 @@ async function sendOrderApproved({ order, approvedBy }) {
  * Send order rejected notification
  */
 async function sendOrderRejected({ order, rejectedBy, reason }) {
-  const subject = `Order Requires Revision: ${order.order_number}`;
+  const brandBubbles = buildBrandBubbles(order.items);
+  
+  const subject = `⚠️ Revision Needed: ${order.client_name}`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%);">
-      <h1>Order Returned</h1>
-      <p>Revisions required</p>
+    <div class="header" style="background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%); padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 24px;">Order Returned</h1>
+      <p style="color: #fecaca !important; margin: 8px 0 0;">Revisions required</p>
     </div>
-    <div class="body">
-      <p>Order <strong>${order.order_number}</strong> has been returned by ${rejectedBy.name} and requires revision.</p>
+    <div class="body" style="padding: 32px; background: white;">
       
-      <table class="details-table">
-        <tr>
-          <td>Client</td>
-          <td><strong>${order.client_name}</strong></td>
-        </tr>
-        <tr>
-          <td>Contract Total</td>
-          <td>$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>
-      </table>
+      <!-- Client Hero -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 28px;">${order.client_name}</h2>
+        <span style="display: inline-block; background: #fee2e2; color: #991b1b; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600;">
+          ↩️ Returned by ${rejectedBy.name}
+        </span>
+      </div>
+      
+      ${brandBubbles}
       
       ${reason ? `
-        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 20px 0;">
-          <strong style="color: #991b1b;">Reason:</strong>
-          <p style="margin: 8px 0 0; color: #991b1b;">${reason}</p>
+        <div style="background: #fef2f2; border: 2px solid #fecaca; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <div style="color: #991b1b; font-weight: 600; margin-bottom: 8px;">📝 Reason for Return:</div>
+          <p style="margin: 0; color: #7f1d1d; line-height: 1.6;">${reason}</p>
         </div>
       ` : ''}
       
-      <div style="text-align: center;">
-        <a href="${BASE_URL}/orders/${order.id}/edit" class="button">Edit Order</a>
+      <!-- Contract Value -->
+      <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
+        <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Contract Value</div>
+        <div style="color: #1e293b; font-size: 24px; font-weight: 700;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+      </div>
+      
+      <div style="text-align: center; margin-top: 24px;">
+        <a href="${BASE_URL}/clients/${order.client_id}" class="button" style="background: #1e3a8a; color: white !important; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; display: inline-block;">Edit Order</a>
       </div>
     </div>
-    <div class="footer">
-      Returned on ${new Date().toLocaleDateString()}
+    <div class="footer" style="padding: 20px; background: #f9fafb; text-align: center; color: #64748b; font-size: 13px;">
+      ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
     </div>
   `;
 
@@ -735,46 +850,65 @@ async function sendAchSetupEmail({ order, contact, achSetupUrl }) {
  * Send internal notification when contract is signed
  */
 async function sendContractSignedInternal({ order, contact }) {
-  const subject = `🎉 Contract Signed: ${order.order_number} - ${order.client_name}`;
+  const brandBubbles = buildBrandBubbles(order.items);
+  const categoryBubbles = buildCategoryBubbles(order.items);
+  
+  const subject = `🎉 Signed: ${order.client_name} - $${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo`;
   
   const content = `
-    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%);">
-      <h1>Contract Signed!</h1>
-      <p>${order.client_name} is now a client</p>
+    <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
+      <h1 style="color: #ffffff !important; margin: 0; font-size: 28px;">🎉 Contract Signed!</h1>
+      <p style="color: #d1fae5 !important; margin: 8px 0 0; font-size: 16px;">${order.client_name} is now a client</p>
     </div>
-    <div class="body">
-      <p><strong>${contact.first_name} ${contact.last_name}</strong> from <strong>${order.client_name}</strong> has signed their advertising agreement.</p>
+    <div class="body" style="padding: 32px; background: white;">
       
-      <table class="details-table">
-        <tr>
-          <td>Order Number</td>
-          <td><strong>${order.order_number}</strong></td>
-        </tr>
-        <tr>
-          <td>Contract Term</td>
-          <td>${order.term_months} months</td>
-        </tr>
-        <tr>
-          <td>Start Date</td>
-          <td>${new Date(order.contract_start_date).toLocaleDateString()}</td>
-        </tr>
-        <tr>
-          <td>Contract Total</td>
-          <td class="amount">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-        </tr>
-        <tr>
-          <td>Signed By</td>
-          <td>${contact.first_name} ${contact.last_name} (${contact.email})</td>
-        </tr>
-      </table>
+      <!-- Success Celebration -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+          <span style="font-size: 40px;">✓</span>
+        </div>
+        <h2 style="color: #1e293b; margin: 0 0 8px 0; font-size: 24px;">${order.client_name}</h2>
+        <p style="color: #64748b; margin: 0;">Signed by ${contact.first_name} ${contact.last_name}</p>
+      </div>
+      
+      ${brandBubbles}
+      ${categoryBubbles}
+      
+      <!-- Key Metrics Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 24px 0;">
+        <div style="background: #f8fafc; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="color: #64748b; font-size: 12px; margin-bottom: 4px;">Monthly</div>
+          <div style="color: #1e3a8a; font-size: 18px; font-weight: 700;">$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}</div>
+        </div>
+        <div style="background: #f8fafc; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="color: #64748b; font-size: 12px; margin-bottom: 4px;">Term</div>
+          <div style="color: #1e293b; font-size: 18px; font-weight: 700;">${order.term_months} mo</div>
+        </div>
+        <div style="background: #f8fafc; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="color: #64748b; font-size: 12px; margin-bottom: 4px;">Start</div>
+          <div style="color: #1e293b; font-size: 14px; font-weight: 600;">${new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+        </div>
+      </div>
+      
+      <!-- Contract Total - Big Celebration -->
+      <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #86efac; border-radius: 16px; padding: 24px; text-align: center; margin-bottom: 24px;">
+        <div style="color: #166534; font-size: 14px; margin-bottom: 8px;">🎯 Total Contract Value</div>
+        <div style="color: #166534; font-size: 36px; font-weight: 700;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+      </div>
+      
+      <!-- Contact Info -->
+      <div style="background: #f8fafc; border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+        <div style="color: #64748b; font-size: 12px; margin-bottom: 8px;">SIGNER</div>
+        <div style="color: #1e293b; font-weight: 600;">${contact.first_name} ${contact.last_name}</div>
+        <div style="color: #64748b; font-size: 14px;">${contact.email}</div>
+      </div>
       
       <div style="text-align: center;">
-        <a href="${BASE_URL}/orders/${order.id}/edit" class="button">View Order</a>
-        <a href="${BASE_URL}/client/${order.client_slug}" class="button button-secondary" style="margin-left: 8px;">View Client</a>
+        <a href="${BASE_URL}/clients/${order.client_id}" class="button" style="background: #1e3a8a; color: white !important; padding: 14px 32px; border-radius: 10px; text-decoration: none; font-weight: 600; display: inline-block;">View Client</a>
       </div>
     </div>
-    <div class="footer">
-      Signed on ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+    <div class="footer" style="padding: 20px; background: #f9fafb; text-align: center; color: #64748b; font-size: 13px;">
+      Signed ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} at ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
     </div>
   `;
 
@@ -782,7 +916,7 @@ async function sendContractSignedInternal({ order, contact }) {
     to: process.env.ADMIN_EMAIL || 'justin@wsicnews.com',
     from: FROM_ADDRESSES.noreply,
     subject,
-    htmlBody: emailTemplate({ title: subject, preheader: `${order.client_name} signed - $${order.contract_total} contract`, content }),
+    htmlBody: emailTemplate({ title: subject, preheader: `${order.client_name} signed - $${parseFloat(order.contract_total || 0).toLocaleString()} contract`, content }),
     tag: 'contract-signed-internal',
     metadata: { orderId: order.id, orderNumber: order.order_number }
   });
