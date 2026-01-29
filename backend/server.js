@@ -4524,6 +4524,954 @@ app.post('/api/users/:id/meeting-notes', authenticateToken, async (req, res) => 
 });
 
 // ============================================
+// COMMISSION TRACKING ROUTES
+// ============================================
+
+// Get commission rates (admin only)
+app.get('/api/commissions/rates', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { user_id } = req.query;
+    
+    let query = `
+      SELECT cr.*, u.name as user_name, e.name as entity_name
+      FROM commission_rates cr
+      LEFT JOIN users u ON cr.user_id = u.id
+      LEFT JOIN entities e ON cr.entity_id = e.id
+      WHERE cr.is_active = true
+    `;
+    const params = [];
+    
+    if (user_id) {
+      params.push(user_id);
+      query += ` AND cr.user_id = $${params.length}`;
+    }
+    
+    query += ' ORDER BY cr.user_id, cr.product_category';
+    
+    const result = await adminPool.query(query, params);
+    
+    // Also get defaults
+    const defaultsResult = await adminPool.query(`
+      SELECT * FROM commission_rate_defaults WHERE is_active = true
+    `);
+    
+    res.json({
+      rates: result.rows,
+      defaults: defaultsResult.rows
+    });
+  } catch (error) {
+    console.error('Get commission rates error:', error);
+    res.json({ rates: [], defaults: [] });
+  }
+});
+
+// Create/update commission rate
+app.post('/api/commissions/rates', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const {
+      user_id, product_category, entity_id, rate_type, rate_value,
+      min_deal_value, max_deal_value, effective_date, expiration_date, notes
+    } = req.body;
+    
+    // Check if rate already exists for this user/category/entity combo
+    const existingResult = await adminPool.query(`
+      SELECT id FROM commission_rates 
+      WHERE user_id = $1 
+        AND COALESCE(product_category, '') = COALESCE($2, '')
+        AND COALESCE(entity_id::text, '') = COALESCE($3, '')
+        AND is_active = true
+    `, [user_id, product_category, entity_id]);
+    
+    let result;
+    if (existingResult.rows.length > 0) {
+      // Update existing
+      result = await adminPool.query(`
+        UPDATE commission_rates SET
+          rate_type = $1, rate_value = $2, min_deal_value = $3, max_deal_value = $4,
+          effective_date = COALESCE($5, CURRENT_DATE), expiration_date = $6,
+          notes = $7, updated_at = NOW()
+        WHERE id = $8
+        RETURNING *
+      `, [rate_type, rate_value, min_deal_value, max_deal_value, effective_date, expiration_date, notes, existingResult.rows[0].id]);
+    } else {
+      // Create new
+      result = await adminPool.query(`
+        INSERT INTO commission_rates (
+          user_id, product_category, entity_id, rate_type, rate_value,
+          min_deal_value, max_deal_value, effective_date, expiration_date, notes, created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, CURRENT_DATE), $9, $10, $11)
+        RETURNING *
+      `, [user_id, product_category, entity_id, rate_type, rate_value, min_deal_value, max_deal_value, effective_date, expiration_date, notes, req.user.id]);
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Save commission rate error:', error);
+    res.status(500).json({ error: 'Failed to save commission rate' });
+  }
+});
+
+// Delete commission rate
+app.delete('/api/commissions/rates/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await adminPool.query(`
+      UPDATE commission_rates SET is_active = false, updated_at = NOW() WHERE id = $1
+    `, [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete commission rate error:', error);
+    res.status(500).json({ error: 'Failed to delete commission rate' });
+  }
+});
+
+// Get commissions list
+app.get('/api/commissions', authenticateToken, async (req, res) => {
+  try {
+    const { user_id, period_month, period_year, status } = req.query;
+    
+    // Non-admins can only see their own commissions
+    const effectiveUserId = req.user.role === 'admin' || req.user.is_super_admin 
+      ? user_id 
+      : req.user.id;
+    
+    let query = `
+      SELECT c.*, 
+        u.name as user_name, u.email as user_email,
+        ac.business_name as client_name,
+        o.order_number
+      FROM commissions c
+      JOIN users u ON c.user_id = u.id
+      LEFT JOIN advertising_clients ac ON c.client_id = ac.id
+      LEFT JOIN orders o ON c.order_id = o.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    if (effectiveUserId) {
+      params.push(effectiveUserId);
+      query += ` AND c.user_id = $${params.length}`;
+    }
+    if (period_month) {
+      params.push(period_month);
+      query += ` AND c.period_month = $${params.length}`;
+    }
+    if (period_year) {
+      params.push(period_year);
+      query += ` AND c.period_year = $${params.length}`;
+    }
+    if (status) {
+      params.push(status);
+      query += ` AND c.status = $${params.length}`;
+    }
+    
+    query += ' ORDER BY c.created_at DESC LIMIT 500';
+    
+    const result = await adminPool.query(query, params);
+    res.json({ commissions: result.rows });
+  } catch (error) {
+    console.error('Get commissions error:', error);
+    res.json({ commissions: [] });
+  }
+});
+
+// Get commission summary (for dashboard)
+app.get('/api/commissions/summary', authenticateToken, async (req, res) => {
+  try {
+    const { user_id, period_year } = req.query;
+    const year = period_year || new Date().getFullYear();
+    
+    // Non-admins can only see their own
+    const effectiveUserId = req.user.role === 'admin' || req.user.is_super_admin 
+      ? user_id 
+      : req.user.id;
+    
+    let query = `
+      SELECT 
+        period_month,
+        period_year,
+        COUNT(*) as commission_count,
+        SUM(order_amount) as total_order_value,
+        SUM(commission_amount) as total_commission,
+        SUM(COALESCE(adjustment_amount, 0)) as total_adjustments,
+        SUM(commission_amount + COALESCE(adjustment_amount, 0)) as net_commission,
+        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count,
+        COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved_count,
+        COUNT(CASE WHEN status = 'paid' THEN 1 END) as paid_count
+      FROM commissions
+      WHERE period_year = $1
+    `;
+    const params = [year];
+    
+    if (effectiveUserId) {
+      params.push(effectiveUserId);
+      query += ` AND user_id = $${params.length}`;
+    }
+    
+    query += ' GROUP BY period_year, period_month ORDER BY period_month';
+    
+    const result = await adminPool.query(query, params);
+    
+    // Calculate totals
+    const totals = {
+      total_commission: 0,
+      total_pending: 0,
+      total_approved: 0,
+      total_paid: 0
+    };
+    
+    result.rows.forEach(row => {
+      totals.total_commission += parseFloat(row.total_commission || 0);
+      totals.total_pending += parseInt(row.pending_count || 0);
+      totals.total_approved += parseInt(row.approved_count || 0);
+      totals.total_paid += parseInt(row.paid_count || 0);
+    });
+    
+    res.json({
+      monthly: result.rows,
+      totals,
+      year: parseInt(year)
+    });
+  } catch (error) {
+    console.error('Get commission summary error:', error);
+    res.json({ monthly: [], totals: {}, year: new Date().getFullYear() });
+  }
+});
+
+// Calculate commission for an order (triggered when order is signed/approved)
+app.post('/api/commissions/calculate', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { order_id, invoice_id } = req.body;
+    
+    if (!order_id && !invoice_id) {
+      return res.status(400).json({ error: 'Order ID or Invoice ID required' });
+    }
+    
+    let orderData, userId, clientId, amount;
+    
+    if (order_id) {
+      const orderResult = await adminPool.query(`
+        SELECT o.*, oi.product_id, p.category as product_category
+        FROM orders o
+        LEFT JOIN order_items oi ON oi.order_id = o.id
+        LEFT JOIN products p ON oi.product_id = p.id
+        WHERE o.id = $1
+        LIMIT 1
+      `, [order_id]);
+      
+      if (orderResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      
+      orderData = orderResult.rows[0];
+      userId = orderData.created_by;
+      clientId = orderData.client_id;
+      amount = parseFloat(orderData.contract_total || 0);
+    }
+    
+    // Get commission rate for this user
+    let rateResult = await adminPool.query(`
+      SELECT * FROM commission_rates 
+      WHERE user_id = $1 AND is_active = true
+      AND (product_category IS NULL OR product_category = $2)
+      ORDER BY product_category NULLS LAST
+      LIMIT 1
+    `, [userId, orderData?.product_category]);
+    
+    // Fall back to default rate
+    if (rateResult.rows.length === 0) {
+      rateResult = await adminPool.query(`
+        SELECT * FROM commission_rate_defaults 
+        WHERE is_active = true
+        AND (product_category IS NULL OR product_category = $1)
+        ORDER BY product_category NULLS LAST
+        LIMIT 1
+      `, [orderData?.product_category]);
+    }
+    
+    if (rateResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No commission rate found' });
+    }
+    
+    const rate = rateResult.rows[0];
+    let commissionAmount;
+    
+    if (rate.rate_type === 'percentage') {
+      commissionAmount = amount * (parseFloat(rate.rate_value) / 100);
+    } else {
+      commissionAmount = parseFloat(rate.rate_value);
+    }
+    
+    // Create commission record
+    const now = new Date();
+    const result = await adminPool.query(`
+      INSERT INTO commissions (
+        user_id, order_id, invoice_id, client_id,
+        order_amount, commission_rate, rate_type, commission_amount,
+        period_month, period_year, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+      RETURNING *
+    `, [
+      userId, order_id, invoice_id, clientId,
+      amount, rate.rate_value, rate.rate_type, commissionAmount,
+      now.getMonth() + 1, now.getFullYear()
+    ]);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Calculate commission error:', error);
+    res.status(500).json({ error: 'Failed to calculate commission' });
+  }
+});
+
+// Approve commission
+app.post('/api/commissions/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      UPDATE commissions 
+      SET status = 'approved', approved_by = $1, approved_at = NOW(), updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [req.user.id, req.params.id]);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Approve commission error:', error);
+    res.status(500).json({ error: 'Failed to approve commission' });
+  }
+});
+
+// Mark commission as paid
+app.post('/api/commissions/:id/paid', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { payment_reference } = req.body;
+    
+    const result = await adminPool.query(`
+      UPDATE commissions 
+      SET status = 'paid', paid_at = NOW(), payment_reference = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [payment_reference, req.params.id]);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Mark commission paid error:', error);
+    res.status(500).json({ error: 'Failed to mark commission as paid' });
+  }
+});
+
+// Bulk approve commissions
+app.post('/api/commissions/bulk-approve', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { commission_ids } = req.body;
+    
+    if (!commission_ids || !Array.isArray(commission_ids) || commission_ids.length === 0) {
+      return res.status(400).json({ error: 'Commission IDs required' });
+    }
+    
+    const result = await adminPool.query(`
+      UPDATE commissions 
+      SET status = 'approved', approved_by = $1, approved_at = NOW(), updated_at = NOW()
+      WHERE id = ANY($2) AND status = 'pending'
+      RETURNING *
+    `, [req.user.id, commission_ids]);
+    
+    res.json({ approved: result.rows.length, commissions: result.rows });
+  } catch (error) {
+    console.error('Bulk approve commissions error:', error);
+    res.status(500).json({ error: 'Failed to approve commissions' });
+  }
+});
+
+// ============================================
+// REPORTING & ANALYTICS ROUTES
+// ============================================
+
+// Sales Performance Report
+app.get('/api/reports/sales-performance', authenticateToken, async (req, res) => {
+  try {
+    const { start_date, end_date, user_id } = req.query;
+    
+    // Build date filter
+    let dateFilter = '';
+    const params = [];
+    
+    if (start_date) {
+      params.push(start_date);
+      dateFilter += ` AND o.created_at >= $${params.length}`;
+    }
+    if (end_date) {
+      params.push(end_date);
+      dateFilter += ` AND o.created_at <= $${params.length}`;
+    }
+    
+    let userFilter = '';
+    if (user_id) {
+      params.push(user_id);
+      userFilter = ` AND u.id = $${params.length}`;
+    }
+    
+    // Main query for sales performance
+    const result = await adminPool.query(`
+      SELECT 
+        u.id as user_id,
+        u.name as rep_name,
+        u.email as rep_email,
+        u.role,
+        COUNT(DISTINCT o.id) as total_orders,
+        COUNT(DISTINCT CASE WHEN o.status IN ('signed', 'active') THEN o.id END) as closed_orders,
+        COUNT(DISTINCT o.client_id) as unique_clients,
+        COALESCE(SUM(CASE WHEN o.status IN ('signed', 'active') THEN o.contract_total END), 0) as total_revenue,
+        COALESCE(AVG(CASE WHEN o.status IN ('signed', 'active') THEN o.contract_total END), 0) as avg_deal_size,
+        COUNT(DISTINCT CASE WHEN o.status = 'pending' THEN o.id END) as pending_orders,
+        COUNT(DISTINCT CASE WHEN o.status = 'rejected' THEN o.id END) as rejected_orders
+      FROM users u
+      LEFT JOIN orders o ON o.created_by = u.id ${dateFilter}
+      WHERE u.role IN ('sales_associate', 'sales_manager', 'admin', 'staff')
+      ${userFilter}
+      GROUP BY u.id, u.name, u.email, u.role
+      ORDER BY total_revenue DESC
+    `, params);
+    
+    // Get monthly trend
+    const trendParams = user_id ? [user_id] : [];
+    const trendUserFilter = user_id ? 'AND o.created_by = $1' : '';
+    
+    const trendResult = await adminPool.query(`
+      SELECT 
+        DATE_TRUNC('month', o.created_at) as month,
+        COUNT(DISTINCT o.id) as orders,
+        COALESCE(SUM(CASE WHEN o.status IN ('signed', 'active') THEN o.contract_total END), 0) as revenue
+      FROM orders o
+      WHERE o.created_at >= NOW() - INTERVAL '12 months'
+      ${trendUserFilter}
+      GROUP BY DATE_TRUNC('month', o.created_at)
+      ORDER BY month
+    `, trendParams);
+    
+    res.json({
+      data: result.rows,
+      trend: trendResult.rows
+    });
+  } catch (error) {
+    console.error('Sales performance report error:', error);
+    res.json({ data: [], trend: [] });
+  }
+});
+
+// Pipeline Report
+app.get('/api/reports/pipeline', authenticateToken, async (req, res) => {
+  try {
+    const { assigned_to } = req.query;
+    
+    let userFilter = '';
+    const params = [];
+    
+    if (assigned_to) {
+      params.push(assigned_to);
+      userFilter = ` AND ac.assigned_to = $${params.length}`;
+    }
+    
+    // Pipeline by status
+    const statusResult = await adminPool.query(`
+      SELECT 
+        ac.status,
+        COUNT(*) as client_count,
+        COUNT(CASE WHEN ac.assigned_to IS NOT NULL THEN 1 END) as assigned_count,
+        COUNT(CASE WHEN ac.assigned_to IS NULL THEN 1 END) as unassigned_count,
+        COALESCE(SUM(ac.total_revenue), 0) as total_revenue
+      FROM advertising_clients ac
+      WHERE 1=1 ${userFilter}
+      GROUP BY ac.status
+      ORDER BY 
+        CASE ac.status 
+          WHEN 'lead' THEN 1 
+          WHEN 'prospect' THEN 2 
+          WHEN 'active' THEN 3 
+          WHEN 'inactive' THEN 4 
+          WHEN 'churned' THEN 5 
+        END
+    `, params);
+    
+    // Pipeline by industry
+    const industryResult = await adminPool.query(`
+      SELECT 
+        COALESCE(ac.industry, 'Other') as industry,
+        COUNT(*) as client_count,
+        COUNT(CASE WHEN ac.status = 'active' THEN 1 END) as active_count,
+        COALESCE(SUM(ac.total_revenue), 0) as total_revenue
+      FROM advertising_clients ac
+      WHERE 1=1 ${userFilter}
+      GROUP BY ac.industry
+      ORDER BY client_count DESC
+      LIMIT 15
+    `, params);
+    
+    // Recent activity in pipeline
+    const activityResult = await adminPool.query(`
+      SELECT 
+        DATE(ca.created_at) as date,
+        COUNT(*) as activity_count,
+        COUNT(DISTINCT ca.client_id) as unique_clients
+      FROM client_activities ca
+      ${assigned_to ? 'WHERE ca.user_id = $1' : ''}
+      AND ca.created_at >= NOW() - INTERVAL '30 days'
+      GROUP BY DATE(ca.created_at)
+      ORDER BY date
+    `, params);
+    
+    res.json({
+      by_status: statusResult.rows,
+      by_industry: industryResult.rows,
+      activity_trend: activityResult.rows
+    });
+  } catch (error) {
+    console.error('Pipeline report error:', error);
+    res.json({ by_status: [], by_industry: [], activity_trend: [] });
+  }
+});
+
+// Activity Report
+app.get('/api/reports/activity', authenticateToken, async (req, res) => {
+  try {
+    const { start_date, end_date, user_id } = req.query;
+    
+    let dateFilter = 'WHERE ca.created_at >= NOW() - INTERVAL \'30 days\'';
+    const params = [];
+    
+    if (start_date) {
+      params.push(start_date);
+      dateFilter = `WHERE ca.created_at >= $${params.length}`;
+    }
+    if (end_date) {
+      params.push(end_date);
+      dateFilter += ` AND ca.created_at <= $${params.length}`;
+    }
+    
+    let userFilter = '';
+    if (user_id) {
+      params.push(user_id);
+      userFilter = ` AND ca.user_id = $${params.length}`;
+    }
+    
+    // Activity by type per user
+    const byUserResult = await adminPool.query(`
+      SELECT 
+        u.id as user_id,
+        u.name as user_name,
+        COUNT(CASE WHEN ca.activity_type = 'call_logged' THEN 1 END) as calls,
+        COUNT(CASE WHEN ca.activity_type IN ('meeting_scheduled', 'appointment_scheduled') THEN 1 END) as appointments,
+        COUNT(CASE WHEN ca.activity_type = 'proposal_sent' THEN 1 END) as proposals,
+        COUNT(CASE WHEN ca.activity_type = 'email_sent' THEN 1 END) as emails,
+        COUNT(CASE WHEN ca.activity_type IN ('order_signed', 'deal_closed') THEN 1 END) as deals_closed,
+        COUNT(*) as total_activities
+      FROM users u
+      LEFT JOIN client_activities ca ON ca.user_id = u.id ${dateFilter.replace('WHERE', 'AND')} ${userFilter}
+      WHERE u.role IN ('sales_associate', 'sales_manager', 'admin', 'staff')
+      GROUP BY u.id, u.name
+      ORDER BY total_activities DESC
+    `, params);
+    
+    // Daily activity trend
+    const trendResult = await adminPool.query(`
+      SELECT 
+        DATE(ca.created_at) as date,
+        ca.activity_type,
+        COUNT(*) as count
+      FROM client_activities ca
+      ${dateFilter} ${userFilter}
+      GROUP BY DATE(ca.created_at), ca.activity_type
+      ORDER BY date
+    `, params);
+    
+    // Activity types breakdown
+    const typesResult = await adminPool.query(`
+      SELECT 
+        ca.activity_type,
+        COUNT(*) as count
+      FROM client_activities ca
+      ${dateFilter} ${userFilter}
+      GROUP BY ca.activity_type
+      ORDER BY count DESC
+    `, params);
+    
+    res.json({
+      by_user: byUserResult.rows,
+      trend: trendResult.rows,
+      by_type: typesResult.rows
+    });
+  } catch (error) {
+    console.error('Activity report error:', error);
+    res.json({ by_user: [], trend: [], by_type: [] });
+  }
+});
+
+// Revenue by Entity Report
+app.get('/api/reports/revenue-by-entity', authenticateToken, async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    
+    let dateFilter = '';
+    const params = [];
+    
+    if (start_date) {
+      params.push(start_date);
+      dateFilter += ` AND oi.created_at >= $${params.length}`;
+    }
+    if (end_date) {
+      params.push(end_date);
+      dateFilter += ` AND oi.created_at <= $${params.length}`;
+    }
+    
+    const result = await adminPool.query(`
+      SELECT 
+        e.id as entity_id,
+        e.name as entity_name,
+        e.code as entity_code,
+        COUNT(DISTINCT oi.order_id) as order_count,
+        COALESCE(SUM(oi.line_total), 0) as total_revenue
+      FROM entities e
+      LEFT JOIN order_items oi ON oi.entity_id = e.id ${dateFilter}
+      LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('signed', 'active')
+      GROUP BY e.id, e.name, e.code
+      ORDER BY total_revenue DESC
+    `, params);
+    
+    // Monthly trend by entity
+    const trendResult = await adminPool.query(`
+      SELECT 
+        e.code as entity_code,
+        DATE_TRUNC('month', oi.created_at) as month,
+        COALESCE(SUM(oi.line_total), 0) as revenue
+      FROM entities e
+      LEFT JOIN order_items oi ON oi.entity_id = e.id
+      LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('signed', 'active')
+      WHERE oi.created_at >= NOW() - INTERVAL '12 months'
+      GROUP BY e.code, DATE_TRUNC('month', oi.created_at)
+      ORDER BY month, e.code
+    `, []);
+    
+    res.json({
+      data: result.rows,
+      trend: trendResult.rows
+    });
+  } catch (error) {
+    console.error('Revenue by entity report error:', error);
+    res.json({ data: [], trend: [] });
+  }
+});
+
+// Revenue by Product Category Report
+app.get('/api/reports/revenue-by-product', authenticateToken, async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+    
+    let dateFilter = '';
+    const params = [];
+    
+    if (start_date) {
+      params.push(start_date);
+      dateFilter += ` AND oi.created_at >= $${params.length}`;
+    }
+    if (end_date) {
+      params.push(end_date);
+      dateFilter += ` AND oi.created_at <= $${params.length}`;
+    }
+    
+    const result = await adminPool.query(`
+      SELECT 
+        COALESCE(p.category, 'Other') as category,
+        COUNT(DISTINCT oi.order_id) as order_count,
+        COUNT(*) as line_item_count,
+        COALESCE(SUM(oi.line_total), 0) as total_revenue
+      FROM products p
+      LEFT JOIN order_items oi ON oi.product_id = p.id ${dateFilter}
+      LEFT JOIN orders o ON oi.order_id = o.id AND o.status IN ('signed', 'active')
+      GROUP BY p.category
+      ORDER BY total_revenue DESC
+    `, params);
+    
+    res.json({ data: result.rows });
+  } catch (error) {
+    console.error('Revenue by product report error:', error);
+    res.json({ data: [] });
+  }
+});
+
+// Team Leaderboard
+app.get('/api/reports/leaderboard', authenticateToken, async (req, res) => {
+  try {
+    const { period } = req.query; // 'week', 'month', 'quarter', 'year'
+    
+    let dateFilter = 'NOW() - INTERVAL \'30 days\'';
+    if (period === 'week') dateFilter = 'NOW() - INTERVAL \'7 days\'';
+    if (period === 'quarter') dateFilter = 'NOW() - INTERVAL \'90 days\'';
+    if (period === 'year') dateFilter = 'NOW() - INTERVAL \'365 days\'';
+    
+    const result = await adminPool.query(`
+      SELECT 
+        u.id as user_id,
+        u.name,
+        u.email,
+        u.role,
+        COUNT(DISTINCT CASE WHEN o.status IN ('signed', 'active') THEN o.id END) as closed_deals,
+        COALESCE(SUM(CASE WHEN o.status IN ('signed', 'active') THEN o.contract_total END), 0) as revenue,
+        COUNT(DISTINCT ca.id) as activities,
+        COUNT(DISTINCT CASE WHEN ac.created_at >= ${dateFilter} THEN ac.id END) as new_clients
+      FROM users u
+      LEFT JOIN orders o ON o.created_by = u.id AND o.created_at >= ${dateFilter}
+      LEFT JOIN client_activities ca ON ca.user_id = u.id AND ca.created_at >= ${dateFilter}
+      LEFT JOIN advertising_clients ac ON ac.assigned_to = u.id
+      WHERE u.role IN ('sales_associate', 'sales_manager', 'admin', 'staff')
+        AND u.is_active = true
+      GROUP BY u.id, u.name, u.email, u.role
+      ORDER BY revenue DESC
+      LIMIT 20
+    `);
+    
+    res.json({ leaderboard: result.rows, period });
+  } catch (error) {
+    console.error('Leaderboard report error:', error);
+    res.json({ leaderboard: [], period: 'month' });
+  }
+});
+
+// ============================================
+// EMAIL INTEGRATION ROUTES
+// ============================================
+
+// Get email templates
+app.get('/api/email/templates', authenticateToken, async (req, res) => {
+  try {
+    const { category } = req.query;
+    
+    let query = 'SELECT * FROM email_templates WHERE is_active = true';
+    const params = [];
+    
+    if (category) {
+      params.push(category);
+      query += ` AND category = $${params.length}`;
+    }
+    
+    query += ' ORDER BY is_system DESC, name';
+    
+    const result = await adminPool.query(query, params);
+    res.json({ templates: result.rows });
+  } catch (error) {
+    console.error('Get email templates error:', error);
+    res.json({ templates: [] });
+  }
+});
+
+// Create/update email template
+app.post('/api/email/templates', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id, name, subject, body, category, variables } = req.body;
+    
+    let result;
+    if (id) {
+      // Update existing (can't update system templates)
+      result = await adminPool.query(`
+        UPDATE email_templates 
+        SET name = $1, subject = $2, body = $3, category = $4, variables = $5, updated_at = NOW()
+        WHERE id = $6 AND is_system = false
+        RETURNING *
+      `, [name, subject, body, category, variables, id]);
+    } else {
+      // Create new
+      result = await adminPool.query(`
+        INSERT INTO email_templates (name, subject, body, category, variables, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING *
+      `, [name, subject, body, category, variables, req.user.id]);
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Save email template error:', error);
+    res.status(500).json({ error: 'Failed to save template' });
+  }
+});
+
+// Delete email template (non-system only)
+app.delete('/api/email/templates/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await adminPool.query(`
+      UPDATE email_templates SET is_active = false WHERE id = $1 AND is_system = false
+    `, [req.params.id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete email template error:', error);
+    res.status(500).json({ error: 'Failed to delete template' });
+  }
+});
+
+// Send email
+app.post('/api/email/send', authenticateToken, async (req, res) => {
+  try {
+    const {
+      recipient_email, recipient_name, client_id, contact_id,
+      subject, body, template_id, attachments
+    } = req.body;
+    
+    if (!recipient_email || !subject || !body) {
+      return res.status(400).json({ error: 'Recipient email, subject, and body are required' });
+    }
+    
+    // Get sender info
+    const senderResult = await adminPool.query(
+      'SELECT name, email FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const sender = senderResult.rows[0];
+    
+    // Log the email first
+    const logResult = await adminPool.query(`
+      INSERT INTO email_logs (
+        sent_by, sent_from, recipient_email, recipient_name,
+        client_id, contact_id, subject, body, template_id, attachments, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'queued')
+      RETURNING *
+    `, [
+      req.user.id, sender.email, recipient_email, recipient_name,
+      client_id, contact_id, subject, body, template_id, 
+      attachments ? JSON.stringify(attachments) : null
+    ]);
+    
+    const emailLog = logResult.rows[0];
+    
+    // Send via Postmark
+    try {
+      const sendResult = await emailService.sendEmail({
+        From: process.env.POSTMARK_FROM_EMAIL || 'noreply@myadvertisingreport.com',
+        To: recipient_email,
+        Subject: subject,
+        HtmlBody: body,
+        ReplyTo: sender.email,
+        Tag: 'platform-email',
+        Metadata: {
+          email_log_id: emailLog.id,
+          sent_by: req.user.id
+        }
+      });
+      
+      // Update log with success
+      await adminPool.query(`
+        UPDATE email_logs 
+        SET status = 'sent', postmark_message_id = $1, sent_at = NOW()
+        WHERE id = $2
+      `, [sendResult.MessageID, emailLog.id]);
+      
+      // Log activity if client_id provided
+      if (client_id) {
+        try {
+          await adminPool.query(`
+            INSERT INTO client_activities (client_id, user_id, activity_type, title, description)
+            VALUES ($1, $2, 'email_sent', $3, $4)
+          `, [client_id, req.user.id, `Email: ${subject}`, `Sent to ${recipient_email}`]);
+        } catch (activityErr) {
+          console.log('Activity logging failed:', activityErr.message);
+        }
+      }
+      
+      res.json({ success: true, message_id: sendResult.MessageID, email_log_id: emailLog.id });
+    } catch (sendError) {
+      // Update log with failure
+      await adminPool.query(`
+        UPDATE email_logs 
+        SET status = 'failed', error_message = $1
+        WHERE id = $2
+      `, [sendError.message, emailLog.id]);
+      
+      throw sendError;
+    }
+  } catch (error) {
+    console.error('Send email error:', error);
+    res.status(500).json({ error: 'Failed to send email: ' + error.message });
+  }
+});
+
+// Get email history
+app.get('/api/email/history', authenticateToken, async (req, res) => {
+  try {
+    const { client_id, contact_id, sent_by, limit = 50 } = req.query;
+    
+    let query = `
+      SELECT el.*, u.name as sender_name, ac.business_name as client_name
+      FROM email_logs el
+      LEFT JOIN users u ON el.sent_by = u.id
+      LEFT JOIN advertising_clients ac ON el.client_id = ac.id
+      WHERE 1=1
+    `;
+    const params = [];
+    
+    // Non-admins can only see their own emails
+    if (req.user.role !== 'admin' && !req.user.is_super_admin) {
+      params.push(req.user.id);
+      query += ` AND el.sent_by = $${params.length}`;
+    } else if (sent_by) {
+      params.push(sent_by);
+      query += ` AND el.sent_by = $${params.length}`;
+    }
+    
+    if (client_id) {
+      params.push(client_id);
+      query += ` AND el.client_id = $${params.length}`;
+    }
+    
+    if (contact_id) {
+      params.push(contact_id);
+      query += ` AND el.contact_id = $${params.length}`;
+    }
+    
+    params.push(parseInt(limit));
+    query += ` ORDER BY el.created_at DESC LIMIT $${params.length}`;
+    
+    const result = await adminPool.query(query, params);
+    res.json({ emails: result.rows });
+  } catch (error) {
+    console.error('Get email history error:', error);
+    res.json({ emails: [] });
+  }
+});
+
+// Get email stats
+app.get('/api/email/stats', authenticateToken, async (req, res) => {
+  try {
+    const { user_id, days = 30 } = req.query;
+    
+    const effectiveUserId = req.user.role === 'admin' || req.user.is_super_admin
+      ? user_id
+      : req.user.id;
+    
+    let userFilter = '';
+    const params = [days];
+    
+    if (effectiveUserId) {
+      params.push(effectiveUserId);
+      userFilter = ` AND sent_by = $${params.length}`;
+    }
+    
+    const result = await adminPool.query(`
+      SELECT 
+        COUNT(*) as total_sent,
+        COUNT(CASE WHEN status = 'delivered' THEN 1 END) as delivered,
+        COUNT(CASE WHEN status = 'bounced' THEN 1 END) as bounced,
+        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
+        COUNT(CASE WHEN opened_at IS NOT NULL THEN 1 END) as opened,
+        COUNT(CASE WHEN clicked_at IS NOT NULL THEN 1 END) as clicked
+      FROM email_logs
+      WHERE created_at >= NOW() - INTERVAL '1 day' * $1
+      ${userFilter}
+    `, params);
+    
+    res.json(result.rows[0] || {});
+  } catch (error) {
+    console.error('Get email stats error:', error);
+    res.json({});
+  }
+});
+
+// ============================================
 // ERROR HANDLING
 // ============================================
 

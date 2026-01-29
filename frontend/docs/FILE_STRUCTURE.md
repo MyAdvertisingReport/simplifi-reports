@@ -1,5 +1,5 @@
 # WSIC Advertising Platform - File Structure
-## Updated: January 29, 2026
+## Updated: January 29, 2026 (Late Night)
 
 ---
 
@@ -10,23 +10,23 @@
 simplifi-reports/                    ← Git root (all commands from here)
 │
 ├── 📁 backend/                      ← Railway deployment
-│   ├── 📄 server.js                 # Main server - ALL API endpoints ⭐
+│   ├── 📄 server.js                 # Main server (~4,600 lines) ⭐
 │   ├── 📄 auth.js                   # Authentication routes & middleware
 │   ├── 📄 database.js               # PostgreSQL helpers & caching
 │   ├── 📄 simplifi-client.js        # Simpli.fi API integration
 │   ├── 📄 report-center-service.js  # Report generation
-│   ├── 📄 package.json              # Dependencies (includes stripe)
+│   ├── 📄 package.json              # Dependencies
 │   │
 │   ├── 📁 routes/
 │   │   ├── 📄 admin.js              # /api/admin/* - Products, packages
-│   │   ├── 📄 order.js              # /api/orders/* - Order CRUD & variants
-│   │   ├── 📄 order-variants.js     # Upload, Change, Kill order endpoints
-│   │   ├── 📄 billing.js            # /api/billing/* - Invoice management ⭐
-│   │   ├── 📄 document.js           # Document upload/download API
-│   │   └── 📄 email.js              # /api/email/* - Email endpoints
+│   │   ├── 📄 order.js              # /api/orders/* - Order CRUD
+│   │   ├── 📄 order-variants.js     # Upload, Change, Kill orders
+│   │   ├── 📄 billing.js            # /api/billing/* - Invoices ⭐
+│   │   ├── 📄 document.js           # Document upload/download
+│   │   └── 📄 email.js              # /api/email/*
 │   │
 │   ├── 📁 services/
-│   │   ├── 📄 email-service.js      # Postmark integration (includes invoice emails) ⭐
+│   │   ├── 📄 email-service.js      # Postmark integration ⭐
 │   │   ├── 📄 stripe-service.js     # Stripe payments
 │   │   └── 📄 pdf-generator.py      # Python PDF generation
 │   │
@@ -40,16 +40,16 @@ simplifi-reports/                    ← Git root (all commands from here)
     ├── 📄 index.html
     │
     └── 📁 src/
-        ├── 📄 App.jsx               # Main app - ALL pages (~14.3k lines) ⭐
+        ├── 📄 App.jsx               # Main app (~16k lines) ⭐
         ├── 📄 main.jsx              # React entry point
         ├── 📄 index.css
         │
         └── 📁 components/
-            ├── 📄 BillingPage.jsx            # Invoice list + Generate + Dashboard ⭐
+            ├── 📄 BillingPage.jsx            # Invoice list + Dashboard
             ├── 📄 InvoiceForm.jsx            # Create/edit invoices
-            ├── 📄 OrderForm.jsx              # New order form with product selector
+            ├── 📄 OrderForm.jsx              # New order form
             ├── 📄 OrderTypeSelector.jsx      # 6-type order selection
-            ├── 📄 UploadOrderForm.jsx        # Upload pre-signed contracts
+            ├── 📄 UploadOrderForm.jsx        # Upload pre-signed
             ├── 📄 ChangeOrderForm.jsx        # Electronic change orders
             ├── 📄 KillOrderForm.jsx          # Electronic kill orders
             ├── 📄 ApprovalsPage.jsx          # Manager approval queue
@@ -65,18 +65,14 @@ simplifi-reports/                    ← Git root (all commands from here)
 
 | Task | Files Needed |
 |------|--------------|
-| **CRM / Clients Page** | `App.jsx` (~lines 1763-2700), `server.js` (/api/clients) |
-| **Billing/Invoices** | `BillingPage.jsx`, `InvoiceForm.jsx`, `billing.js`, `email-service.js` |
-| **Auto-Generate Invoices** | `BillingPage.jsx`, `billing.js` |
-| Client signing flow | `ClientSigningPage.jsx`, `server.js` |
-| Email templates | `email-service.js` |
-| Payment processing | `server.js`, `stripe-service.js` |
-| Order creation | `OrderForm.jsx`, `UploadOrderForm.jsx` |
-| Change/Kill orders | `ChangeOrderForm.jsx`, `KillOrderForm.jsx` |
-| Approval workflow | `server.js`, `ApprovalsPage.jsx` |
-| **Security review** | `server.js`, `auth.js`, `SECURITY_AUDIT.md` |
-| **Super Admin features** | `App.jsx` (UsersPage, Sidebar), `server.js` |
-| **System Diagnostics** | `App.jsx` (SystemDiagnosticsPage), `server.js` (/api/diagnostics/*) |
+| **Training Center** | `App.jsx` (TrainingCenterPage ~lines 14573-15084) |
+| **Tools Page** | `App.jsx` (ToolsPage ~lines 15085-15370) |
+| **User Profiles** | `App.jsx` (UserProfilePage ~lines 14090-14572) |
+| **CRM / Clients** | `App.jsx` (~lines 1763-2700), `server.js` |
+| **Billing/Invoices** | `BillingPage.jsx`, `billing.js`, `email-service.js` |
+| **Orders** | `OrderForm.jsx`, `order.js`, `order-variants.js` |
+| **Super Admin** | `App.jsx` (UsersPage, Sidebar), `server.js` |
+| **System Diagnostics** | `App.jsx` (SystemDiagnosticsPage), `server.js` |
 
 ---
 
@@ -84,17 +80,16 @@ simplifi-reports/                    ← Git root (all commands from here)
 
 ### Core Tables
 ```
-users                 - User accounts, roles, failed login tracking
+users                 - User accounts, roles
 user_sessions         - Active login sessions
 user_activity_log     - Security audit trail
-super_admin_audit_log - Super Admin action tracking ⭐ NEW
-advertising_clients   - Client companies (CRM data) ⭐
-contacts              - Client contacts (primary contact for invoices)
+super_admin_audit_log - Super Admin action tracking
+advertising_clients   - Client companies (CRM) ⭐
+contacts              - Client contacts
 orders                - Advertising orders
 order_items           - Line items in orders
 products              - Available products
 packages              - Product bundles
-product_categories    - Product categories (code field for billing logic)
 entities              - Business entities (WSIC, LKN, LWP)
 notes                 - Client notes
 documents             - Uploaded PDFs
@@ -102,107 +97,110 @@ documents             - Uploaded PDFs
 
 ### Billing Tables
 ```
-invoices              - Invoice records with full lifecycle
+invoices              - Invoice records
 invoice_items         - Line items on invoices
-invoice_payments      - Payment history for invoices
+invoice_payments      - Payment history
 ```
 
-### Super Admin Tables
-```sql
--- Audit log for privileged actions
-super_admin_audit_log (
-  id UUID PRIMARY KEY,
-  admin_user_id UUID REFERENCES users(id),
-  action_type VARCHAR(50),     -- 'view_as_start', 'view_as_end', etc.
-  target_user_id UUID,
-  description TEXT,
-  metadata JSONB,
-  ip_address VARCHAR(45),
-  user_agent TEXT,
-  created_at TIMESTAMPTZ
-)
+### Training Tables ⭐ NEW
+```
+training_categories   - Module categories (6 total, 4 active)
+training_modules      - Individual modules (33 total, 21 active)
+training_progress     - User completion tracking
+user_goals            - Monthly KPI targets
+user_certifications   - Certification records
+```
+
+### User Profile Tables ⭐ NEW
+```
+user_meeting_notes    - 1-on-1 meeting notes
 ```
 
 ---
 
 ## 🌐 API Endpoints
 
-### Clients (Protected) ⭐ OPTIMIZED
+### Training ⭐ NEW
 ```
-GET    /api/clients                   - List all clients WITH order/invoice stats
-GET    /api/clients/:id               - Get single client details
-POST   /api/clients                   - Create client
-PUT    /api/clients/:id               - Update client
-DELETE /api/clients/:id               - Delete client (admin only)
+GET    /api/training/categories           - List active categories
+GET    /api/training/modules              - List modules (?category=)
+GET    /api/training/modules/:id          - Single module
+GET    /api/training/my-progress          - Current user's progress
+POST   /api/training/modules/:id/complete - Mark complete
 ```
 
-### Super Admin (Protected - Super Admins Only)
+### User Profiles ⭐ NEW
 ```
-GET    /api/super-admin/view-as/:userId      - Start View As mode
-POST   /api/super-admin/view-as/:userId/end  - End View As mode
-GET    /api/super-admin/audit-log            - Get audit log
-GET    /api/super-admin/list                 - List all Super Admins
+GET    /api/users/:id                     - User details
+GET    /api/users/:id/stats               - Stats with time filter
+GET    /api/users/:id/goals               - Monthly goals
+POST   /api/users/:id/goals               - Set goals (admin)
+GET    /api/users/:id/training-progress   - Training progress
+GET    /api/users/:id/meeting-notes       - 1-on-1 notes
+POST   /api/users/:id/meeting-notes       - Add note (admin)
+```
+
+### Clients
+```
+GET    /api/clients                       - List with stats
+GET    /api/clients/:id                   - Single client
+POST   /api/clients/:id/claim             - Claim open account
+POST   /api/clients/:id/reassign          - Reassign to rep
+```
+
+### Super Admin
+```
+GET    /api/super-admin/view-as/:userId    - View As mode
+POST   /api/super-admin/view-as/:userId/end - Exit View As
+GET    /api/super-admin/audit-log          - Audit trail
 ```
 
 ### Diagnostics
 ```
-GET    /api/diagnostics/public        - Basic status (no auth)
-GET    /api/diagnostics/admin         - Full system health (admin required)
-POST   /api/diagnostics/clear-cache   - Clear cache (admin required)
-GET    /api/diagnostics/test-image    - Test image proxy (no auth)
-GET    /api/health                    - Basic health check
-GET    /api/health/detailed           - Detailed health check
+GET    /api/diagnostics/public             - Basic status
+GET    /api/diagnostics/admin              - Full health (admin)
+POST   /api/diagnostics/clear-cache        - Clear cache (admin)
 ```
 
-### Billing (Protected)
+### Billing
 ```
-GET    /api/billing/invoices              - List invoices with filters
-GET    /api/billing/invoices/:id          - Get invoice with items, contact, payment info
+GET    /api/billing/invoices              - List invoices
 POST   /api/billing/invoices              - Create invoice
-PUT    /api/billing/invoices/:id          - Update draft invoice
-PUT    /api/billing/invoices/:id/approve  - Approve invoice
 POST   /api/billing/invoices/:id/send     - Send invoice email
-POST   /api/billing/invoices/:id/record-payment - Record manual payment
-POST   /api/billing/invoices/:id/charge   - Charge payment method on file
-PUT    /api/billing/invoices/:id/void     - Void invoice
-POST   /api/billing/invoices/:id/send-reminder - Send overdue reminder
-GET    /api/billing/stats                 - Dashboard statistics
-GET    /api/billing/billable-orders       - Preview orders ready to invoice
-POST   /api/billing/generate-monthly      - Generate invoices for selected orders
+POST   /api/billing/invoices/:id/charge   - Charge payment
+POST   /api/billing/generate-monthly      - Generate from orders
 ```
 
-### Orders (Protected)
+### Orders
 ```
-GET    /api/orders                      - List orders (supports ?clientId filter)
-GET    /api/orders/:id                  - Get order details
-POST   /api/orders                      - Create order
-PUT    /api/orders/:id                  - Update order
-DELETE /api/orders/:id                  - Delete (draft only)
-POST   /api/orders/:id/submit           - Submit with signature
-PUT    /api/orders/:id/approve          - Manager approves
-PUT    /api/orders/:id/reject           - Manager rejects
-POST   /api/orders/:id/send-to-client   - Send contract link
+GET    /api/orders                        - List orders
+POST   /api/orders                        - Create order
+PUT    /api/orders/:id/approve            - Approve order
+PUT    /api/orders/:id/reject             - Reject order
+POST   /api/orders/:id/send-to-client     - Send for signing
 ```
 
 ---
 
-## 🎨 App.jsx Sections (~14,300 lines)
+## 🎨 App.jsx Sections (~16,000 lines)
 
 | Section | Approximate Lines | Purpose |
 |---------|-------------------|---------|
 | Imports & Constants | 1-50 | Dependencies, API_BASE |
-| useResponsive Hook | 53-91 | Mobile/tablet/desktop detection |
-| AuthContext | 96-212 | Auth state, View As functionality |
+| useResponsive Hook | 53-91 | Mobile/tablet/desktop |
+| AuthContext | 96-212 | Auth state, View As |
 | API Helper | 217-280 | api.get/post/put/delete |
-| Sidebar | 595-960 | Navigation with Super Admin links |
+| Sidebar | 595-960 | Navigation |
 | Dashboard | 1000-1500 | Home page |
-| ClientsPage | 1763-2700 | CRM & Client views |
-| ClientDetailPage | 2700-3500 | Individual client |
-| UsersPage | 11685-12680 | Team, Audit Log tabs |
-| SystemDiagnosticsPanel | 11186-11670 | Health dashboard component |
-| SystemDiagnosticsPage | 13236-13310 | /settings/system route |
-| DiagnosticsPanel | 13550-14050 | Legacy modal (Preferences) |
-| Routes | 14230-14270 | All route definitions |
+| ClientsPage | 1763-2700 | CRM views |
+| ClientDetailPage | 2700-3500 | Single client |
+| UsersPage | 11685-12680 | Team, Audit Log |
+| SystemDiagnosticsPanel | 11186-11670 | Health component |
+| SystemDiagnosticsPage | 13236-13310 | /settings/system |
+| **UserProfilePage** | **14090-14572** | User profiles ⭐ |
+| **TrainingCenterPage** | **14573-15084** | Training ⭐ |
+| **ToolsPage** | **15085-15370** | Sales toolbox ⭐ |
+| Routes | 15920-16000 | Route definitions |
 
 ---
 
@@ -212,7 +210,7 @@ POST   /api/orders/:id/send-to-client   - Send contract link
 ```
 DATABASE_URL=postgresql://...
 POSTMARK_API_KEY=...
-JWT_SECRET=...                    # ⚠️ MUST be set in production
+JWT_SECRET=...
 BASE_URL=https://myadvertisingreport.com
 SUPABASE_URL=...
 SUPABASE_SERVICE_KEY=...
@@ -231,35 +229,39 @@ STRIPE_LWP_SECRET_KEY=sk_live_...
 
 ## 📝 Important Notes
 
+### Training Center
+- 4 active categories, 21 modules
+- Progress stored per user
+- Content in markdown format
+- Sales Toolbox + Product Knowledge hidden (in Tools page)
+
+### Tools Page
+- 5 categories of resources
+- Internal tools (Pricing, Billing) render in-app
+- External tools open new tabs
+- Links to Google Docs, Drive, Calendly
+
+### User Profiles
+- Accessible from Users page (profile icon)
+- 3 tabs: Overview, KPIs, Training
+- Goal setting for monthly targets
+- 1-on-1 meeting notes
+
 ### Super Admin Access
 - 3 Super Admins: Justin, Mamie, Bill
-- Sidebar shows "System" link with SA badge
-- Users page shows "Audit Log" tab
+- System link in sidebar (SA badge)
 - View As button in Users table
-
-### System Diagnostics Components Monitored
-| Component | What's Checked |
-|-----------|----------------|
-| Application Server | Uptime, Node version |
-| Database | Connection, client/user counts |
-| Simpli.fi Ad Platform | API connection |
-| Image Proxy | Safari fix availability |
-| Security | Headers, rate limiting |
-| Client Configuration | Missing Simpli.fi IDs |
+- Audit Log tab
 
 ### Client Status Values
-- `lead` - New potential client
-- `prospect` - Engaged, no contract yet
-- `active` - Has current contract/orders
-- `inactive` - Paused or dormant
-- `churned` - Lost/cancelled
+- `lead` - New potential
+- `prospect` - Engaged, no contract
+- `active` - Has current orders
+- `inactive` - Paused
+- `churned` - Lost
 
-### Brand Tags
-- `WSIC` - WSIC Radio client
-- `LKNW` - Lake Norman Woman client
-- Both = Multi-Platform client
-
-### Client Data (2,812 total)
-- ~122 Active, ~2,690 Prospect
-- 77 WSIC, 157 LKNW, 32 Multi-Platform
-- 28 Trade/Barter clients
+### Current Data
+- 2,812 clients total
+- ~122 active, ~2,690 prospect
+- 18 team members
+- 3 Super Admins

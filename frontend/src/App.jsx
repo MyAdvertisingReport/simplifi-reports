@@ -620,6 +620,7 @@ function Sidebar({ isOpen }) {
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/clients', icon: Building2, label: 'Clients' },
+    { path: '/reports', icon: BarChart2, label: 'Reports' },
     { path: '/training', icon: GraduationCap, label: 'Training' },
     { path: '/tools', icon: Wrench, label: 'Tools' },
   ];
@@ -635,6 +636,7 @@ function Sidebar({ isOpen }) {
   const billingItems = [
     { path: '/billing', icon: List, label: 'All Invoices' },
     { path: '/billing/new', icon: FileText, label: 'Create Invoice' },
+    { path: '/commissions', icon: DollarSign, label: 'Commissions' },
   ];
   
   // Settings section items (admin only)
@@ -651,8 +653,8 @@ function Sidebar({ isOpen }) {
   // Check if current path is in order management section
   const isOrderSection = location.pathname.startsWith('/orders') || location.pathname === '/admin/products';
   
-  // Check if current path is billing
-  const isBillingSection = location.pathname.startsWith('/billing');
+  // Check if current path is billing or commissions
+  const isBillingSection = location.pathname.startsWith('/billing') || location.pathname.startsWith('/commissions');
   
   // Check if current path is in settings section
   const isSettingsSection = location.pathname === '/users' || location.pathname === '/settings' || location.pathname === '/settings/system';
@@ -3648,6 +3650,8 @@ function ClientDetailPage({ publicMode = false }) {
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailContact, setEmailContact] = useState(null);
   const { user } = useAuth();
   const { isMobile, isTablet, gridCols } = useResponsive();
   
@@ -5812,6 +5816,25 @@ function ClientDetailPage({ publicMode = false }) {
                       )}
                     </div>
                     <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '0.5rem' }}>
+                      {contact.email && (
+                        <button
+                          onClick={() => { setEmailContact(contact); setShowEmailModal(true); }}
+                          style={{
+                            padding: '0.375rem 0.75rem',
+                            background: '#3b82f6',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.75rem',
+                            cursor: 'pointer',
+                            color: 'white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem'
+                          }}
+                        >
+                          <Mail size={12} /> Email
+                        </button>
+                      )}
                       <button
                         onClick={() => setEditingContact(contact)}
                         style={{
@@ -5884,6 +5907,20 @@ function ClientDetailPage({ publicMode = false }) {
           />
         </Modal>
       )}
+
+      {/* Email Composer Modal */}
+      <EmailComposerModal 
+        isOpen={showEmailModal}
+        onClose={() => { setShowEmailModal(false); setEmailContact(null); }}
+        client={client}
+        contact={emailContact}
+        onSent={() => {
+          // Optionally reload activities to show the sent email
+          if (activeTab === 'overview') {
+            loadClientActivities();
+          }
+        }}
+      />
 
       {/* Documents Tab Content */}
       {!publicMode && activeTab === 'documents' && (
@@ -15821,6 +15858,730 @@ Clients may choose their preferred method, but ACH and CC are recommended for ef
 }
 
 // ============================================
+// REPORTS PAGE
+// ============================================
+function ReportsPage() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('sales');
+  const [loading, setLoading] = useState(true);
+  const [reportData, setReportData] = useState(null);
+  const [dateRange, setDateRange] = useState({
+    start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
+    end: new Date().toISOString().split('T')[0]
+  });
+  const [selectedUser, setSelectedUser] = useState('');
+  const [users, setUsers] = useState([]);
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState('month');
+
+  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { loadReportData(); }, [activeTab, dateRange, selectedUser, leaderboardPeriod]);
+
+  const loadUsers = async () => {
+    try {
+      const data = await api.get('/api/users');
+      setUsers(data.filter(u => u.is_active !== false));
+    } catch (error) { console.error('Failed to load users:', error); }
+  };
+
+  const loadReportData = async () => {
+    setLoading(true);
+    try {
+      let data;
+      const params = new URLSearchParams();
+      if (dateRange.start) params.append('start_date', dateRange.start);
+      if (dateRange.end) params.append('end_date', dateRange.end);
+      if (selectedUser) params.append('user_id', selectedUser);
+
+      switch (activeTab) {
+        case 'sales': data = await api.get(`/api/reports/sales-performance?${params}`); break;
+        case 'pipeline': data = await api.get(`/api/reports/pipeline?assigned_to=${selectedUser || ''}`); break;
+        case 'activity': data = await api.get(`/api/reports/activity?${params}`); break;
+        case 'revenue':
+          const entityData = await api.get(`/api/reports/revenue-by-entity?${params}`);
+          const productData = await api.get(`/api/reports/revenue-by-product?${params}`);
+          data = { byEntity: entityData, byProduct: productData };
+          break;
+        case 'leaderboard': data = await api.get(`/api/reports/leaderboard?period=${leaderboardPeriod}`); break;
+        default: data = {};
+      }
+      setReportData(data);
+    } catch (error) { console.error('Failed to load report:', error); setReportData(null); }
+    setLoading(false);
+  };
+
+  const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
+  const formatNumber = (num) => new Intl.NumberFormat('en-US').format(num || 0);
+
+  const tabs = [
+    { id: 'sales', label: 'Sales Performance', icon: TrendingUp },
+    { id: 'pipeline', label: 'Pipeline', icon: Target },
+    { id: 'activity', label: 'Activity', icon: Activity },
+    { id: 'revenue', label: 'Revenue', icon: DollarSign },
+    { id: 'leaderboard', label: 'Leaderboard', icon: Award },
+  ];
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Reports & Analytics</h1>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <input type="date" value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+            style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }} />
+          <input type="date" value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+            style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }} />
+          {user?.role === 'admin' && (
+            <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}
+              style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
+              <option value="">All Team Members</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid #e5e7eb', overflowX: 'auto' }}>
+        {tabs.map(tab => {
+          const Icon = tab.icon;
+          return (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer',
+                color: activeTab === tab.id ? '#3b82f6' : '#6b7280', fontWeight: 500, fontSize: '0.875rem',
+                display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap',
+                borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent', marginBottom: '-1px'
+              }}>
+              <Icon size={16} /> {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
+      ) : (
+        <>
+          {activeTab === 'sales' && reportData?.data && (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                {[
+                  { label: 'Total Revenue', value: formatCurrency(reportData.data.reduce((sum, r) => sum + parseFloat(r.total_revenue || 0), 0)), color: '#10b981' },
+                  { label: 'Closed Orders', value: formatNumber(reportData.data.reduce((sum, r) => sum + parseInt(r.closed_orders || 0), 0)), color: '#3b82f6' },
+                  { label: 'Avg Deal Size', value: formatCurrency(reportData.data.reduce((sum, r) => sum + parseFloat(r.avg_deal_size || 0), 0) / (reportData.data.length || 1)), color: '#8b5cf6' },
+                  { label: 'Active Reps', value: reportData.data.filter(r => parseInt(r.total_orders || 0) > 0).length, color: '#f59e0b' },
+                ].map((card, idx) => (
+                  <div key={idx} style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>{card.label}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 700, color: card.color }}>{card.value}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}><h3 style={{ margin: 0, fontWeight: 600 }}>Sales Rep Performance</h3></div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#f9fafb' }}>
+                      {['Rep', 'Orders', 'Closed', 'Close Rate', 'Revenue', 'Avg Deal'].map(h => (
+                        <th key={h} style={{ padding: '0.75rem 1rem', textAlign: h === 'Rep' ? 'left' : 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {reportData.data.map((rep, idx) => {
+                        const closeRate = rep.total_orders > 0 ? (rep.closed_orders / rep.total_orders * 100) : 0;
+                        return (
+                          <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                            <td style={{ padding: '0.75rem 1rem' }}><div style={{ fontWeight: 500 }}>{rep.rep_name}</div><div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{rep.role}</div></td>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{rep.total_orders}</td>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right', color: '#10b981', fontWeight: 500 }}>{rep.closed_orders}</td>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                              <span style={{ padding: '0.25rem 0.5rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500,
+                                background: closeRate >= 50 ? '#d1fae5' : closeRate >= 25 ? '#fef3c7' : '#fee2e2',
+                                color: closeRate >= 50 ? '#065f46' : closeRate >= 25 ? '#92400e' : '#991b1b' }}>{closeRate.toFixed(0)}%</span>
+                            </td>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600 }}>{formatCurrency(rep.total_revenue)}</td>
+                            <td style={{ padding: '0.75rem 1rem', textAlign: 'right', color: '#6b7280' }}>{formatCurrency(rep.avg_deal_size)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'pipeline' && reportData?.by_status && (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                {reportData.by_status.map((status, idx) => {
+                  const colors = { lead: '#f59e0b', prospect: '#3b82f6', active: '#10b981', inactive: '#6b7280', churned: '#ef4444' };
+                  const total = reportData.by_status.reduce((sum, s) => sum + parseInt(s.client_count || 0), 0);
+                  return (
+                    <div key={idx} style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb', borderTop: `4px solid ${colors[status.status] || '#6b7280'}` }}>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem', textTransform: 'capitalize' }}>{status.status}</div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{status.client_count}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{total > 0 ? ((status.client_count / total) * 100).toFixed(1) : 0}%</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 1rem 0', fontWeight: 600 }}>Pipeline by Industry</h3>
+                {reportData.by_industry?.slice(0, 10).map((ind, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.5rem 0' }}>
+                    <div style={{ flex: 1 }}><div style={{ fontWeight: 500, marginBottom: '0.25rem' }}>{ind.industry}</div>
+                      <div style={{ height: 8, background: '#e5e7eb', borderRadius: 4 }}>
+                        <div style={{ height: '100%', width: `${Math.min((ind.client_count / reportData.by_status.reduce((s, st) => s + parseInt(st.client_count || 0), 0)) * 100, 100)}%`, background: '#3b82f6', borderRadius: 4 }} />
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: 80 }}><div style={{ fontWeight: 600 }}>{ind.client_count}</div><div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{ind.active_count} active</div></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'activity' && reportData?.by_user && (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                {(reportData.by_type || []).slice(0, 5).map((type, idx) => {
+                  const colors = ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444'];
+                  const labels = { call_logged: 'Calls', meeting_scheduled: 'Meetings', proposal_sent: 'Proposals', email_sent: 'Emails', order_signed: 'Deals' };
+                  return (
+                    <div key={idx} style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>{labels[type.activity_type] || type.activity_type}</div>
+                      <div style={{ fontSize: '1.75rem', fontWeight: 700, color: colors[idx % colors.length] }}>{formatNumber(type.count)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}><h3 style={{ margin: 0, fontWeight: 600 }}>Activity by Team Member</h3></div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#f9fafb' }}>
+                      {['Team Member', 'Calls', 'Appointments', 'Proposals', 'Emails', 'Deals', 'Total'].map(h => (
+                        <th key={h} style={{ padding: '0.75rem 1rem', textAlign: h === 'Team Member' ? 'left' : 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {reportData.by_user.map((u, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                          <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>{u.user_name}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{u.calls || 0}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{u.appointments || 0}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{u.proposals || 0}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{u.emails || 0}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', color: '#10b981', fontWeight: 500 }}>{u.deals_closed || 0}</td>
+                          <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600 }}>{u.total_activities || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'revenue' && reportData?.byEntity?.data && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 1rem 0', fontWeight: 600 }}>Revenue by Entity</h3>
+                {reportData.byEntity.data.map((e, idx) => {
+                  const total = reportData.byEntity.data.reduce((s, en) => s + parseFloat(en.total_revenue || 0), 0);
+                  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+                  return (
+                    <div key={idx} style={{ marginBottom: '1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ fontWeight: 500 }}>{e.entity_name}</span><span style={{ fontWeight: 600 }}>{formatCurrency(e.total_revenue)}</span>
+                      </div>
+                      <div style={{ height: 8, background: '#e5e7eb', borderRadius: 4 }}>
+                        <div style={{ height: '100%', width: `${total > 0 ? (e.total_revenue / total) * 100 : 0}%`, background: colors[idx % colors.length], borderRadius: 4 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 1rem 0', fontWeight: 600 }}>Revenue by Category</h3>
+                {(reportData.byProduct?.data || []).map((p, idx) => {
+                  const total = (reportData.byProduct?.data || []).reduce((s, pr) => s + parseFloat(pr.total_revenue || 0), 0);
+                  const colors = { print: '#3b82f6', digital: '#10b981', broadcast: '#f59e0b', podcast: '#8b5cf6', events: '#ef4444', web_social: '#ec4899' };
+                  return (
+                    <div key={idx} style={{ marginBottom: '1rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <span style={{ fontWeight: 500, textTransform: 'capitalize' }}>{p.category}</span><span style={{ fontWeight: 600 }}>{formatCurrency(p.total_revenue)}</span>
+                      </div>
+                      <div style={{ height: 8, background: '#e5e7eb', borderRadius: 4 }}>
+                        <div style={{ height: '100%', width: `${total > 0 ? (p.total_revenue / total) * 100 : 0}%`, background: colors[p.category] || '#6b7280', borderRadius: 4 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'leaderboard' && (
+            <div>
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                {['week', 'month', 'quarter', 'year'].map(p => (
+                  <button key={p} onClick={() => setLeaderboardPeriod(p)}
+                    style={{ padding: '0.5rem 1rem', border: '1px solid #e5e7eb', borderRadius: '0.375rem', background: leaderboardPeriod === p ? '#3b82f6' : 'white',
+                      color: leaderboardPeriod === p ? 'white' : '#374151', fontWeight: 500, cursor: 'pointer', textTransform: 'capitalize' }}>{p}</button>
+                ))}
+              </div>
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                {(reportData?.leaderboard || []).map((rep, idx) => (
+                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.25rem',
+                      background: idx === 0 ? '#fef3c7' : idx === 1 ? '#e5e7eb' : idx === 2 ? '#fed7aa' : '#f3f4f6',
+                      color: idx === 0 ? '#92400e' : idx === 1 ? '#374151' : idx === 2 ? '#9a3412' : '#6b7280' }}>{idx + 1}</div>
+                    <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{rep.name}</div><div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{rep.role}</div></div>
+                    <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 700, color: '#10b981' }}>{formatCurrency(rep.revenue)}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{rep.closed_deals} deals · {rep.activities} activities</div></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+// ============================================
+// COMMISSIONS PAGE
+// ============================================
+function CommissionsPage() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('overview');
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState(null);
+  const [commissions, setCommissions] = useState([]);
+  const [rates, setRates] = useState([]);
+  const [defaults, setDefaults] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedUser, setSelectedUser] = useState('');
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [editingRate, setEditingRate] = useState(null);
+
+  useEffect(() => {
+    loadUsers();
+    loadData();
+  }, [selectedYear, selectedUser]);
+
+  const loadUsers = async () => {
+    try {
+      const data = await api.get('/api/users');
+      setUsers(data.filter(u => u.is_active !== false));
+    } catch (error) { console.error('Failed to load users:', error); }
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [summaryData, commissionsData, ratesData] = await Promise.all([
+        api.get(`/api/commissions/summary?period_year=${selectedYear}${selectedUser ? `&user_id=${selectedUser}` : ''}`),
+        api.get(`/api/commissions?period_year=${selectedYear}${selectedUser ? `&user_id=${selectedUser}` : ''}`),
+        user?.role === 'admin' ? api.get('/api/commissions/rates') : Promise.resolve({ rates: [], defaults: [] })
+      ]);
+      setSummary(summaryData);
+      setCommissions(commissionsData.commissions || []);
+      setRates(ratesData.rates || []);
+      setDefaults(ratesData.defaults || []);
+    } catch (error) { console.error('Failed to load commission data:', error); }
+    setLoading(false);
+  };
+
+  const formatCurrency = (amount) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount || 0);
+
+  const handleApprove = async (id) => {
+    try {
+      await api.post(`/api/commissions/${id}/approve`, {});
+      loadData();
+    } catch (error) { alert('Failed to approve: ' + error.message); }
+  };
+
+  const handleMarkPaid = async (id) => {
+    const ref = prompt('Enter payment reference (check #, payroll ref, etc.):');
+    if (ref !== null) {
+      try {
+        await api.post(`/api/commissions/${id}/paid`, { payment_reference: ref });
+        loadData();
+      } catch (error) { alert('Failed to mark as paid: ' + error.message); }
+    }
+  };
+
+  const handleSaveRate = async (rateData) => {
+    try {
+      await api.post('/api/commissions/rates', rateData);
+      setShowRateModal(false);
+      setEditingRate(null);
+      loadData();
+    } catch (error) { alert('Failed to save rate: ' + error.message); }
+  };
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const statusColors = { pending: '#f59e0b', approved: '#3b82f6', paid: '#10b981', cancelled: '#ef4444' };
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700 }}>Commissions</h1>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+            style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
+            {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          {user?.role === 'admin' && (
+            <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}
+              style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
+              <option value="">All Team Members</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1.5rem', borderBottom: '1px solid #e5e7eb' }}>
+        {[{ id: 'overview', label: 'Overview' }, { id: 'details', label: 'Commission Details' }, ...(user?.role === 'admin' ? [{ id: 'rates', label: 'Rate Configuration' }] : [])].map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            style={{ padding: '0.75rem 1rem', background: 'none', border: 'none', cursor: 'pointer', color: activeTab === tab.id ? '#3b82f6' : '#6b7280',
+              fontWeight: 500, fontSize: '0.875rem', borderBottom: activeTab === tab.id ? '2px solid #3b82f6' : '2px solid transparent', marginBottom: '-1px' }}>{tab.label}</button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}><div className="spinner" /></div>
+      ) : (
+        <>
+          {activeTab === 'overview' && summary && (
+            <div>
+              {/* YTD Summary */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+                {[
+                  { label: 'YTD Commissions', value: formatCurrency(summary.totals?.total_commission), color: '#10b981' },
+                  { label: 'Pending', value: summary.totals?.total_pending || 0, color: '#f59e0b' },
+                  { label: 'Approved', value: summary.totals?.total_approved || 0, color: '#3b82f6' },
+                  { label: 'Paid', value: summary.totals?.total_paid || 0, color: '#10b981' },
+                ].map((card, idx) => (
+                  <div key={idx} style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+                    <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>{card.label}</div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: 700, color: card.color }}>{card.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Monthly Breakdown */}
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 1rem 0', fontWeight: 600 }}>Monthly Breakdown</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem' }}>
+                  {months.map((month, idx) => {
+                    const monthData = summary.monthly?.find(m => m.period_month === idx + 1);
+                    return (
+                      <div key={idx} style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>{month}</div>
+                        <div style={{ fontWeight: 600, color: monthData ? '#10b981' : '#9ca3af' }}>{formatCurrency(monthData?.total_commission || 0)}</div>
+                        {monthData && <div style={{ fontSize: '0.625rem', color: '#6b7280', marginTop: '0.25rem' }}>{monthData.commission_count} deals</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'details' && (
+            <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ background: '#f9fafb' }}>
+                    {['Date', 'Rep', 'Client', 'Order Amount', 'Rate', 'Commission', 'Status', 'Actions'].map(h => (
+                      <th key={h} style={{ padding: '0.75rem 1rem', textAlign: h === 'Date' || h === 'Rep' || h === 'Client' ? 'left' : 'right', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {commissions.map((c, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>{new Date(c.created_at).toLocaleDateString()}</td>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>{c.user_name}</td>
+                        <td style={{ padding: '0.75rem 1rem' }}>{c.client_name || '-'}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{formatCurrency(c.order_amount)}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>{c.rate_type === 'percentage' ? `${c.commission_rate}%` : formatCurrency(c.commission_rate)}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right', fontWeight: 600, color: '#10b981' }}>{formatCurrency(c.commission_amount)}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <span style={{ padding: '0.25rem 0.5rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500, background: `${statusColors[c.status]}20`, color: statusColors[c.status] }}>{c.status}</span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          {user?.role === 'admin' && c.status === 'pending' && (
+                            <button onClick={() => handleApprove(c.id)} style={{ padding: '0.25rem 0.5rem', border: '1px solid #3b82f6', borderRadius: '0.25rem', background: 'white', color: '#3b82f6', fontSize: '0.75rem', cursor: 'pointer', marginRight: '0.25rem' }}>Approve</button>
+                          )}
+                          {user?.role === 'admin' && c.status === 'approved' && (
+                            <button onClick={() => handleMarkPaid(c.id)} style={{ padding: '0.25rem 0.5rem', border: '1px solid #10b981', borderRadius: '0.25rem', background: 'white', color: '#10b981', fontSize: '0.75rem', cursor: 'pointer' }}>Mark Paid</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {commissions.length === 0 && (
+                      <tr><td colSpan={8} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No commissions found for this period</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'rates' && user?.role === 'admin' && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ margin: 0, fontWeight: 600 }}>Commission Rate Configuration</h3>
+                <button onClick={() => { setEditingRate({}); setShowRateModal(true); }}
+                  style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 500, cursor: 'pointer' }}>+ Add Rate</button>
+              </div>
+              
+              {/* Default Rates */}
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem', overflow: 'hidden' }}>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}><h4 style={{ margin: 0, fontWeight: 600 }}>Default Rates (Company-Wide)</h4></div>
+                <div style={{ padding: '1rem' }}>
+                  {defaults.map((d, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: idx < defaults.length - 1 ? '1px solid #e5e7eb' : 'none' }}>
+                      <span style={{ textTransform: 'capitalize' }}>{d.product_category || 'All Products'}</span>
+                      <span style={{ fontWeight: 600 }}>{d.rate_type === 'percentage' ? `${d.rate_value}%` : formatCurrency(d.rate_value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* User-Specific Rates */}
+              <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}><h4 style={{ margin: 0, fontWeight: 600 }}>User-Specific Rates</h4></div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead><tr style={{ background: '#f9fafb' }}>
+                      {['User', 'Category', 'Rate', 'Effective Date', 'Actions'].map(h => (
+                        <th key={h} style={{ padding: '0.75rem 1rem', textAlign: 'left', fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr></thead>
+                    <tbody>
+                      {rates.map((r, idx) => (
+                        <tr key={idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                          <td style={{ padding: '0.75rem 1rem', fontWeight: 500 }}>{r.user_name}</td>
+                          <td style={{ padding: '0.75rem 1rem', textTransform: 'capitalize' }}>{r.product_category || 'All'}</td>
+                          <td style={{ padding: '0.75rem 1rem', fontWeight: 600 }}>{r.rate_type === 'percentage' ? `${r.rate_value}%` : formatCurrency(r.rate_value)}</td>
+                          <td style={{ padding: '0.75rem 1rem' }}>{new Date(r.effective_date).toLocaleDateString()}</td>
+                          <td style={{ padding: '0.75rem 1rem' }}>
+                            <button onClick={() => { setEditingRate(r); setShowRateModal(true); }} style={{ padding: '0.25rem 0.5rem', border: '1px solid #d1d5db', borderRadius: '0.25rem', background: 'white', fontSize: '0.75rem', cursor: 'pointer' }}>Edit</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {rates.length === 0 && <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No user-specific rates configured</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Rate Modal */}
+      {showRateModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: 500 }}>
+            <h3 style={{ margin: '0 0 1rem 0', fontWeight: 600 }}>{editingRate?.id ? 'Edit' : 'Add'} Commission Rate</h3>
+            <CommissionRateForm rate={editingRate} users={users} onSave={handleSaveRate} onCancel={() => { setShowRateModal(false); setEditingRate(null); }} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function CommissionRateForm({ rate, users, onSave, onCancel }) {
+  const [formData, setFormData] = useState({
+    user_id: rate?.user_id || '',
+    product_category: rate?.product_category || '',
+    rate_type: rate?.rate_type || 'percentage',
+    rate_value: rate?.rate_value || '',
+    effective_date: rate?.effective_date ? rate.effective_date.split('T')[0] : new Date().toISOString().split('T')[0],
+    notes: rate?.notes || ''
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!formData.user_id || !formData.rate_value) { alert('User and rate value are required'); return; }
+    onSave(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Team Member *</label>
+        <select value={formData.user_id} onChange={(e) => setFormData(prev => ({ ...prev, user_id: e.target.value }))} required
+          style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}>
+          <option value="">Select user...</option>
+          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+      </div>
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Product Category</label>
+        <select value={formData.product_category} onChange={(e) => setFormData(prev => ({ ...prev, product_category: e.target.value }))}
+          style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}>
+          <option value="">All Products</option>
+          {['print', 'digital', 'broadcast', 'podcast', 'events', 'web_social'].map(c => <option key={c} value={c} style={{ textTransform: 'capitalize' }}>{c}</option>)}
+        </select>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Rate Type</label>
+          <select value={formData.rate_type} onChange={(e) => setFormData(prev => ({ ...prev, rate_type: e.target.value }))}
+            style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}>
+            <option value="percentage">Percentage</option>
+            <option value="flat">Flat Amount</option>
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Rate Value *</label>
+          <input type="number" step="0.01" value={formData.rate_value} onChange={(e) => setFormData(prev => ({ ...prev, rate_value: e.target.value }))} required
+            placeholder={formData.rate_type === 'percentage' ? '10.00' : '100.00'}
+            style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }} />
+        </div>
+      </div>
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem' }}>Effective Date</label>
+        <input type="date" value={formData.effective_date} onChange={(e) => setFormData(prev => ({ ...prev, effective_date: e.target.value }))}
+          style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }} />
+      </div>
+      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={onCancel} style={{ padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', background: 'white', cursor: 'pointer' }}>Cancel</button>
+        <button type="submit" style={{ padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 500, cursor: 'pointer' }}>Save Rate</button>
+      </div>
+    </form>
+  );
+}
+
+// ============================================
+// EMAIL COMPOSER MODAL
+// ============================================
+function EmailComposerModal({ isOpen, onClose, client, contact, onSent }) {
+  const { user } = useAuth();
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState('');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) loadTemplates();
+  }, [isOpen]);
+
+  const loadTemplates = async () => {
+    try {
+      const data = await api.get('/api/email/templates');
+      setTemplates(data.templates || []);
+    } catch (error) { console.error('Failed to load templates:', error); }
+  };
+
+  const handleTemplateSelect = (templateId) => {
+    const template = templates.find(t => t.id === templateId);
+    if (template) {
+      setSelectedTemplate(templateId);
+      // Replace variables
+      let subj = template.subject;
+      let content = template.body;
+      const vars = {
+        contact_first_name: contact?.first_name || 'there',
+        contact_last_name: contact?.last_name || '',
+        business_name: client?.business_name || client?.name || '',
+        rep_name: user?.name || '',
+        rep_email: user?.email || '',
+        entity_name: 'WSIC Media Group'
+      };
+      Object.entries(vars).forEach(([key, val]) => {
+        subj = subj.replace(new RegExp(`{{${key}}}`, 'g'), val);
+        content = content.replace(new RegExp(`{{${key}}}`, 'g'), val);
+      });
+      setSubject(subj);
+      setBody(content);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!contact?.email) { alert('No recipient email address'); return; }
+    if (!subject.trim() || !body.trim()) { alert('Subject and body are required'); return; }
+    
+    setSending(true);
+    try {
+      await api.post('/api/email/send', {
+        recipient_email: contact.email,
+        recipient_name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+        client_id: client?.id,
+        contact_id: contact?.id,
+        subject,
+        body,
+        template_id: selectedTemplate || null
+      });
+      alert('Email sent successfully!');
+      onSent?.();
+      onClose();
+    } catch (error) {
+      alert('Failed to send email: ' + error.message);
+    }
+    setSending(false);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: 'white', borderRadius: '0.75rem', width: '100%', maxWidth: 700, maxHeight: '90vh', overflow: 'auto' }}>
+        <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontWeight: 600 }}>Compose Email</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }}><X size={20} color="#6b7280" /></button>
+        </div>
+        <div style={{ padding: '1.5rem' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: '#374151' }}>To</label>
+            <div style={{ padding: '0.5rem 0.75rem', background: '#f9fafb', borderRadius: '0.375rem', border: '1px solid #e5e7eb' }}>
+              {contact?.email || 'No email address'} {contact?.first_name && `(${contact.first_name} ${contact.last_name || ''})`}
+            </div>
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: '#374151' }}>Template</label>
+            <select value={selectedTemplate} onChange={(e) => handleTemplateSelect(e.target.value)}
+              style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
+              <option value="">Start from scratch...</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: '#374151' }}>Subject *</label>
+            <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject..."
+              style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }} />
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.25rem', color: '#374151' }}>Message *</label>
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} placeholder="Write your message..."
+              style={{ width: '100%', padding: '0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem', resize: 'vertical' }} />
+          </div>
+        </div>
+        <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+          <button onClick={onClose} style={{ padding: '0.5rem 1rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', background: 'white', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={handleSend} disabled={sending || !contact?.email}
+            style={{ padding: '0.5rem 1rem', background: sending ? '#9ca3af' : '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', fontWeight: 500, cursor: sending ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Send size={16} /> {sending ? 'Sending...' : 'Send Email'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // MAIN APP
 // ============================================
 function App() {
@@ -15986,6 +16747,8 @@ function App() {
           <Route path="/users/:id/profile" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
           <Route path="/training" element={<ProtectedRoute><TrainingCenterPage /></ProtectedRoute>} />
           <Route path="/tools" element={<ProtectedRoute><ToolsPage /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute><ReportsPage /></ProtectedRoute>} />
+          <Route path="/commissions" element={<ProtectedRoute><CommissionsPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/system" element={<ProtectedRoute><SystemDiagnosticsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />

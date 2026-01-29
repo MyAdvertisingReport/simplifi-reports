@@ -1,114 +1,101 @@
 # WSIC Advertising Platform - Development Roadmap
-## Updated: January 29, 2026
+## Updated: January 29, 2026 (Late Night)
 
 ---
 
-## 🎯 Current Sprint: Training Center & User Profiles
+## ✅ COMPLETED
 
-### ✅ COMPLETED (January 29, 2026)
+### Training Center & Tools (January 29, 2026 - Late Night)
+- [x] Training Center with 6 categories, 33 modules
+- [x] Full content imported from Notion export
+- [x] Progress tracking per user
+- [x] Mark as Complete functionality
+- [x] Tools Page (`/tools`) with 5 resource categories
+- [x] Reorganized: Tool content moved from Training to Tools
+- [x] Internal tools render in-app, external open new tabs
 
-#### System Diagnostics Dashboard
-- [x] New `/settings/system` page (Super Admin only)
-- [x] Visual health tree with 6 system components
+### User Profile Enhancements (January 29, 2026)
+- [x] Goal setting modal for KPIs (Admin only)
+- [x] Monthly targets: Appointments, Proposals, Deals, Clients, Revenue
+- [x] 1-on-1 Meeting Notes section
+- [x] `user_meeting_notes` database table
+- [x] Meeting notes API endpoints
+
+### System Diagnostics (January 29, 2026 - Evening)
+- [x] `/settings/system` page (Super Admin only)
+- [x] Visual health tree with 6 components
 - [x] Overall status banner (green/yellow/red)
 - [x] Expandable component details
 - [x] Environment configuration panel
-- [x] Mobile compatibility fixes documentation
-- [x] Sidebar navigation with SA badge
-- [x] Fixed diagnostics authentication bug (token from localStorage)
-- [x] Removed old diagnostics from Preferences page
 
-#### Super Admin System (Complete)
+### Super Admin System (January 28-29, 2026)
 - [x] Database: `is_super_admin` column on users
 - [x] Database: `super_admin_audit_log` table
-- [x] Set 3 Super Admins: Justin, Mamie, Bill
-- [x] Backend: `requireSuperAdmin` middleware
-- [x] Backend: `logSuperAdminAction()` audit function
-- [x] Endpoints: View As, End View As, Audit Log
-- [x] Frontend: View As button on Users page
-- [x] Frontend: Audit Log tab on Users page
-- [x] Frontend: System Diagnostics page
-- [x] Sidebar: View As indicator when active
+- [x] 3 Super Admins: Justin, Mamie, Bill
+- [x] View As functionality with audit logging
+- [x] Audit Log tab on Users page
 
-#### Client Page Improvements (Complete)
-- [x] Removed Tier badge from client detail pages
-- [x] Fixed Assigned Representative to show actual name
+### Client Page Improvements (January 29, 2026)
+- [x] Removed Tier badge from client pages
+- [x] Fixed Assigned Representative display
 - [x] Merged Notes into Activity tab
 - [x] All/Mine/Open toggle for ALL users
-- [x] Client View: All/Current/Past toggle
 - [x] Add Contact feature (Prospect/Lead)
 
-#### RAB Contact Import (Complete)
-- [x] ~300 contacts imported from PDF lead reports
-- [x] Proper schema: first_name/last_name structure
+---
+
+## 🎯 NEXT PRIORITY
+
+### Phase 1: Commission Tracking
+**Goal:** Auto-calculate commissions from closed deals
+
+**Features Needed:**
+- Commission rate configuration per product/rep
+- Automatic calculation when deals close
+- Commission reports by rep and period
+- Payout tracking
+
+**Database Tables:**
+```sql
+commission_rates (
+  id, user_id, product_category_id,
+  rate_type ('percentage' or 'flat'),
+  rate_value, effective_date
+)
+
+commissions (
+  id, user_id, order_id, client_id,
+  order_amount, commission_rate, commission_amount,
+  status ('pending', 'approved', 'paid'),
+  period_month, period_year, paid_at
+)
+```
+
+### Phase 2: Reporting & Analytics
+**Goal:** Sales performance visibility
+
+**Reports Needed:**
+- Sales Rep Performance (deals, revenue, commission)
+- Pipeline Report (prospects by stage)
+- Activity Report (calls, meetings, proposals)
+- Revenue by Product/Brand
+- Training Completion by Team
+
+### Phase 3: Email Integration
+**Goal:** Send emails directly from the platform
+
+**Features:**
+- Email templates for common scenarios
+- Send from client detail page
+- Log emails as activities
+- Track opens/clicks (via Postmark)
 
 ---
 
-## 🔥 NEXT PRIORITY: Training Center
-
-### Phase 1: User Profile Pages
-
-**Goal:** Create comprehensive user dashboard accessible from Users page
-
-**User Profile Will Show:**
-| Section | Data |
-|---------|------|
-| Overview | Name, role, email, start date, manager |
-| Clients | Total, Active, Prospects, Leads, Churned |
-| Orders | Created, Approved, Pending, Rejected, Revenue |
-| Activities | Touchpoints, Appointments, Proposals (30/90/all time) |
-| Goals & KPIs | Monthly targets vs actuals |
-| Training | Assigned courses, completion %, certifications |
-
-**Users Page Actions Update:**
-| Current | New |
-|---------|-----|
-| View Clients | Keep |
-| View As (SA only) | Keep |
-| — | Add "Profile" button |
-
-### Phase 2: Training Center Structure
-
-**Import from Notion:**
-- Current training materials and structure
-- Video tutorials (links/embeds)
-- Written guides and SOPs
-- Quizzes/assessments
-
-**Training Categories:**
-| Category | Audience | Content Type |
-|----------|----------|--------------|
-| Onboarding | New hires | Videos, Docs, Checklist |
-| Platform Training | All users | Interactive walkthroughs |
-| Sales Process | Sales team | Videos, Scripts, Examples |
-| Product Knowledge | Sales team | Docs, Quizzes |
-| Admin Training | Admins | Videos, Docs |
-
-### Phase 3: Training Integration
-
-**Connect Training to Users:**
-- Assign training modules to users
-- Track completion status
-- Due dates and reminders
-- Manager visibility into team progress
-
-**Role-Based Training Paths:**
-| Role | Required Training |
-|------|-------------------|
-| Sales Associate | Onboarding, Platform, Sales, Products |
-| Sales Manager | Above + Team Management |
-| Admin | All modules |
-| Staff | Onboarding, Platform basics |
-
----
-
-## 📋 IN PROGRESS
+## 🔄 IN PROGRESS
 
 ### Order Import System
-**Why This Matters:**
-- Orders determine true "active" client status
-- Revenue tracking depends on order data
-- Currently have 2,812 clients but only ~122 confirmed active
+**Status:** Assistant filling templates from QuickBooks
 
 **Excel Templates Created:**
 - [x] Print Orders Template
@@ -116,25 +103,10 @@
 - [x] Podcast Orders Template
 - [x] Events Orders Template
 - [x] Web/Social Orders Template
-- [x] Import Instructions document
 
 **Pending:**
-- [ ] Assistant fills templates from QuickBooks
-- [ ] Generate SQL import scripts
-- [ ] Import to database
-- [ ] Update client statuses
-
-### Multi-Product Campaign Display
-**Current State:** Only Programmatic (Simpli.fi) campaigns display
-
-| Product | Brand | Status |
-|---------|-------|--------|
-| Programmatic | All | ✅ Working |
-| Radio Broadcast | WSIC | ⏳ Templates ready |
-| Podcast | WSIC | ⏳ Templates ready |
-| Print Ads | LKNW | ⏳ Templates ready |
-| Events/Sponsorship | All | ⏳ Templates ready |
-| Web/Social | All | ⏳ Templates ready |
+- [ ] Import completed templates to database
+- [ ] Update client statuses based on orders
 
 ---
 
@@ -143,71 +115,67 @@
 | Metric | Count |
 |--------|-------|
 | Total Clients | 2,812 |
-| Active Clients | ~122 (needs verification via orders) |
+| Active Clients | ~122 |
 | Prospect Clients | ~2,690 |
 | Open (unassigned) | ~2,135 |
-| Claimed/Assigned | ~677 |
-| Super Admins | 3 |
 | Team Members | 18 |
-| RAB Contacts Imported | ~300 |
+| Super Admins | 3 |
+| Training Modules | 21 active |
+| Tools Resources | 15+ |
 | System Health | ✅ All Green |
 
 ---
 
 ## 🗓️ Future Phases
 
-### Phase 4: Sales KPI Tracking
-- Activity type tracking (touchpoints, appointments, proposals, deals)
-- Per-rep metrics with time filters
-- 1-on-1 exportable reports
-- Pipeline value tracking
+### Phase 4: Calendar Integration
+- Sync appointments with Google Calendar
+- Meeting scheduling from platform
+- Reminder notifications
 
-### Phase 5: Reporting & Analytics
-- Sales rep performance dashboards
-- Revenue by brand/product
-- Client lifetime value
-- Training effectiveness metrics
+### Phase 5: Document Generation
+- Auto-generate contracts from orders
+- Proposal PDF generation
+- Media kit customization
 
-### Phase 6: Automation
-- Auto-assign leads by territory
-- Follow-up reminders
-- Automated email sequences
-- Training assignment automation
-
-### Phase 7: Client Portal
+### Phase 6: Client Portal
 - Client self-service login
 - View orders/invoices
 - Make payments
-- Access reports
+- Access campaign reports
+
+### Phase 7: Mobile Optimization
+- Responsive improvements
+- Field sales mobile experience
+- Quick activity logging
 
 ---
 
 ## 📅 Session History
 
+### January 29, 2026 (Late Night) - Training & Tools
+- Training Center: 6 categories, 33 modules
+- Tools Page: 5 categories of quick-access resources
+- User Profiles: Goal setting + 1-on-1 meeting notes
+- Reorganized training (moved tools content)
+
 ### January 29, 2026 (Evening) - System Diagnostics
 - System Diagnostics page (/settings/system)
-- Visual health dashboard with expandable components
+- Visual health dashboard
 - Fixed diagnostics authentication bug
-- Prepared Training Center roadmap
 
-### January 29, 2026 (Afternoon) - Client UX & Contact Import
-- Removed tier badges from client pages
-- Fixed Assigned Representative display
-- Merged Notes into Activity tab
-- All/Mine/Open toggle for all users
-- Add Contact modal (Prospect/Lead)
-- RAB contact import SQL (~300 contacts)
+### January 29, 2026 (Afternoon) - Client UX
+- Removed tier badges
+- Fixed Assigned Representative
+- Merged Notes into Activity
+- All/Mine/Open toggle
+- Add Contact modal
 
 ### January 28, 2026 - Super Admin & CRM
-- Super Admin role system (3 users)
-- View As endpoints (backend)
-- Audit logging infrastructure
-- CRM View redesign
-- Imported 2,800+ clients from RAB
-
-### January 27, 2026 - Billing & Security
-- Auto-generate invoices feature
-- Security audit improvements (7.5→8.5)
+- Super Admin role system
+- View As endpoints
+- Audit logging
+- Imported 2,800+ clients
 
 ---
 
@@ -221,8 +189,11 @@
 ### Git Workflow
 ```cmd
 cd simplifi-reports
-copy C:\Users\Justin\Downloads\file.js backend\file.js
-git add backend/file.js
+del backend\server.js
+del frontend\src\App.jsx
+copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
+copy "C:\Users\WSIC BILLING\Downloads\App.jsx" frontend\src\App.jsx
+git add -A
 git commit -m "Description"
 git push origin main
 ```

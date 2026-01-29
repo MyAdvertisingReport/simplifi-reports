@@ -1,6 +1,6 @@
 # WSIC Advertising Platform - New Chat Context
 ## Upload this file at the START of every new Claude chat
-## Last Updated: January 29, 2026
+## Last Updated: January 29, 2026 (Late Night)
 
 ---
 
@@ -11,7 +11,7 @@
 ```
 simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
-│   ├── server.js              ← Main server with all endpoints ⭐
+│   ├── server.js              ← Main server (~4,600 lines) ⭐
 │   ├── package.json
 │   ├── routes/
 │   │   ├── order.js           
@@ -23,7 +23,7 @@ simplifi-reports/              ← Git root (push from here)
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (~14.3k lines) ⭐
+        ├── App.jsx            ← Main app (~16k lines) ⭐
         └── components/
             ├── BillingPage.jsx
             └── ...
@@ -67,6 +67,11 @@ git add server.js App.jsx
 | `invoices` | Billing invoices |
 | `client_activities` | Activity timeline |
 | `super_admin_audit_log` | Admin action tracking |
+| `training_categories` | Training module categories |
+| `training_modules` | Individual training content |
+| `training_progress` | User completion tracking |
+| `user_goals` | Monthly KPI targets |
+| `user_meeting_notes` | 1-on-1 meeting notes |
 
 ### advertising_clients Key Columns
 ```sql
@@ -100,13 +105,72 @@ is_primary               -- Boolean
 - **System Diagnostics**: Monitor system health (Settings → System)
 - All admin powers plus audit trail access
 
-### Super Admin UI Locations
-| Feature | Location |
-|---------|----------|
-| View As button | Users page → Actions column (purple eye) |
-| Audit Log | Users page → Audit Log tab |
-| System Diagnostics | Settings → System (sidebar) |
-| SA Badge | Next to Super Admin names everywhere |
+---
+
+## 📚 Training Center ✅ COMPLETE
+
+### Structure
+| Category | Modules | Status |
+|----------|---------|--------|
+| Getting Started | 5 | ✅ Active |
+| The Sales Process | 5 | ✅ Active |
+| Programmatic Mastery | 6 | ✅ Active |
+| Using the Platform | 5 | ✅ Active |
+| Sales Toolbox | 6 | ❌ Hidden (moved to Tools) |
+| Product Knowledge | 6 | ❌ Hidden (moved to Tools) |
+
+**Total Active: 21 learning modules**
+
+### Features
+- Progress tracking per user
+- Required vs optional modules
+- Markdown content rendering
+- "Mark as Complete" functionality
+- Searchable modules
+
+---
+
+## 🛠️ Tools Page (Sales Toolbox) ✅ COMPLETE
+
+### Route: `/tools`
+
+| Category | Resources |
+|----------|-----------|
+| Sales Resources | Pricing Guide, Sales FAQs, Email Templates, Proposal Template |
+| Marketing Materials | Media Kit, Editorial Calendar, 10 Reasons, One-Sheet Library |
+| Booking & Scheduling | Good Morning LKN, Home Ad Show |
+| Digital Advertising | Programmatic explainers, Geofencing, Sample Reports |
+| Internal Resources | Billing Guide, Leads Sheet, Post-Sales Checklist |
+
+- Internal tools (Pricing, Billing) render in-app
+- External tools open in new tabs
+
+---
+
+## 👤 User Profiles ✅ ENHANCED
+
+### Route: `/users/:id/profile`
+
+### Tabs
+| Tab | Content |
+|-----|---------|
+| Overview | Client metrics, Order summary, Activity stats |
+| Goals & KPIs | Monthly targets with progress bars, 1-on-1 meeting notes |
+| Training | Completion %, modules completed, recent activity |
+
+### Goal Setting (Admin only)
+- Appointments target
+- Proposals target
+- Closed Deals target
+- New Clients target
+- Revenue target
+- Notes
+
+### 1-on-1 Meeting Notes (Admin only)
+- Meeting date
+- Title
+- Notes
+- Action items
 
 ---
 
@@ -120,115 +184,85 @@ is_primary               -- Boolean
 | Open (unassigned) | ~2,135 |
 | Team Members | 18 |
 | Super Admins | 3 |
-| RAB Contacts Imported | ~300 |
+| Training Modules | 21 active |
 | System Health | ✅ All Green |
 
 ---
 
 ## ✅ Recently Completed (January 29, 2026)
 
-### System Diagnostics Page
-- ✅ New `/settings/system` route (Super Admin only)
-- ✅ Visual health dashboard with 6 system components
-- ✅ Overall status banner (green/yellow/red)
-- ✅ Expandable component details for technical info
-- ✅ Environment configuration panel
-- ✅ Mobile compatibility fixes documentation
-- ✅ Sidebar "System" link with SA badge
+### Training Center
+- ✅ 6 categories with 33 total modules
+- ✅ Full content from Notion export
+- ✅ Progress tracking per user
+- ✅ Mark as Complete functionality
+- ✅ Reorganized: Tools content moved to Tools page
 
-### Super Admin Frontend
-- ✅ View As button on Users page
-- ✅ View As indicator in sidebar when active
-- ✅ Audit Log tab on Users page
-- ✅ System Diagnostics page
+### Tools Page (Sales Toolbox)
+- ✅ New `/tools` route
+- ✅ 5 categories of quick-access resources
+- ✅ Internal tools render in-app
+- ✅ External tools open in new tabs
+- ✅ Sidebar navigation added
 
-### Client Page Improvements
-- ✅ Removed Tier badge from client pages
-- ✅ Fixed Assigned Representative display
-- ✅ Merged Notes into Activity tab
-- ✅ All/Mine/Open toggle for ALL users
-- ✅ Add Contact feature (Prospect/Lead)
+### User Profile Enhancements
+- ✅ Goal setting modal (Admin only)
+- ✅ 1-on-1 meeting notes section
+- ✅ Meeting notes API endpoints
+- ✅ `user_meeting_notes` table created
 
----
-
-## 🎯 NEXT PRIORITY: Training Center
-
-### Vision
-Build a Training Center that:
-1. **Integrates with User Profiles** - Each user has a profile with KPIs, goals, training progress
-2. **Role-based Training Paths** - Different training for different roles
-3. **Connects to Notion** - Import existing training content
-4. **Tracks Completion** - Know who completed what
-
-### User Profile Page (New)
-Accessible from Users page, shows:
-- Personal info (name, role, email, start date)
-- Client metrics (total, active, prospects, leads)
-- Order metrics (created, approved, revenue)
-- Activity metrics (touchpoints, appointments, proposals)
-- Goals & KPIs (monthly targets vs actuals)
-- Training progress (assigned, completed, certifications)
-
-### Users Page Actions Update
-| Current | Planned |
-|---------|---------|
-| View Clients | Keep |
-| View As (SA) | Keep |
-| — | Add "Profile" button |
-
-### Training Content from Notion
-- Justin will provide Notion export
-- Contains current training materials
-- Videos, documents, checklists
-- Will need to structure for platform
+### System Diagnostics
+- ✅ `/settings/system` route (Super Admin only)
+- ✅ Visual health dashboard
+- ✅ Component monitoring
 
 ---
 
-## 👤 User System
+## 🎯 NEXT PRIORITY
 
-### Roles
-- `admin` - Full access + Super Admin eligible
-- `sales_manager` - Team oversight
-- `sales_associate` - Own clients only
-- `staff` - Limited access
+### High Priority
+1. **Commission Tracking** - Auto-calculate commissions from closed deals
+2. **Reporting/Analytics** - Sales performance reports, pipeline reports
+3. **Email Integration** - Send emails directly from the platform
 
-### Justin's User ID
-```
-9a69f143-1dd2-4842-a3e8-fe17a664ba2c
-```
+### In Progress
+- **Client Order Data Import** - Assistant filling templates from QuickBooks
 
 ---
 
 ## 📝 API Endpoints Reference
 
-### Clients
+### Training
 ```
-GET  /api/clients                  - List with stats
-POST /api/clients/:id/claim        - Claim open account
-POST /api/clients/:id/reassign     - Reassign to different rep
+GET  /api/training/categories           - List active categories
+GET  /api/training/modules              - List modules (optional ?category=)
+GET  /api/training/modules/:id          - Get single module
+GET  /api/training/my-progress          - Current user's progress
+POST /api/training/modules/:id/complete - Mark module complete
 ```
 
-### Users & Super Admin
+### User Profiles
 ```
-GET  /api/auth/me                        - Current user
-GET  /api/users/extended                 - All users with stats
+GET  /api/users/:id                     - Get user details
+GET  /api/users/:id/stats               - User stats with time filter
+GET  /api/users/:id/goals               - User's monthly goals
+POST /api/users/:id/goals               - Set/update goals (admin)
+GET  /api/users/:id/training-progress   - User's training progress
+GET  /api/users/:id/meeting-notes       - User's 1-on-1 notes
+POST /api/users/:id/meeting-notes       - Add meeting note (admin)
+```
+
+### Super Admin
+```
 GET  /api/super-admin/view-as/:userId    - View As mode
 POST /api/super-admin/view-as/:userId/end - Exit View As
 GET  /api/super-admin/audit-log          - Audit trail
 ```
 
-### Diagnostics (Admin/Super Admin)
+### Diagnostics
 ```
 GET  /api/diagnostics/public             - Basic status (no auth)
 GET  /api/diagnostics/admin              - Full system health (admin)
-POST /api/diagnostics/clear-cache        - Clear cache (admin)
-```
-
-### Orders
-```
-GET  /api/orders                   - List orders
-POST /api/orders                   - Create order
-GET  /api/orders/:id               - Get order details
 ```
 
 ---
@@ -243,8 +277,11 @@ GET  /api/orders/:id               - Get order details
 ### Git Workflow
 ```cmd
 cd simplifi-reports
-copy C:\Users\Justin\Downloads\filename.js backend\filename.js
-git add backend/filename.js frontend/src/App.jsx
+del backend\server.js
+del frontend\src\App.jsx
+copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
+copy "C:\Users\WSIC BILLING\Downloads\App.jsx" frontend\src\App.jsx
+git add -A
 git commit -m "Description"
 git push origin main
 ```
@@ -253,14 +290,13 @@ git push origin main
 
 ## 📚 Session Docs to Upload
 
-### For Training Center Session:
 1. **NEW_CHAT_PROMPT.md** - This file (always upload first)
-2. **ROADMAP.md** - Current priorities (updated with Training Center plans)
+2. **ROADMAP.md** - Current priorities
 3. **SESSION_SUMMARY.md** - Last session's work
-4. **Notion Training Export** - Current training content (Justin to provide)
-5. **App.jsx** - For frontend changes (if needed)
+4. **FILE_STRUCTURE.md** - Project structure reference
 
 ### Optional:
+- **App.jsx** - For frontend changes
 - **server.js** - For backend reference
 - **SECURITY_AUDIT.md** - If security work needed
 
@@ -273,4 +309,3 @@ git push origin main
 - JWT validation ✅
 - Super Admin audit logging ✅
 - System diagnostics access controlled ✅
-- Diagnostic endpoints properly protected ✅
