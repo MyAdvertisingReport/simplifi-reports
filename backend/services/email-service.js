@@ -220,6 +220,22 @@ async function sendOrderSubmittedInternal({ order, submittedBy }) {
   const brandBubbles = buildBrandBubbles(order.items);
   const categoryBubbles = buildCategoryBubbles(order.items);
   
+  // Get brand names for subject line
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  const brandText = brandNames.length > 0 ? brandNames.join(' + ') : 'WSIC';
+  
+  // Check if WSIC is included (for Bill notification)
+  const includesWSIC = brandNames.some(b => b.toLowerCase().includes('wsic'));
+  
   // Status styling
   const statusConfig = {
     'pending_approval': { bg: '#fef3c7', color: '#92400e', text: 'Needs Approval', icon: '⏳' },
@@ -229,8 +245,41 @@ async function sendOrderSubmittedInternal({ order, submittedBy }) {
   };
   const status = statusConfig[order.status] || statusConfig['pending'];
   
-  // Subject without order number
-  const subject = `New Order: ${order.client_name} - $${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo`;
+  // Subject with client name and brands
+  const subject = `New Order Submitted - ${order.client_name} - ${brandText}`;
+  
+  // Calculate setup fees
+  const setupFees = order.items 
+    ? order.items.reduce((sum, item) => sum + parseFloat(item.setup_fee || 0), 0)
+    : 0;
+  
+  // Build product details table
+  const productRows = order.items ? order.items.map(item => {
+    const style = getCategoryStyle(item.category || item.product_category);
+    return `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">
+          <span style="display: inline-block; background: ${style.bg}; color: ${style.color}; padding: 2px 8px; border-radius: 4px; font-size: 10px; margin-right: 6px;">${style.icon}</span>
+          <strong>${item.product_name}</strong>
+          <div style="color: #64748b; font-size: 12px; margin-top: 2px;">${item.entity_name || ''}</div>
+        </td>
+        <td style="padding: 12px; text-align: right; border-bottom: 1px solid #e5e7eb; color: #1e293b; font-weight: 500;">
+          $${parseFloat(item.line_total || item.monthly_price || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        </td>
+        <td style="padding: 12px; text-align: right; border-bottom: 1px solid #e5e7eb; color: ${parseFloat(item.setup_fee || 0) > 0 ? '#1e293b' : '#94a3b8'};">
+          ${parseFloat(item.setup_fee || 0) > 0 ? '$' + parseFloat(item.setup_fee).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-'}
+        </td>
+      </tr>
+    `;
+  }).join('') : '';
+  
+  // Format dates
+  const startDate = order.contract_start_date 
+    ? new Date(order.contract_start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'TBD';
+  const endDate = order.contract_end_date 
+    ? new Date(order.contract_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'TBD';
   
   const content = `
     <div class="header" style="background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); padding: 32px; text-align: center;">
@@ -253,22 +302,55 @@ async function sendOrderSubmittedInternal({ order, submittedBy }) {
       <!-- Product Categories -->
       ${categoryBubbles}
       
-      <!-- Key Details Grid -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0;">
-        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center;">
-          <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Monthly</div>
-          <div style="color: #1e3a8a; font-size: 24px; font-weight: 700;">$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+      <!-- Contract Period -->
+      <div style="background: #f8fafc; border-radius: 12px; padding: 16px; margin: 20px 0; display: flex; justify-content: space-between; align-items: center;">
+        <div style="text-align: center; flex: 1;">
+          <div style="color: #64748b; font-size: 11px; text-transform: uppercase;">Start</div>
+          <div style="color: #1e293b; font-weight: 600;">${startDate}</div>
         </div>
-        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; text-align: center;">
-          <div style="color: #64748b; font-size: 13px; margin-bottom: 4px;">Contract Term</div>
-          <div style="color: #1e293b; font-size: 24px; font-weight: 700;">${order.term_months} mo</div>
+        <div style="color: #cbd5e1; font-size: 20px;">→</div>
+        <div style="text-align: center; flex: 1;">
+          <div style="color: #64748b; font-size: 11px; text-transform: uppercase;">End</div>
+          <div style="color: #1e293b; font-weight: 600;">${endDate}</div>
+        </div>
+        <div style="color: #cbd5e1; font-size: 20px;">|</div>
+        <div style="text-align: center; flex: 1;">
+          <div style="color: #64748b; font-size: 11px; text-transform: uppercase;">Term</div>
+          <div style="color: #1e293b; font-weight: 600;">${order.term_months} months</div>
         </div>
       </div>
       
-      <!-- Contract Total -->
-      <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-        <div style="color: #166534; font-size: 13px; margin-bottom: 4px;">Total Contract Value</div>
-        <div style="color: #166534; font-size: 32px; font-weight: 700;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+      <!-- Product Details Table -->
+      <h3 style="color: #1e293b; margin: 24px 0 12px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Products</h3>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+        <thead>
+          <tr style="background: #f8fafc;">
+            <th style="padding: 12px; text-align: left; color: #64748b; font-weight: 500; font-size: 12px;">PRODUCT</th>
+            <th style="padding: 12px; text-align: right; color: #64748b; font-weight: 500; font-size: 12px;">MONTHLY</th>
+            <th style="padding: 12px; text-align: right; color: #64748b; font-weight: 500; font-size: 12px;">SETUP</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${productRows}
+        </tbody>
+      </table>
+      
+      <!-- Totals Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr ${setupFees > 0 ? '1fr' : ''}; gap: 12px; margin: 24px 0;">
+        <div style="background: #f8fafc; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="color: #64748b; font-size: 12px; margin-bottom: 4px;">Monthly Total</div>
+          <div style="color: #1e3a8a; font-size: 22px; font-weight: 700;">$${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+        </div>
+        ${setupFees > 0 ? `
+        <div style="background: #f8fafc; border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="color: #64748b; font-size: 12px; margin-bottom: 4px;">Setup Fees</div>
+          <div style="color: #1e293b; font-size: 22px; font-weight: 700;">$${setupFees.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+        </div>
+        ` : ''}
+        <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 12px; padding: 16px; text-align: center;">
+          <div style="color: #166534; font-size: 12px; margin-bottom: 4px;">Contract Value</div>
+          <div style="color: #166534; font-size: 22px; font-weight: 700;">$${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+        </div>
       </div>
       
       ${order.status === 'pending_approval' ? `
@@ -286,11 +368,24 @@ async function sendOrderSubmittedInternal({ order, submittedBy }) {
     </div>
   `;
 
+  // Build recipient list
+  // Always: Justin, Mamie, Lalaine
+  // Conditional: Bill (if WSIC included)
+  const recipients = [
+    'justin@wsicnews.com',
+    'mamie@wsicnews.com', 
+    'admin@wsicnews.com'  // Lalaine
+  ];
+  
+  if (includesWSIC) {
+    recipients.push('bill@wsicnews.com');
+  }
+
   return sendEmail({
-    to: process.env.ADMIN_EMAIL || 'justin@wsicnews.com',
+    to: recipients.join(', '),
     from: FROM_ADDRESSES.noreply,
     subject,
-    htmlBody: emailTemplate({ title: subject, preheader: `${order.client_name} - $${parseFloat(order.contract_total || 0).toLocaleString()} contract`, content }),
+    htmlBody: emailTemplate({ title: subject, preheader: `${order.client_name} - ${brandText} - $${parseFloat(order.contract_total || 0).toLocaleString()} contract`, content }),
     tag: 'order-submitted',
     metadata: { orderId: order.id, orderNumber: order.order_number }
   });
