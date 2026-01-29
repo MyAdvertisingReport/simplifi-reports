@@ -1,5 +1,5 @@
 # WSIC Advertising Platform - File Structure
-## Updated: January 29, 2026 (Late Night)
+## Updated: January 29, 2026 (Evening)
 
 ---
 
@@ -10,7 +10,7 @@
 simplifi-reports/                    ← Git root (all commands from here)
 │
 ├── 📁 backend/                      ← Railway deployment
-│   ├── 📄 server.js                 # Main server (~4,600 lines) ⭐
+│   ├── 📄 server.js                 # Main server (~5,700 lines) ⭐
 │   ├── 📄 auth.js                   # Authentication routes & middleware
 │   ├── 📄 database.js               # PostgreSQL helpers & caching
 │   ├── 📄 simplifi-client.js        # Simpli.fi API integration
@@ -40,7 +40,7 @@ simplifi-reports/                    ← Git root (all commands from here)
     ├── 📄 index.html
     │
     └── 📁 src/
-        ├── 📄 App.jsx               # Main app (~16k lines) ⭐
+        ├── 📄 App.jsx               # Main app (~17k lines) ⭐
         ├── 📄 main.jsx              # React entry point
         ├── 📄 index.css
         │
@@ -65,14 +65,13 @@ simplifi-reports/                    ← Git root (all commands from here)
 
 | Task | Files Needed |
 |------|--------------|
-| **Training Center** | `App.jsx` (TrainingCenterPage ~lines 14573-15084) |
-| **Tools Page** | `App.jsx` (ToolsPage ~lines 15085-15370) |
-| **User Profiles** | `App.jsx` (UserProfilePage ~lines 14090-14572) |
-| **CRM / Clients** | `App.jsx` (~lines 1763-2700), `server.js` |
-| **Billing/Invoices** | `BillingPage.jsx`, `billing.js`, `email-service.js` |
+| **Commissions** | `App.jsx` (CommissionsPage), `server.js` |
+| **User Management** | `App.jsx` (UsersPage), `server.js` |
 | **Orders** | `OrderForm.jsx`, `order.js`, `order-variants.js` |
-| **Super Admin** | `App.jsx` (UsersPage, Sidebar), `server.js` |
-| **System Diagnostics** | `App.jsx` (SystemDiagnosticsPage), `server.js` |
+| **Billing/Invoices** | `BillingPage.jsx`, `billing.js` |
+| **Training** | `App.jsx` (TrainingCenterPage), `server.js` |
+| **Tools** | `App.jsx` (ToolsPage) |
+| **CRM / Clients** | `App.jsx` (~lines 1763-2700), `server.js` |
 
 ---
 
@@ -82,17 +81,21 @@ simplifi-reports/                    ← Git root (all commands from here)
 ```
 users                 - User accounts, roles
 user_sessions         - Active login sessions
-user_activity_log     - Security audit trail
-super_admin_audit_log - Super Admin action tracking
 advertising_clients   - Client companies (CRM) ⭐
 contacts              - Client contacts
 orders                - Advertising orders
 order_items           - Line items in orders
 products              - Available products
-packages              - Product bundles
 entities              - Business entities (WSIC, LKN, LWP)
-notes                 - Client notes
-documents             - Uploaded PDFs
+```
+
+### Commission Tables ⭐ NEW
+```
+commission_rates          - User-specific rates
+commission_rate_defaults  - Company-wide default rates
+commissions               - Individual commission records
+  - is_split, split_with_user_id, split_percentage
+  - parent_commission_id, split_reason
 ```
 
 ### Billing Tables
@@ -102,87 +105,74 @@ invoice_items         - Line items on invoices
 invoice_payments      - Payment history
 ```
 
-### Training Tables ⭐ NEW
+### Training Tables
 ```
-training_categories   - Module categories (6 total, 4 active)
-training_modules      - Individual modules (33 total, 21 active)
+training_categories   - Module categories
+training_modules      - Individual modules
 training_progress     - User completion tracking
 user_goals            - Monthly KPI targets
-user_certifications   - Certification records
+user_meeting_notes    - 1-on-1 meeting notes
 ```
 
-### User Profile Tables ⭐ NEW
+### Audit Tables
 ```
-user_meeting_notes    - 1-on-1 meeting notes
+user_activity_log         - Security audit trail
+super_admin_audit_log     - Super Admin action tracking
 ```
 
 ---
 
 ## 🌐 API Endpoints
 
-### Training ⭐ NEW
+### Commissions ⭐ NEW
 ```
-GET    /api/training/categories           - List active categories
-GET    /api/training/modules              - List modules (?category=)
-GET    /api/training/modules/:id          - Single module
-GET    /api/training/my-progress          - Current user's progress
-POST   /api/training/modules/:id/complete - Mark complete
+GET    /api/commissions                  - List commissions
+GET    /api/commissions/summary          - YTD summary  
+GET    /api/commissions/pending          - Pending approvals
+GET    /api/commissions/rates            - Rate config
+POST   /api/commissions/rates            - Add/update rate
+POST   /api/commissions/:id/approve      - Approve
+POST   /api/commissions/:id/split        - Split commission
+POST   /api/commissions/:id/paid         - Mark paid
+PUT    /api/commissions/:id              - Update
+DELETE /api/commissions/:id              - Cancel
 ```
 
-### User Profiles ⭐ NEW
+### Users
 ```
-GET    /api/users/:id                     - User details
-GET    /api/users/:id/stats               - Stats with time filter
-GET    /api/users/:id/goals               - Monthly goals
-POST   /api/users/:id/goals               - Set goals (admin)
-GET    /api/users/:id/training-progress   - Training progress
-GET    /api/users/:id/meeting-notes       - 1-on-1 notes
-POST   /api/users/:id/meeting-notes       - Add note (admin)
+GET    /api/users                        - List users
+GET    /api/users/:id                    - Get user
+PUT    /api/users/:id                    - Update user (admin)
+PUT    /api/auth/change-password         - Change own password
+POST   /api/auth/login                   - Login
 ```
 
 ### Clients
 ```
-GET    /api/clients                       - List with stats
-GET    /api/clients/:id                   - Single client
-POST   /api/clients/:id/claim             - Claim open account
-POST   /api/clients/:id/reassign          - Reassign to rep
-```
-
-### Super Admin
-```
-GET    /api/super-admin/view-as/:userId    - View As mode
-POST   /api/super-admin/view-as/:userId/end - Exit View As
-GET    /api/super-admin/audit-log          - Audit trail
-```
-
-### Diagnostics
-```
-GET    /api/diagnostics/public             - Basic status
-GET    /api/diagnostics/admin              - Full health (admin)
-POST   /api/diagnostics/clear-cache        - Clear cache (admin)
-```
-
-### Billing
-```
-GET    /api/billing/invoices              - List invoices
-POST   /api/billing/invoices              - Create invoice
-POST   /api/billing/invoices/:id/send     - Send invoice email
-POST   /api/billing/invoices/:id/charge   - Charge payment
-POST   /api/billing/generate-monthly      - Generate from orders
+GET    /api/clients                      - List with stats
+GET    /api/clients/:id                  - Single client
+POST   /api/clients/:id/claim            - Claim open account
+POST   /api/clients/:id/reassign         - Reassign to rep
 ```
 
 ### Orders
 ```
-GET    /api/orders                        - List orders
-POST   /api/orders                        - Create order
-PUT    /api/orders/:id/approve            - Approve order
-PUT    /api/orders/:id/reject             - Reject order
-POST   /api/orders/:id/send-to-client     - Send for signing
+GET    /api/orders                       - List orders
+POST   /api/orders                       - Create order
+PUT    /api/orders/:id/approve           - Approve order
+POST   /api/orders/:id/send-to-client    - Send for signing
+```
+
+### Training
+```
+GET    /api/training/categories          - List categories
+GET    /api/training/modules             - List modules
+POST   /api/training/modules/:id/complete - Mark complete
 ```
 
 ---
 
-## 🎨 App.jsx Sections (~16,000 lines)
+## 🎨 App.jsx Sections (~17,000 lines)
 
 | Section | Approximate Lines | Purpose |
 |---------|-------------------|---------|
@@ -190,17 +180,14 @@ POST   /api/orders/:id/send-to-client     - Send for signing
 | useResponsive Hook | 53-91 | Mobile/tablet/desktop |
 | AuthContext | 96-212 | Auth state, View As |
 | API Helper | 217-280 | api.get/post/put/delete |
-| Sidebar | 595-960 | Navigation |
-| Dashboard | 1000-1500 | Home page |
+| Sidebar | 598-1050 | Navigation + Change Password |
+| Dashboard | 1050-1500 | Home page |
 | ClientsPage | 1763-2700 | CRM views |
-| ClientDetailPage | 2700-3500 | Single client |
-| UsersPage | 11685-12680 | Team, Audit Log |
-| SystemDiagnosticsPanel | 11186-11670 | Health component |
-| SystemDiagnosticsPage | 13236-13310 | /settings/system |
-| **UserProfilePage** | **14090-14572** | User profiles ⭐ |
-| **TrainingCenterPage** | **14573-15084** | Training ⭐ |
-| **ToolsPage** | **15085-15370** | Sales toolbox ⭐ |
-| Routes | 15920-16000 | Route definitions |
+| UsersPage | 11716-12751 | Team + Edit User |
+| **CommissionsPage** | **16157-16650** | Commissions ⭐ |
+| TrainingCenterPage | 14573-15084 | Training |
+| ToolsPage | 15085-15370 | Sales toolbox |
+| Routes | 17150-17200 | Route definitions |
 
 ---
 
@@ -229,29 +216,23 @@ STRIPE_LWP_SECRET_KEY=sk_live_...
 
 ## 📝 Important Notes
 
-### Training Center
-- 4 active categories, 21 modules
-- Progress stored per user
-- Content in markdown format
-- Sales Toolbox + Product Knowledge hidden (in Tools page)
+### Authentication
+- Uses bcrypt for password hashing (10 rounds)
+- JWT tokens with 24h expiry
+- Direct SQL queries (not dbHelper) for auth endpoints
+- `trust proxy` enabled for Railway rate limiting
 
-### Tools Page
-- 5 categories of resources
-- Internal tools (Pricing, Billing) render in-app
-- External tools open new tabs
-- Links to Google Docs, Drive, Calendly
+### User Roles
+- `admin` - Full access
+- `sales_manager` - View all, approve orders
+- `sales_associate` - View assigned only
+- `event_manager` - Events focus (Erin)
+- `staff` - Non-sales access
 
-### User Profiles
-- Accessible from Users page (profile icon)
-- 3 tabs: Overview, KPIs, Training
-- Goal setting for monthly targets
-- 1-on-1 meeting notes
-
-### Super Admin Access
-- 3 Super Admins: Justin, Mamie, Bill
-- System link in sidebar (SA badge)
-- View As button in Users table
-- Audit Log tab
+### Commission System
+- Auto-calculates on order approval
+- Split support for team sales
+- Approval workflow for admins
 
 ### Client Status Values
 - `lead` - New potential
@@ -259,9 +240,3 @@ STRIPE_LWP_SECRET_KEY=sk_live_...
 - `active` - Has current orders
 - `inactive` - Paused
 - `churned` - Lost
-
-### Current Data
-- 2,812 clients total
-- ~122 active, ~2,690 prospect
-- 18 team members
-- 3 Super Admins

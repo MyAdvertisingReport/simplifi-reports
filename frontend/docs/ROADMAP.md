@@ -1,75 +1,80 @@
 # WSIC Advertising Platform - Development Roadmap
-## Updated: January 29, 2026 (Late Night)
+## Updated: January 29, 2026 (Evening)
 
 ---
 
 ## ✅ COMPLETED
 
-### Training Center & Tools (January 29, 2026 - Late Night)
-- [x] Training Center with 6 categories, 33 modules
-- [x] Full content imported from Notion export
-- [x] Progress tracking per user
-- [x] Mark as Complete functionality
+### Commission System (January 29, 2026 - Evening)
+- [x] Commission rates table with user-specific rates
+- [x] Default commission rates (Print 30%, Broadcast 30%, Digital 18%, Events 20%)
+- [x] Commissions page with Approvals tab
+- [x] Split commission functionality
+- [x] Commission rate configuration UI
+- [x] YTD summary and monthly breakdown
+
+### User Management Enhancements (January 29, 2026)
+- [x] Edit User feature (pencil icon on Users page)
+- [x] Role dropdown with Event Manager, Staff options
+- [x] Password reset capability for admins
+- [x] Change Password moved to sidebar
+- [x] Removed Preferences page
+
+### Event Manager Role (January 29, 2026)
+- [x] Added `event_manager` to role constraint
+- [x] Created Erin Connair account
+- [x] Set up 20% events commission rate
+
+### Authentication Fixes (January 29, 2026)
+- [x] Fixed rate limiter for Railway (`trust proxy`)
+- [x] Fixed login endpoint (direct SQL)
+- [x] Fixed change password endpoint (direct SQL)
+- [x] Fixed user update endpoint (direct SQL)
+- [x] Fixed user creation (UUID default)
+
+### Training Center & Tools (January 29, 2026 - Earlier)
+- [x] Training Center with 4 categories, 21 modules
 - [x] Tools Page (`/tools`) with 5 resource categories
-- [x] Reorganized: Tool content moved from Training to Tools
-- [x] Internal tools render in-app, external open new tabs
-
-### User Profile Enhancements (January 29, 2026)
-- [x] Goal setting modal for KPIs (Admin only)
-- [x] Monthly targets: Appointments, Proposals, Deals, Clients, Revenue
-- [x] 1-on-1 Meeting Notes section
-- [x] `user_meeting_notes` database table
-- [x] Meeting notes API endpoints
-
-### System Diagnostics (January 29, 2026 - Evening)
-- [x] `/settings/system` page (Super Admin only)
-- [x] Visual health tree with 6 components
-- [x] Overall status banner (green/yellow/red)
-- [x] Expandable component details
-- [x] Environment configuration panel
+- [x] User Profile goals and 1-on-1 meeting notes
 
 ### Super Admin System (January 28-29, 2026)
-- [x] Database: `is_super_admin` column on users
-- [x] Database: `super_admin_audit_log` table
-- [x] 3 Super Admins: Justin, Mamie, Bill
 - [x] View As functionality with audit logging
+- [x] System Diagnostics page
 - [x] Audit Log tab on Users page
-
-### Client Page Improvements (January 29, 2026)
-- [x] Removed Tier badge from client pages
-- [x] Fixed Assigned Representative display
-- [x] Merged Notes into Activity tab
-- [x] All/Mine/Open toggle for ALL users
-- [x] Add Contact feature (Prospect/Lead)
 
 ---
 
-## 🎯 NEXT PRIORITY
+## 🎯 CURRENT PRIORITY
 
-### Phase 1: Commission Tracking
-**Goal:** Auto-calculate commissions from closed deals
+### Phase 1: Order Testing & Data Import
+**Goal:** Verify order system works and import real client data
 
-**Features Needed:**
-- Commission rate configuration per product/rep
-- Automatic calculation when deals close
-- Commission reports by rep and period
-- Payout tracking
+**Testing Checklist:**
+- [ ] New Order (Electronic) - Full signing flow
+- [ ] Upload Order (Pre-Signed) - PDF upload
+- [ ] Change Order - Modify existing order
+- [ ] Kill Order - Cancel existing order
+- [ ] Client signing page works
+- [ ] Commission auto-generates on approval
 
-**Database Tables:**
-```sql
-commission_rates (
-  id, user_id, product_category_id,
-  rate_type ('percentage' or 'flat'),
-  rate_value, effective_date
-)
+**Data Import:**
+- [ ] Import Print orders from template
+- [ ] Import Broadcast orders from template
+- [ ] Import Podcast orders from template
+- [ ] Import Events orders from template
+- [ ] Import Web/Social orders from template
+- [ ] Update client statuses based on orders
 
-commissions (
-  id, user_id, order_id, client_id,
-  order_amount, commission_rate, commission_amount,
-  status ('pending', 'approved', 'paid'),
-  period_month, period_year, paid_at
-)
-```
+**Excel Templates Ready:**
+- `Print_Orders_Template.xlsx`
+- `Broadcast_Orders_Template.xlsx`
+- `Podcast_Orders_Template.xlsx`
+- `Events_Orders_Template.xlsx`
+- `WebSocial_Orders_Template.xlsx`
+
+---
+
+## 📋 NEXT PHASES
 
 ### Phase 2: Reporting & Analytics
 **Goal:** Sales performance visibility
@@ -79,34 +84,16 @@ commissions (
 - Pipeline Report (prospects by stage)
 - Activity Report (calls, meetings, proposals)
 - Revenue by Product/Brand
-- Training Completion by Team
+- Commission Reports by period
 
-### Phase 3: Email Integration
-**Goal:** Send emails directly from the platform
+### Phase 3: Email Integration Enhancement
+**Goal:** Better email functionality from platform
 
 **Features:**
 - Email templates for common scenarios
 - Send from client detail page
 - Log emails as activities
 - Track opens/clicks (via Postmark)
-
----
-
-## 🔄 IN PROGRESS
-
-### Order Import System
-**Status:** Assistant filling templates from QuickBooks
-
-**Excel Templates Created:**
-- [x] Print Orders Template
-- [x] Broadcast Orders Template
-- [x] Podcast Orders Template
-- [x] Events Orders Template
-- [x] Web/Social Orders Template
-
-**Pending:**
-- [ ] Import completed templates to database
-- [ ] Update client statuses based on orders
 
 ---
 
@@ -118,63 +105,63 @@ commissions (
 | Active Clients | ~122 |
 | Prospect Clients | ~2,690 |
 | Open (unassigned) | ~2,135 |
-| Team Members | 18 |
+| Team Members | 19 (including Erin) |
 | Super Admins | 3 |
 | Training Modules | 21 active |
-| Tools Resources | 15+ |
 | System Health | ✅ All Green |
 
 ---
 
-## 🗓️ Future Phases
+## 💰 Commission Rates (Configured)
 
-### Phase 4: Calendar Integration
-- Sync appointments with Google Calendar
-- Meeting scheduling from platform
-- Reminder notifications
+| Category | Default Rate |
+|----------|-------------|
+| Print | 30% |
+| Broadcast | 30% |
+| Podcast | 30% |
+| Digital/Programmatic | 18% |
+| Web & Social | 30% |
+| Events | 20% |
+| Other (fallback) | 10% |
 
-### Phase 5: Document Generation
-- Auto-generate contracts from orders
-- Proposal PDF generation
-- Media kit customization
-
-### Phase 6: Client Portal
-- Client self-service login
-- View orders/invoices
-- Make payments
-- Access campaign reports
-
-### Phase 7: Mobile Optimization
-- Responsive improvements
-- Field sales mobile experience
-- Quick activity logging
+**Special Rates:**
+- Erin Connair: 20% on Events (with split rules)
 
 ---
 
-## 📅 Session History
+## 👥 User Roles
+
+| Role | Access Level |
+|------|--------------|
+| Admin | Full access |
+| Sales Manager | View all clients, approve orders |
+| Sales Associate | View assigned clients only |
+| Event Manager | Events focus, CRM access |
+| Staff | Non-sales access |
+
+---
+
+## 🗓️ Session History
+
+### January 29, 2026 (Evening) - Commission & Auth
+- Commission tracking system
+- Erin Connair event_manager setup
+- Edit User feature
+- Authentication fixes (trust proxy, direct SQL)
+- Change Password in sidebar
 
 ### January 29, 2026 (Late Night) - Training & Tools
-- Training Center: 6 categories, 33 modules
-- Tools Page: 5 categories of quick-access resources
-- User Profiles: Goal setting + 1-on-1 meeting notes
-- Reorganized training (moved tools content)
+- Training Center: 4 categories, 21 modules
+- Tools Page: 5 categories of resources
+- User Profiles: Goal setting + 1-on-1 notes
 
 ### January 29, 2026 (Evening) - System Diagnostics
 - System Diagnostics page (/settings/system)
 - Visual health dashboard
-- Fixed diagnostics authentication bug
-
-### January 29, 2026 (Afternoon) - Client UX
-- Removed tier badges
-- Fixed Assigned Representative
-- Merged Notes into Activity
-- All/Mine/Open toggle
-- Add Contact modal
 
 ### January 28, 2026 - Super Admin & CRM
 - Super Admin role system
 - View As endpoints
-- Audit logging
 - Imported 2,800+ clients
 
 ---
@@ -197,3 +184,11 @@ git add -A
 git commit -m "Description"
 git push origin main
 ```
+
+### Password Reset (if needed)
+```cmd
+cd simplifi-reports\backend
+npm install bcrypt
+node -e "require('bcrypt').hash('NewPassword123!', 10, (err, hash) => console.log(hash));"
+```
+Then update via Supabase SQL Editor.

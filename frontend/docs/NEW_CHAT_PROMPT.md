@@ -1,6 +1,6 @@
 # WSIC Advertising Platform - New Chat Context
 ## Upload this file at the START of every new Claude chat
-## Last Updated: January 29, 2026 (Late Night)
+## Last Updated: January 29, 2026 (Evening)
 
 ---
 
@@ -11,7 +11,7 @@
 ```
 simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
-│   ├── server.js              ← Main server (~4,600 lines) ⭐
+│   ├── server.js              ← Main server (~5,700 lines) ⭐
 │   ├── package.json
 │   ├── routes/
 │   │   ├── order.js           
@@ -23,7 +23,7 @@ simplifi-reports/              ← Git root (push from here)
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (~16k lines) ⭐
+        ├── App.jsx            ← Main app (~17k lines) ⭐
         └── components/
             ├── BillingPage.jsx
             └── ...
@@ -47,7 +47,7 @@ git add server.js App.jsx
 | Frontend | React + Vite | Vercel |
 | Backend | Node.js + Express | Railway |
 | Database | PostgreSQL | Supabase |
-| Auth | Supabase Auth + JWT | - |
+| Auth | JWT + bcrypt | Custom |
 | Email | Postmark | ✅ Working |
 | Payments | Stripe | ✅ Working |
 | Ad Platform | Simpli.fi API | ✅ Working |
@@ -60,209 +60,129 @@ git add server.js App.jsx
 ### Key Tables
 | Table | Purpose |
 |-------|---------|
-| `advertising_clients` | Client/business records (NOT `clients`) |
-| `contacts` | Contact people (first_name, last_name, NOT name) |
+| `advertising_clients` | Client/business records |
+| `contacts` | Contact people (first_name, last_name) |
 | `users` | Team members |
 | `orders` | Advertising orders |
 | `invoices` | Billing invoices |
-| `client_activities` | Activity timeline |
-| `super_admin_audit_log` | Admin action tracking |
-| `training_categories` | Training module categories |
-| `training_modules` | Individual training content |
+| `commissions` | Commission records with split support |
+| `commission_rates` | User-specific rates |
+| `commission_rate_defaults` | Company-wide rates |
+| `training_modules` | Training content |
 | `training_progress` | User completion tracking |
-| `user_goals` | Monthly KPI targets |
-| `user_meeting_notes` | 1-on-1 meeting notes |
 
-### advertising_clients Key Columns
+### User Roles
 ```sql
-id, business_name, slug, status, industry, website
-assigned_to              -- FK to users.id (sales rep)
-primary_contact_name     -- Denormalized for display
-tags[]                   -- ['WSIC', 'LKNW', 'Print', etc.]
-```
-
-### contacts Key Columns
-```sql
-id, client_id, first_name, last_name  -- NOT "name"
-email, phone, title, contact_type
-is_primary               -- Boolean
+CHECK (role IN ('admin', 'sales_manager', 'sales_associate', 'staff', 'sales', 'event_manager'))
 ```
 
 ---
 
-## 🔐 Super Admin System ✅ COMPLETE
+## 💰 Commission System ✅ COMPLETE
 
-### Super Admins (3 users)
-| Name | Email | Role |
-|------|-------|------|
-| Justin Ckezepis | justin@wsicnews.com | admin |
-| Mamie Lee | mamie@wsicnews.com | admin |
-| Bill Blakely | bill@wsicnews.com | staff |
-
-### Super Admin Features
-- **View As**: Impersonate any user (logged in audit)
-- **Audit Log**: View all Super Admin actions (Users → Audit Log tab)
-- **System Diagnostics**: Monitor system health (Settings → System)
-- All admin powers plus audit trail access
-
----
-
-## 📚 Training Center ✅ COMPLETE
-
-### Structure
-| Category | Modules | Status |
-|----------|---------|--------|
-| Getting Started | 5 | ✅ Active |
-| The Sales Process | 5 | ✅ Active |
-| Programmatic Mastery | 6 | ✅ Active |
-| Using the Platform | 5 | ✅ Active |
-| Sales Toolbox | 6 | ❌ Hidden (moved to Tools) |
-| Product Knowledge | 6 | ❌ Hidden (moved to Tools) |
-
-**Total Active: 21 learning modules**
+### Default Rates
+| Category | Rate |
+|----------|------|
+| Print | 30% |
+| Broadcast | 30% |
+| Podcast | 30% |
+| Digital/Programmatic | 18% |
+| Web & Social | 30% |
+| Events | 20% |
+| Default | 10% |
 
 ### Features
-- Progress tracking per user
-- Required vs optional modules
-- Markdown content rendering
-- "Mark as Complete" functionality
-- Searchable modules
+- Approvals tab on Commissions page
+- Split commission modal
+- Rate configuration UI
+- YTD summary
 
 ---
 
-## 🛠️ Tools Page (Sales Toolbox) ✅ COMPLETE
+## 👥 Key User Accounts
 
-### Route: `/tools`
+| User | Email | Role |
+|------|-------|------|
+| Justin Ckezepis | justin@wsicnews.com | admin (Super Admin) |
+| Mamie Lee | mamie@wsicnews.com | admin (Super Admin) |
+| Lalaine Agustin | admin@wsicnews.com | admin |
+| Erin Connair | erin@lakenormanwoman.com | event_manager |
 
-| Category | Resources |
-|----------|-----------|
-| Sales Resources | Pricing Guide, Sales FAQs, Email Templates, Proposal Template |
-| Marketing Materials | Media Kit, Editorial Calendar, 10 Reasons, One-Sheet Library |
-| Booking & Scheduling | Good Morning LKN, Home Ad Show |
-| Digital Advertising | Programmatic explainers, Geofencing, Sample Reports |
-| Internal Resources | Billing Guide, Leads Sheet, Post-Sales Checklist |
-
-- Internal tools (Pricing, Billing) render in-app
-- External tools open in new tabs
-
----
-
-## 👤 User Profiles ✅ ENHANCED
-
-### Route: `/users/:id/profile`
-
-### Tabs
-| Tab | Content |
-|-----|---------|
-| Overview | Client metrics, Order summary, Activity stats |
-| Goals & KPIs | Monthly targets with progress bars, 1-on-1 meeting notes |
-| Training | Completion %, modules completed, recent activity |
-
-### Goal Setting (Admin only)
-- Appointments target
-- Proposals target
-- Closed Deals target
-- New Clients target
-- Revenue target
-- Notes
-
-### 1-on-1 Meeting Notes (Admin only)
-- Meeting date
-- Title
-- Notes
-- Action items
+**Password Reset Process:**
+```cmd
+cd simplifi-reports\backend
+node -e "require('bcrypt').hash('NewPassword', 10, (err, hash) => console.log(hash));"
+```
+Then in Supabase SQL:
+```sql
+UPDATE users SET password_hash = 'HASH' WHERE email = 'EMAIL';
+```
 
 ---
 
-## 📊 Current Data State (January 29, 2026)
+## 🎯 CURRENT PRIORITY: Order Testing & Data Import
 
-| Metric | Count |
-|--------|-------|
-| Total Clients | 2,812 |
-| Active Clients | ~122 |
-| Prospect Clients | ~2,690 |
-| Open (unassigned) | ~2,135 |
-| Team Members | 18 |
-| Super Admins | 3 |
-| Training Modules | 21 active |
-| System Health | ✅ All Green |
+### Testing Checklist
+- [ ] New Order (Electronic) - Full signing flow
+- [ ] Upload Order (Pre-Signed) - PDF upload
+- [ ] Change Order - Modify existing
+- [ ] Kill Order - Cancel existing
+- [ ] Commission auto-generates
+
+### Data Import
+- Excel templates ready for: Print, Broadcast, Podcast, Events, Web/Social
+- Import to update client statuses
 
 ---
 
 ## ✅ Recently Completed (January 29, 2026)
 
-### Training Center
-- ✅ 6 categories with 33 total modules
-- ✅ Full content from Notion export
-- ✅ Progress tracking per user
-- ✅ Mark as Complete functionality
-- ✅ Reorganized: Tools content moved to Tools page
+### Commission System
+- Commission rates configuration
+- Approvals workflow with split support
+- YTD tracking and reporting
 
-### Tools Page (Sales Toolbox)
-- ✅ New `/tools` route
-- ✅ 5 categories of quick-access resources
-- ✅ Internal tools render in-app
-- ✅ External tools open in new tabs
-- ✅ Sidebar navigation added
+### User Management
+- Edit User feature on Users page
+- Event Manager role for Erin
+- Change Password in sidebar
+- Removed Preferences page
 
-### User Profile Enhancements
-- ✅ Goal setting modal (Admin only)
-- ✅ 1-on-1 meeting notes section
-- ✅ Meeting notes API endpoints
-- ✅ `user_meeting_notes` table created
-
-### System Diagnostics
-- ✅ `/settings/system` route (Super Admin only)
-- ✅ Visual health dashboard
-- ✅ Component monitoring
-
----
-
-## 🎯 NEXT PRIORITY
-
-### High Priority
-1. **Commission Tracking** - Auto-calculate commissions from closed deals
-2. **Reporting/Analytics** - Sales performance reports, pipeline reports
-3. **Email Integration** - Send emails directly from the platform
-
-### In Progress
-- **Client Order Data Import** - Assistant filling templates from QuickBooks
+### Auth Fixes
+- Trust proxy for Railway rate limiter
+- Direct SQL for login/update endpoints
+- UUID auto-generation for new users
 
 ---
 
 ## 📝 API Endpoints Reference
 
-### Training
+### Commissions
 ```
-GET  /api/training/categories           - List active categories
-GET  /api/training/modules              - List modules (optional ?category=)
-GET  /api/training/modules/:id          - Get single module
-GET  /api/training/my-progress          - Current user's progress
-POST /api/training/modules/:id/complete - Mark module complete
-```
-
-### User Profiles
-```
-GET  /api/users/:id                     - Get user details
-GET  /api/users/:id/stats               - User stats with time filter
-GET  /api/users/:id/goals               - User's monthly goals
-POST /api/users/:id/goals               - Set/update goals (admin)
-GET  /api/users/:id/training-progress   - User's training progress
-GET  /api/users/:id/meeting-notes       - User's 1-on-1 notes
-POST /api/users/:id/meeting-notes       - Add meeting note (admin)
+GET  /api/commissions                    - List commissions
+GET  /api/commissions/summary            - YTD summary
+GET  /api/commissions/pending            - Pending approvals
+GET  /api/commissions/rates              - Rate configuration
+POST /api/commissions/rates              - Add/update rate
+POST /api/commissions/:id/approve        - Approve commission
+POST /api/commissions/:id/split          - Split commission
+POST /api/commissions/:id/paid           - Mark as paid
 ```
 
-### Super Admin
+### Users
 ```
-GET  /api/super-admin/view-as/:userId    - View As mode
-POST /api/super-admin/view-as/:userId/end - Exit View As
-GET  /api/super-admin/audit-log          - Audit trail
+GET  /api/users                          - List users
+GET  /api/users/:id                      - Get user
+PUT  /api/users/:id                      - Update user (admin)
+PUT  /api/auth/change-password           - Change own password
 ```
 
-### Diagnostics
+### Orders
 ```
-GET  /api/diagnostics/public             - Basic status (no auth)
-GET  /api/diagnostics/admin              - Full system health (admin)
+GET  /api/orders                         - List orders
+POST /api/orders                         - Create order
+PUT  /api/orders/:id/approve             - Approve order
+POST /api/orders/:id/send-to-client      - Send for signing
 ```
 
 ---
@@ -293,19 +213,22 @@ git push origin main
 1. **NEW_CHAT_PROMPT.md** - This file (always upload first)
 2. **ROADMAP.md** - Current priorities
 3. **SESSION_SUMMARY.md** - Last session's work
-4. **FILE_STRUCTURE.md** - Project structure reference
+4. **ORDER_IMPORT_INSTRUCTIONS.md** - For data import work
 
-### Optional:
+### For Order Testing
+- Order templates (Excel files)
+- Sample test data
+
+### Optional
 - **App.jsx** - For frontend changes
 - **server.js** - For backend reference
-- **SECURITY_AUDIT.md** - If security work needed
 
 ---
 
-## 🔒 Security Status: 8.5/10 ✅
+## 🔒 Security Notes
 
-- Helmet security headers ✅
-- Rate limiting ✅
-- JWT validation ✅
-- Super Admin audit logging ✅
-- System diagnostics access controlled ✅
+- Passwords hashed with bcrypt (10 rounds)
+- JWT authentication with 24h expiry
+- Rate limiting on login (10 attempts/15 min)
+- Trust proxy enabled for Railway
+- Super Admin audit logging enabled

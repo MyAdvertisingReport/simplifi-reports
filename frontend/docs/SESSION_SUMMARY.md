@@ -1,161 +1,170 @@
-# Session Summary - January 29, 2026 (Late Night)
+# Session Summary - January 29, 2026 (Commission & User Management)
 
 ## 🎯 Session Goals
-1. Build Training Center with content from Notion
-2. Create Tools Page for quick-access resources
-3. Enhance User Profiles with KPI goals and 1-on-1 tracking
+1. Implement commission tracking system
+2. Set up Erin Connair as Event Manager
+3. Add Edit User functionality
+4. Fix various authentication issues
 
 ---
 
 ## ✅ What We Accomplished
 
-### 1. Training Center - COMPLETE
+### 1. Commission System - COMPLETE
 
-**Route:** `/training`
+**Database Tables:**
+- `commission_rates` - User-specific commission rates
+- `commission_rate_defaults` - Company-wide default rates
+- `commissions` - Individual commission records with split support
 
-**Structure:**
-| Category | Modules | Content |
-|----------|---------|---------|
-| Getting Started | 5 | Welcome, Payroll, CRM, Email Signature, Expectations |
-| The Sales Process | 5 | Overview, Stage 1-3, Post-Sales Guide |
-| Programmatic Mastery | 6 | What is Programmatic, Tactics, Geofencing, Keywords, Reporting, Simpli.fi |
-| Using the Platform | 5 | New/Change/Kill Orders, Leads, Weekly Check-in |
-
-**Features:**
-- Full markdown content from Notion export
-- Progress tracking per user (stored in `training_progress` table)
-- Required vs optional module flags
-- "Mark as Complete" button
-- Search across all modules
-- Category cards with progress bars
-
-**Database Tables Created:**
-- `training_categories` - 6 categories
-- `training_modules` - 33 modules with full content
-- `training_progress` - User completion tracking
-- `user_goals` - Monthly KPI targets
-- `user_certifications` - Future certification tracking
-
-### 2. Tools Page (Sales Toolbox) - COMPLETE
-
-**Route:** `/tools`
-
-**Categories:**
-| Category | Tools |
-|----------|-------|
-| Sales Resources | 2026 Pricing Guide (in-app), Sales FAQs, Email Templates, Proposal Template |
-| Marketing Materials | Media Kit, Editorial Calendar, 10 Reasons, One-Sheet Library |
-| Booking & Scheduling | Good Morning LKN (Calendly), Home Ad Show |
-| Digital Advertising | Programmatic Overview, Geofencing, Tactics, Sample Report |
-| Internal Resources | Billing Guide (in-app), Leads Sheet, Post-Sales Checklist |
+**Commission Rates Configured:**
+| Category | Rate |
+|----------|------|
+| Print | 30% |
+| Broadcast | 30% |
+| Podcast | 30% |
+| Digital/Programmatic | 18% |
+| Web & Social | 30% |
+| Events | 20% |
+| Default (other) | 10% |
 
 **Features:**
-- Internal tools (Pricing, Billing) render formatted content in-app
-- External tools open in new browser tabs
-- Color-coded categories
-- Hover effects and clean UI
+- Commission Approvals tab (Admin only)
+- Split commission functionality
+- Commission rate configuration UI
+- YTD summary and monthly breakdown
 
-### 3. User Profile Enhancements - COMPLETE
+### 2. Event Manager Role - COMPLETE
 
-**Route:** `/users/:id/profile`
+**Erin Connair Setup:**
+- Email: erin@lakenormanwoman.com
+- Role: `event_manager` (new role type)
+- Commission: 20% on Events
+- Password: `TempPass123!`
 
-**New Features in KPIs Tab:**
+**Database Changes:**
+- Added `event_manager` to `users_role_check` constraint
+- Created Erin's user account
+- Set up her commission rate
 
-**Goal Setting Modal (Admin only):**
-- Month selector
-- Appointments target
-- Proposals target
-- Closed Deals target
-- New Clients target
-- Revenue target ($)
-- Notes field
+### 3. Edit User Feature - COMPLETE
 
-**1-on-1 Meeting Notes Section:**
-- Add Note button (Admin only)
-- Meeting date
-- Title (optional)
-- Meeting notes
-- Action items
-- Chronological display with green accent
+**New UI on `/users` page:**
+- Edit button (pencil icon) on each user row
+- Edit User Modal with:
+  - Name field
+  - Email field
+  - Role dropdown (includes Event Manager, Staff)
+  - Password reset (optional)
 
-**Database Table Created:**
-```sql
-user_meeting_notes (
-  id, user_id, meeting_date, title,
-  notes, action_items, created_by, created_at
-)
-```
+**Role Options:**
+- Sales Associate
+- Sales Manager
+- Event Manager ← NEW
+- Staff
+- Admin
 
-### 4. Training Reorganization
+### 4. Preferences Page Removal - COMPLETE
 
-**Moved to Tools Page:**
-- Sales Toolbox category (6 modules) → Hidden
-- Product Knowledge category (6 modules) → Hidden
+- Removed "Preferences" from sidebar
+- Added "Change Password" button to sidebar footer
+- Password change modal in sidebar
+- Removed `/settings` route (kept `/settings/system` for Super Admin)
 
-**Result:** Training now has 4 categories with 21 learning-focused modules
+### 5. Authentication Fixes - COMPLETE
+
+**Issues Fixed:**
+- Rate limiter crash (`trust proxy` setting for Railway)
+- Login endpoint using broken `dbHelper` functions → Direct SQL
+- Change password endpoint using broken `dbHelper` → Direct SQL
+- User update endpoint using broken `dbHelper` → Direct SQL
+
+**Password Reset Process:**
+- Must generate hash locally: `node -e "require('bcrypt').hash('PASSWORD', 10, (err, hash) => console.log(hash));"`
+- Update via SQL: `UPDATE users SET password_hash = 'HASH' WHERE email = 'EMAIL'`
 
 ---
 
-## 📁 Files Modified/Created
+## 🗄️ Database Changes
+
+### New Tables
+```sql
+commission_rates (user_id, product_category, rate_type, rate_value, effective_date)
+commission_rate_defaults (product_category, rate_type, rate_value, is_active)
+commissions (user_id, order_id, order_amount, commission_rate, commission_amount, status, is_split, split_with_user_id, split_percentage, parent_commission_id, split_reason)
+```
+
+### Schema Updates
+```sql
+-- Added event_manager to allowed roles
+ALTER TABLE users DROP CONSTRAINT users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check 
+  CHECK (role IN ('admin', 'sales_manager', 'sales_associate', 'staff', 'sales', 'event_manager'));
+
+-- Auto-generate UUIDs for new users
+ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid();
+```
+
+---
+
+## 📁 Files Modified
 
 ### Frontend
 | File | Changes |
 |------|---------|
-| `App.jsx` | Added ToolsPage component, enhanced UserProfilePage with goal modal + meeting notes, added `/tools` route, added Tools to sidebar |
+| `App.jsx` | CommissionsPage with Approvals tab, split modal, Edit User feature, Change Password in sidebar, removed Preferences |
 
 ### Backend
 | File | Changes |
 |------|---------|
-| `server.js` | Added meeting notes endpoints (GET/POST), fixed route order (training routes before 404 handler) |
-
-### Database (SQL files)
-| File | Purpose |
-|------|---------|
-| `training_center_full.sql` | Creates tables + seeds 33 modules with content |
-| `meeting_notes_table.sql` | Creates `user_meeting_notes` table |
-| `reorganize_training_fixed.sql` | Hides tool-related modules from Training |
+| `server.js` | Trust proxy, direct SQL for login/change-password/update-user, commission endpoints, event_manager role support |
 
 ---
 
 ## 🐛 Bugs Fixed
 
-### Route Order Bug
-**Problem:** Training API endpoints returning 404
-**Cause:** Routes were defined AFTER the 404 catch-all handler
-**Fix:** Moved training routes BEFORE error handling section in server.js
-
-### Double Header Bug
-**Problem:** Two X buttons showing on Training page
-**Cause:** Pages wrapped in `DashboardLayout` when `ProtectedRoute` already provides it
-**Fix:** Removed duplicate `DashboardLayout` wrappers from UserProfilePage and TrainingCenterPage
-
----
-
-## 📊 Final State
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Training Center | ✅ Complete | 21 active modules in 4 categories |
-| Tools Page | ✅ Complete | 15+ resources in 5 categories |
-| User Profiles | ✅ Enhanced | Goals + 1-on-1 notes |
-| API Endpoints | ✅ Working | All training + meeting notes endpoints |
-| Database | ✅ Seeded | All tables with content |
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Login always fails | Rate limiter crash on Railway | Added `app.set('trust proxy', 1)` |
+| "User not found" on login | `dbHelper.getUserByEmail` broken | Direct SQL query |
+| Change password 500 error | `dbHelper.updateUser` broken | Direct SQL query |
+| Edit user 404 error | `dbHelper.getUserById` broken | Direct SQL query |
+| Can't create users | `id` column no default | `ALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid()` |
+| event_manager rejected | Not in role constraint | Updated `users_role_check` constraint |
 
 ---
 
-## 🎯 What's Next
+## 👥 User Accounts Status
 
-### High Priority
-1. **Commission Tracking** - Auto-calculate from closed deals
-2. **Reporting/Analytics** - Sales performance reports
-3. **Email Integration** - Send emails from platform
-
-### In Progress (Separate)
-- Client order data import from QuickBooks
+| User | Email | Role | Password |
+|------|-------|------|----------|
+| Justin Ckezepis | justin@wsicnews.com | admin | (user's new password) |
+| Lalaine Agustin | admin@wsicnews.com | admin | `TempPass123!` |
+| Erin Connair | erin@lakenormanwoman.com | event_manager | `TempPass123!` |
 
 ---
 
-## 💻 Deploy Commands Used
+## 🎯 Next Session Goals
+
+### Primary: Order Testing & Data Import
+1. **Test Order Creation Flow**
+   - New Order (Electronic)
+   - Upload Order (Pre-Signed)
+   - Change Order
+   - Kill Order
+
+2. **Import Client Order Data**
+   - Use completed Excel templates
+   - Import orders from QuickBooks data
+   - Update client statuses
+
+3. **Verify Commission Calculations**
+   - Test commission generation on order approval
+   - Test split commission workflow
+
+---
+
+## 💻 Deploy Commands
 
 ```cmd
 cd simplifi-reports
@@ -164,7 +173,7 @@ del frontend\src\App.jsx
 copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
 copy "C:\Users\WSIC BILLING\Downloads\App.jsx" frontend\src\App.jsx
 git add -A
-git commit -m "Add Tools page, enhance KPIs with goals and 1-on-1 tracking"
+git commit -m "Description"
 git push origin main
 ```
 
@@ -176,9 +185,12 @@ git push origin main
 1. **NEW_CHAT_PROMPT.md** - Updated context
 2. **ROADMAP.md** - Updated priorities
 3. **SESSION_SUMMARY.md** - This file
-4. **FILE_STRUCTURE.md** - Project structure
+4. **ORDER_IMPORT_INSTRUCTIONS.md** - For data import
+
+### For Testing
+- Order templates (Print, Broadcast, Podcast, Events, WebSocial)
+- Sample completed templates with test data
 
 ### Optional
-- **App.jsx** - Current frontend (~16k lines)
-- **server.js** - Current backend (~4,600 lines)
-- **SECURITY_AUDIT.md** - If security work needed
+- **App.jsx** - Current frontend
+- **server.js** - Current backend

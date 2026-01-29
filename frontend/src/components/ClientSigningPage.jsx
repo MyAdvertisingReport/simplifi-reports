@@ -3,6 +3,11 @@
  * Public page for clients to review, provide payment, and sign their advertising agreement
  * Single page with 3 steps: Review Products → Payment Info → Sign
  * Uses Stripe Elements for PCI-compliant payment collection
+ * 
+ * UPDATED: January 29, 2026
+ * - Fixed ACH payment method to use Stripe Financial Connections
+ * - Bank accounts now verified instantly via customer's online banking login
+ * - Fallback to micro-deposit verification if instant not available
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -52,6 +57,11 @@ const Icons = {
       <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
     </svg>
   ),
+  Building: ({ size = 24, color = 'currentColor' }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/>
+    </svg>
+  ),
 };
 
 export default function ClientSigningPage() {
@@ -83,12 +93,11 @@ export default function ClientSigningPage() {
   const [stripeInitialized, setStripeInitialized] = useState(false);
   const cardElementRef = useRef(null);
   
-  // ACH states  
-  const [bankAccountName, setBankAccountName] = useState('');
-  const [bankRoutingNumber, setBankRoutingNumber] = useState('');
-  const [bankAccountNumber, setBankAccountNumber] = useState('');
-  const [bankAccountType, setBankAccountType] = useState('checking');
+  // ACH states - Updated for Financial Connections
+  const [achClientSecret, setAchClientSecret] = useState(null);
   const [achProcessing, setAchProcessing] = useState(false);
+  const [achVerified, setAchVerified] = useState(false);
+  const [achBankInfo, setAchBankInfo] = useState(null); // Store verified bank info for display
   
   // Signer states
   const [signerName, setSignerName] = useState('');
@@ -140,7 +149,6 @@ export default function ClientSigningPage() {
         setSignerEmail(data.contact.email || '');
         setSignerTitle(data.contact.title || '');
         setSignerPhone(data.contact.phone || '');
-        setBankAccountName(`${data.contact.first_name || ''} ${data.contact.last_name || ''}`.trim());
       }
     } catch (err) {
       setError(err.message);
@@ -299,6 +307,151 @@ export default function ClientSigningPage() {
     setTimeout(() => initializeStripe(), 200);
   };
 
+  // NEW: Handle ACH bank connection via Stripe Financial Connections
+  const handleConnectBankAccount = async () => {
+    setPaymentError(null);
+    setAchProcessing(true);
+    
+    try {
+      // First, get an ACH-specific SetupIntent from the backend
+      const response = await fetch(`${API_BASE}/api/orders/sign/${token}/setup-intent/ach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          signer_email: signerEmail,
+          signer_name: signerName
+        })
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Failed to initialize bank connection');
+      }
+      
+      const data = await response.json();
+      
+      // Initialize Stripe if not already done
+      let stripeInstance = stripe;
+      if (!stripeInstance) {
+        stripeInstance = window.Stripe(data.publishableKey);
+        setStripe(stripeInstance);
+      }
+      
+      // Use Stripe's collectBankAccountForSetup to launch Financial Connections
+      const { setupIntent, error } = await stripeInstance.collectBankAccountForSetup({
+        clientSecret: data.clientSecret,
+        params: {
+          payment_method_type: 'us_bank_account',
+          payment_method_data: {
+            billing_details: {
+              name: signerName || contract?.client_name || 'Account Holder',
+              email: signerEmail,
+            },
+          },
+        },
+        expand: ['payment_method'],
+      });
+      
+      if (error) {
+        console.error('Bank account collection error:', error);
+        throw new Error(error.message);
+      }
+      
+      // Check the setup intent status
+      if (setupIntent.status === 'requires_payment_method') {
+        // User closed the modal without completing
+        throw new Error('Bank account connection was cancelled. Please try again.');
+      }
+      
+      if (setupIntent.status === 'requires_confirmation') {
+        // Bank account collected, now confirm the setup
+        const { setupIntent: confirmedIntent, error: confirmError } = await stripeInstance.confirmUsBankAccountSetup(data.clientSecret);
+        
+        if (confirmError) {
+          throw new Error(confirmError.message);
+        }
+        
+        // Handle micro-deposit verification if needed
+        if (confirmedIntent.status === 'requires_action' && 
+            confirmedIntent.next_action?.type === 'verify_with_microdeposits') {
+          // Bank requires micro-deposit verification
+          setAchBankInfo({
+            last4: confirmedIntent.payment_method?.us_bank_account?.last4,
+            bankName: confirmedIntent.payment_method?.us_bank_account?.bank_name,
+            verificationPending: true,
+          });
+          setPaymentMethodId(confirmedIntent.payment_method?.id);
+          
+          // Save to backend even though verification is pending
+          await saveAchPaymentMethod(confirmedIntent.payment_method?.id, true);
+          
+          setAchVerified(true); // Mark as "verified" for flow purposes (will complete via email)
+          return;
+        }
+        
+        if (confirmedIntent.status === 'succeeded') {
+          // Instant verification succeeded!
+          setAchBankInfo({
+            last4: confirmedIntent.payment_method?.us_bank_account?.last4,
+            bankName: confirmedIntent.payment_method?.us_bank_account?.bank_name,
+            verificationPending: false,
+          });
+          setPaymentMethodId(confirmedIntent.payment_method?.id);
+          
+          // Save to backend
+          await saveAchPaymentMethod(confirmedIntent.payment_method?.id, false);
+          
+          setAchVerified(true);
+          return;
+        }
+      }
+      
+      // If we got here with a succeeded status, bank is verified
+      if (setupIntent.status === 'succeeded') {
+        setAchBankInfo({
+          last4: setupIntent.payment_method?.us_bank_account?.last4,
+          bankName: setupIntent.payment_method?.us_bank_account?.bank_name,
+          verificationPending: false,
+        });
+        setPaymentMethodId(setupIntent.payment_method?.id);
+        
+        // Save to backend
+        await saveAchPaymentMethod(setupIntent.payment_method?.id, false);
+        
+        setAchVerified(true);
+      }
+      
+    } catch (err) {
+      console.error('ACH connection error:', err);
+      setPaymentError(err.message);
+    } finally {
+      setAchProcessing(false);
+    }
+  };
+  
+  // Helper to save ACH payment method to backend
+  const saveAchPaymentMethod = async (pmId, pendingVerification) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/sign/${token}/payment-method/ach`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentMethodId: pmId,
+          signerEmail: signerEmail,
+          pendingVerification: pendingVerification,
+        }),
+      });
+      
+      if (!response.ok) {
+        const err = await response.json();
+        console.warn('Failed to save ACH to backend:', err);
+        // Don't throw - the payment method is already attached in Stripe
+      }
+    } catch (err) {
+      console.warn('Error saving ACH to backend:', err);
+    }
+  };
+
   // Step 2: Confirm payment
   const handleConfirmPayment = async () => {
     setPaymentError(null);
@@ -309,54 +462,16 @@ export default function ClientSigningPage() {
       return;
     }
     
-    // For ACH (direct or as invoice backup), validate and save bank details
+    // For ACH (direct or as invoice backup), check if bank is connected
     if (billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach')) {
-      if (!bankAccountName.trim()) {
-        setPaymentError('Please enter the account holder name');
-        return;
-      }
-      if (!bankRoutingNumber || bankRoutingNumber.length !== 9) {
-        setPaymentError('Please enter a valid 9-digit routing number');
-        return;
-      }
-      if (!bankAccountNumber || bankAccountNumber.length < 4) {
-        setPaymentError('Please enter a valid account number');
+      if (!achVerified) {
+        setPaymentError('Please connect your bank account first');
         return;
       }
       
-      // Save ACH to Stripe now
-      setAchProcessing(true);
-      setSubmitting(true);
-      try {
-        // Use token-based endpoint (no auth required for client signing)
-        const response = await fetch(`${API_BASE}/api/orders/sign/${token}/payment-method/ach`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accountHolderName: bankAccountName.trim(),
-            routingNumber: bankRoutingNumber,
-            accountNumber: bankAccountNumber,
-            accountType: bankAccountType,
-            signerEmail: signerEmail || contract.contact?.email,
-          }),
-        });
-
-        const result = await response.json();
-        
-        if (!response.ok) {
-          throw new Error(result.error || 'Failed to save bank account');
-        }
-
-        // Store the payment method ID for the final submission
-        setPaymentMethodId(result.paymentMethodId);
-        setStep2Complete(true);
-        setCurrentStep(3);
-      } catch (err) {
-        setPaymentError(err.message);
-      } finally {
-        setAchProcessing(false);
-        setSubmitting(false);
-      }
+      // Bank is verified, proceed to step 3
+      setStep2Complete(true);
+      setCurrentStep(3);
       return;
     }
     
@@ -432,8 +547,6 @@ export default function ClientSigningPage() {
           agreed_to_terms: agreedToTerms,
           billing_preference: billingPreference,
           payment_method_id: paymentMethodId,
-          // For ACH, we send bank info (will be tokenized on backend via Financial Connections)
-          ach_account_name: billingPreference === 'ach' ? bankAccountName : null
         })
       });
 
@@ -516,11 +629,11 @@ export default function ClientSigningPage() {
 
   // Success state
   if (success) {
-    const needsAchSetup = billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach');
+    const needsMicroDepositVerification = achBankInfo?.verificationPending;
     
     return (
       <div style={styles.pageContainer}>
-        <div style={{ ...styles.header, background: needsAchSetup ? 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' : 'linear-gradient(135deg, #065f46 0%, #10b981 100%)' }}>
+        <div style={{ ...styles.header, background: needsMicroDepositVerification ? 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)' : 'linear-gradient(135deg, #065f46 0%, #10b981 100%)' }}>
           {brandLogos.length > 0 && (
             <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginBottom: '16px', flexWrap: 'wrap' }}>
               {brandLogos.map((logo, idx) => (
@@ -529,24 +642,24 @@ export default function ClientSigningPage() {
             </div>
           )}
           <div style={{ fontSize: '24px', fontWeight: '700' }}>
-            {needsAchSetup ? '📧 Almost There!' : '🎉 You\'re All Set!'}
+            {needsMicroDepositVerification ? '📧 Almost There!' : '🎉 You\'re All Set!'}
           </div>
           <div style={{ opacity: 0.9, marginTop: '8px' }}>
-            {needsAchSetup ? 'One more step to complete' : 'Welcome Aboard!'}
+            {needsMicroDepositVerification ? 'One more step to complete' : 'Welcome Aboard!'}
           </div>
         </div>
         <div style={styles.container}>
           <div style={styles.card}>
             <div style={styles.cardBody}>
               <div style={{ textAlign: 'center' }}>
-                {needsAchSetup ? (
+                {needsMicroDepositVerification ? (
                   <>
                     <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
                       <span style={{ fontSize: '36px' }}>📬</span>
                     </div>
-                    <h1 style={{ color: '#1e293b', marginBottom: '12px' }}>Check Your Email</h1>
+                    <h1 style={{ color: '#1e293b', marginBottom: '12px' }}>Verify Your Bank Account</h1>
                     <p style={{ color: '#64748b', marginBottom: '24px' }}>
-                      Your agreement has been signed! To complete your setup, please connect your bank account.
+                      Your agreement has been signed! We've initiated two small deposits to your bank account ending in <strong>****{achBankInfo?.last4}</strong>.
                     </p>
                     
                     <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: '12px', padding: '20px', maxWidth: '450px', margin: '0 auto 20px', textAlign: 'left' }}>
@@ -554,13 +667,13 @@ export default function ClientSigningPage() {
                         <span>⚠️</span> Action Required
                       </h3>
                       <p style={{ color: '#a16207', margin: 0, lineHeight: '1.6' }}>
-                        We've sent a secure link to <strong>{signerEmail}</strong> to connect your bank account via Stripe. 
-                        Your agreement is <strong>not confirmed</strong> until you complete this step.
+                        In <strong>1-2 business days</strong>, check your bank statement for two small deposits from Stripe. 
+                        Then click the verification link in your email to confirm the amounts.
                       </p>
                     </div>
                     
                     <div style={{ background: '#f0fdf4', borderRadius: '12px', padding: '20px', maxWidth: '400px', margin: '0 auto', textAlign: 'left' }}>
-                      <h3 style={{ color: '#166534', marginTop: 0, marginBottom: '12px' }}>After Bank Setup:</h3>
+                      <h3 style={{ color: '#166534', marginTop: 0, marginBottom: '12px' }}>After Verification:</h3>
                       <ul style={{ color: '#15803d', paddingLeft: '20px', margin: 0, lineHeight: '1.8' }}>
                         <li>Your Sales Associate will confirm receipt</li>
                         <li>We'll gather any creative assets needed</li>
@@ -877,92 +990,120 @@ export default function ClientSigningPage() {
               </div>
             )}
 
-            {/* ACH Form - for direct ACH or as invoice backup */}
+            {/* ACH Bank Connection - Using Stripe Financial Connections */}
             {(billingPreference === 'ach' || (billingPreference === 'invoice' && backupPaymentMethod === 'ach')) && currentStep === 2 && (
               <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
                 <div style={{ fontWeight: '600', color: '#1e293b', marginBottom: '8px' }}>
                   {billingPreference === 'invoice' ? '🏦 Backup Bank Account' : '🏦 Bank Account Details'}
                 </div>
                 <p style={{ fontSize: '13px', color: '#64748b', marginTop: 0, marginBottom: '16px' }}>
-                  Enter your bank account information for ACH direct debit. Your information is securely stored with Stripe.
+                  Connect your bank account securely via Stripe. You'll be able to log in to your bank to verify instantly.
                 </p>
                 
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={styles.label}>Account Holder Name *</label>
-                  <input 
-                    type="text" 
-                    value={bankAccountName} 
-                    onChange={e => setBankAccountName(e.target.value)} 
-                    placeholder="Business or Personal Name" 
-                    style={styles.input} 
-                  />
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                  <div>
-                    <label style={styles.label}>Routing Number *</label>
-                    <input 
-                      type="text" 
-                      value={bankRoutingNumber} 
-                      onChange={e => setBankRoutingNumber(e.target.value.replace(/\D/g, '').slice(0, 9))} 
-                      placeholder="9 digits" 
-                      style={styles.input}
-                      maxLength={9}
-                    />
-                  </div>
-                  <div>
-                    <label style={styles.label}>Account Number *</label>
-                    <input 
-                      type="text" 
-                      value={bankAccountNumber} 
-                      onChange={e => setBankAccountNumber(e.target.value.replace(/\D/g, ''))} 
-                      placeholder="Account number" 
-                      style={styles.input}
-                    />
-                  </div>
-                </div>
-                
-                <div style={{ marginBottom: '12px' }}>
-                  <label style={styles.label}>Account Type *</label>
-                  <div style={{ display: 'flex', gap: '12px' }}>
+                {achVerified && achBankInfo ? (
+                  // Bank account connected successfully
+                  <div style={{ 
+                    background: '#f0fdf4', 
+                    border: '2px solid #86efac', 
+                    borderRadius: '12px', 
+                    padding: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px'
+                  }}>
+                    <div style={{ 
+                      width: '48px', 
+                      height: '48px', 
+                      borderRadius: '50%', 
+                      background: '#10b981',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      <Icons.CheckCircle size={24} color="white" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: '#166534', marginBottom: '4px' }}>
+                        Bank Account Connected
+                      </div>
+                      <div style={{ color: '#15803d', fontSize: '14px' }}>
+                        {achBankInfo.bankName || 'Bank'} ending in ****{achBankInfo.last4}
+                        {achBankInfo.verificationPending && (
+                          <span style={{ color: '#f59e0b', marginLeft: '8px' }}>(Pending verification)</span>
+                        )}
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setBankAccountType('checking')}
+                      onClick={() => {
+                        setAchVerified(false);
+                        setAchBankInfo(null);
+                        setPaymentMethodId(null);
+                      }}
                       style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '8px',
-                        border: bankAccountType === 'checking' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
-                        background: bankAccountType === 'checking' ? '#eff6ff' : 'white',
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
                         cursor: 'pointer',
-                        fontWeight: '500',
-                        color: '#1e293b'
+                        fontSize: '13px',
+                        textDecoration: 'underline'
                       }}
                     >
-                      Checking
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBankAccountType('savings')}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '8px',
-                        border: bankAccountType === 'savings' ? '2px solid #3b82f6' : '2px solid #e2e8f0',
-                        background: bankAccountType === 'savings' ? '#eff6ff' : 'white',
-                        cursor: 'pointer',
-                        fontWeight: '500',
-                        color: '#1e293b'
-                      }}
-                    >
-                      Savings
+                      Change
                     </button>
                   </div>
-                </div>
-                
-                <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: '8px', padding: '12px', fontSize: '13px', color: '#92400e' }}>
-                  <strong>Note:</strong> By providing your bank account details, you authorize us to debit your account for the agreed amounts according to the billing schedule.
-                </div>
+                ) : (
+                  // Bank account not connected - show connect button
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleConnectBankAccount}
+                      disabled={achProcessing}
+                      style={{
+                        width: '100%',
+                        padding: '16px',
+                        borderRadius: '10px',
+                        border: '2px solid #3b82f6',
+                        background: '#eff6ff',
+                        color: '#1e40af',
+                        fontWeight: '600',
+                        fontSize: '16px',
+                        cursor: achProcessing ? 'wait' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '12px',
+                        opacity: achProcessing ? 0.7 : 1
+                      }}
+                    >
+                      {achProcessing ? (
+                        <>
+                          <Icons.Loader size={20} />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <Icons.Building size={20} />
+                          Connect Your Bank Account
+                        </>
+                      )}
+                    </button>
+                    
+                    <div style={{ 
+                      marginTop: '16px',
+                      background: '#fefce8', 
+                      border: '1px solid #fde047', 
+                      borderRadius: '8px', 
+                      padding: '12px', 
+                      fontSize: '13px', 
+                      color: '#854d0e'
+                    }}>
+                      <strong>How it works:</strong> Click the button above to securely connect your bank via Stripe. 
+                      You'll log in to your bank directly — we never see your login credentials.
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -985,7 +1126,7 @@ export default function ClientSigningPage() {
                   disabled={submitting || achProcessing}
                   style={{ ...styles.button, ...styles.primaryButton, opacity: (submitting || achProcessing) ? 0.6 : 1 }}
                 >
-                  {(submitting || achProcessing) ? <><Icons.Loader size={20} /> {achProcessing ? 'Saving Bank Info...' : 'Processing...'}</> : <><Icons.Check size={20} /> Confirm Payment Info</>}
+                  {(submitting || achProcessing) ? <><Icons.Loader size={20} /> Processing...</> : <><Icons.Check size={20} /> Confirm Payment Info</>}
                 </button>
               </div>
             )}
