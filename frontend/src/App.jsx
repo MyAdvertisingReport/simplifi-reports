@@ -14130,46 +14130,40 @@ function UserProfilePage() {
   
   if (!canViewProfile) {
     return (
-      <DashboardLayout>
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
-          <h2>Access Denied</h2>
-          <p style={{ color: '#6b7280' }}>You don't have permission to view this profile.</p>
-          <button 
-            onClick={() => navigate(-1)}
-            style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
-          >
-            Go Back
-          </button>
-        </div>
-      </DashboardLayout>
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+        <h2>Access Denied</h2>
+        <p style={{ color: '#6b7280' }}>You don't have permission to view this profile.</p>
+        <button 
+          onClick={() => navigate(-1)}
+          style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
+        >
+          Go Back
+        </button>
+      </div>
     );
   }
   
   if (loading) {
     return (
-      <DashboardLayout>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-          <div className="spinner" />
-        </div>
-      </DashboardLayout>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <div className="spinner" />
+      </div>
     );
   }
   
   if (!profileUser) {
     return (
-      <DashboardLayout>
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
-          <h2>User Not Found</h2>
-          <button 
-            onClick={() => navigate('/users')}
-            style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
-          >
-            Back to Users
-          </button>
-        </div>
-      </DashboardLayout>
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+        <h2>User Not Found</h2>
+        <button 
+          onClick={() => navigate('/users')}
+          style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
+        >
+          Back to Users
+        </button>
+      </div>
     );
   }
   
@@ -14225,7 +14219,7 @@ function UserProfilePage() {
   };
   
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <button 
@@ -14568,7 +14562,7 @@ function UserProfilePage() {
           )}
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }
 
@@ -14651,11 +14645,9 @@ function TrainingCenterPage() {
   
   if (loading) {
     return (
-      <DashboardLayout>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-          <div className="spinner" />
-        </div>
-      </DashboardLayout>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <div className="spinner" />
+      </div>
     );
   }
   
@@ -14665,12 +14657,11 @@ function TrainingCenterPage() {
     const isCompleted = moduleProgress?.status === 'completed';
     
     return (
-      <DashboardLayout>
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-          <button 
-            onClick={() => setSelectedModule(null)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '1rem' }}
-          >
+      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <button 
+          onClick={() => setSelectedModule(null)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '1rem' }}
+        >
             <ArrowLeft size={18} />
             Back to {selectedCategory?.name || 'Training'}
           </button>
@@ -14846,12 +14837,12 @@ function TrainingCenterPage() {
             )}
           </div>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
   
   return (
-    <DashboardLayout>
+    <>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '1.5rem' }}>Training Center</h1>
@@ -15088,7 +15079,7 @@ function TrainingCenterPage() {
           </p>
         </div>
       )}
-    </DashboardLayout>
+    </>
   );
 }
 
