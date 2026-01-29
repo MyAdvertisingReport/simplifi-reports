@@ -56,6 +56,9 @@ const emailService = require('./services/email-service');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust proxy for Railway/Heroku/etc (needed for rate limiting behind reverse proxy)
+app.set('trust proxy', 1);
+
 // ============================================
 // SECURITY: Helmet for HTTP headers
 // ============================================
