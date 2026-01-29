@@ -14837,7 +14837,6 @@ function TrainingCenterPage() {
             )}
           </div>
         </div>
-      </div>
     );
   }
   
