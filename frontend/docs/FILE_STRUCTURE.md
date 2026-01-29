@@ -1,5 +1,5 @@
 # WSIC Advertising Platform - File Structure
-## Updated: January 28, 2026
+## Updated: January 29, 2026
 
 ---
 
@@ -40,7 +40,7 @@ simplifi-reports/                    ← Git root (all commands from here)
     ├── 📄 index.html
     │
     └── 📁 src/
-        ├── 📄 App.jsx               # Main app - ALL pages (~12k lines) ⭐
+        ├── 📄 App.jsx               # Main app - ALL pages (~14.3k lines) ⭐
         ├── 📄 main.jsx              # React entry point
         ├── 📄 index.css
         │
@@ -75,6 +75,8 @@ simplifi-reports/                    ← Git root (all commands from here)
 | Change/Kill orders | `ChangeOrderForm.jsx`, `KillOrderForm.jsx` |
 | Approval workflow | `server.js`, `ApprovalsPage.jsx` |
 | **Security review** | `server.js`, `auth.js`, `SECURITY_AUDIT.md` |
+| **Super Admin features** | `App.jsx` (UsersPage, Sidebar), `server.js` |
+| **System Diagnostics** | `App.jsx` (SystemDiagnosticsPage), `server.js` (/api/diagnostics/*) |
 
 ---
 
@@ -85,6 +87,7 @@ simplifi-reports/                    ← Git root (all commands from here)
 users                 - User accounts, roles, failed login tracking
 user_sessions         - Active login sessions
 user_activity_log     - Security audit trail
+super_admin_audit_log - Super Admin action tracking ⭐ NEW
 advertising_clients   - Client companies (CRM data) ⭐
 contacts              - Client contacts (primary contact for invoices)
 orders                - Advertising orders
@@ -104,42 +107,20 @@ invoice_items         - Line items on invoices
 invoice_payments      - Payment history for invoices
 ```
 
-### advertising_clients Table (CRM) ⭐
+### Super Admin Tables
 ```sql
--- Identification
-id                    -- UUID primary key
-business_name         -- Company name (display name)
-slug                  -- URL-friendly identifier (unique)
-
--- CRM Fields
-status                -- 'lead', 'prospect', 'active', 'inactive', 'churned'
-tier                  -- 'bronze', 'silver', 'gold', 'platinum'
-industry              -- Industry/vertical
-tags                  -- Array: ['WSIC', 'LKNW', 'Print', 'Commercials', 'Trade/Barter']
-source                -- 'WSIC Radio', 'Lake Norman Woman', 'Multi-Platform'
-
--- Financial
-billing_terms         -- 'net_15', 'net_30', 'net_45', 'net_60', 'due_on_receipt'
-annual_contract_value -- Calculated yearly value
-client_since          -- Date became client
-
--- Contact Info
-phone, address_line1, address_line2, city, state, zip, website
-primary_contact_id    -- FK to contacts table
-
--- Integrations
-simpli_fi_client_id   -- Simpli.fi organization ID (for programmatic clients)
-qbo_customer_id_wsic  -- QuickBooks customer ID (WSIC entity)
-qbo_customer_id_lkn   -- QuickBooks customer ID (LKN entity)
-stripe_customer_id    -- Stripe customer ID
-
--- Assignment
-assigned_to           -- FK to users table (sales rep)
-created_by            -- FK to users table
-
--- Timestamps
-created_at, updated_at, last_activity_at
-notes                 -- General notes field
+-- Audit log for privileged actions
+super_admin_audit_log (
+  id UUID PRIMARY KEY,
+  admin_user_id UUID REFERENCES users(id),
+  action_type VARCHAR(50),     -- 'view_as_start', 'view_as_end', etc.
+  target_user_id UUID,
+  description TEXT,
+  metadata JSONB,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  created_at TIMESTAMPTZ
+)
 ```
 
 ---
@@ -149,13 +130,28 @@ notes                 -- General notes field
 ### Clients (Protected) ⭐ OPTIMIZED
 ```
 GET    /api/clients                   - List all clients WITH order/invoice stats
-                                        Returns: total_orders, active_orders, total_revenue,
-                                                 total_invoices, open_invoices, open_balance
-                                        (Single query via JOINs - no individual calls needed)
 GET    /api/clients/:id               - Get single client details
 POST   /api/clients                   - Create client
 PUT    /api/clients/:id               - Update client
 DELETE /api/clients/:id               - Delete client (admin only)
+```
+
+### Super Admin (Protected - Super Admins Only)
+```
+GET    /api/super-admin/view-as/:userId      - Start View As mode
+POST   /api/super-admin/view-as/:userId/end  - End View As mode
+GET    /api/super-admin/audit-log            - Get audit log
+GET    /api/super-admin/list                 - List all Super Admins
+```
+
+### Diagnostics
+```
+GET    /api/diagnostics/public        - Basic status (no auth)
+GET    /api/diagnostics/admin         - Full system health (admin required)
+POST   /api/diagnostics/clear-cache   - Clear cache (admin required)
+GET    /api/diagnostics/test-image    - Test image proxy (no auth)
+GET    /api/health                    - Basic health check
+GET    /api/health/detailed           - Detailed health check
 ```
 
 ### Billing (Protected)
@@ -188,50 +184,25 @@ PUT    /api/orders/:id/reject           - Manager rejects
 POST   /api/orders/:id/send-to-client   - Send contract link
 ```
 
-### Public Signing (No Auth - Token Based)
-```
-GET    /api/orders/sign/:token                    - Get contract for signing
-POST   /api/orders/sign/:token/setup-intent       - Create Stripe SetupIntent
-POST   /api/orders/sign/:token/payment-method/card - Save card
-POST   /api/orders/sign/:token/payment-method/ach  - Create ACH
-POST   /api/orders/sign/:token/complete           - Submit signature
-```
-
 ---
 
-## 🎨 Clients Page - Dual Views ⭐
+## 🎨 App.jsx Sections (~14,300 lines)
 
-### CRM View (Sales Pipeline)
-- Shows ALL clients (270 total)
-- Filters: Status dropdown, Tier dropdown, Search
-- Columns: Client, Status, Tier, Industry, Total Revenue, Active Orders, Open Balance, Last Activity
-- Sticky header for scrolling
-
-### Client View (Operations)
-- Shows only ACTIVE clients (97 currently)
-- Filters: Brand dropdown (All/WSIC/LKNW/Multi-Platform)
-- Columns: Client, Brand, Products, Revenue, Orders, Balance
-- Brand badges: 📻 WSIC (blue), 📰 LKNW (pink)
-- Sticky header for scrolling
-
-### Performance Note 🔥
-- `/api/clients` returns all stats in ONE query via SQL JOINs
-- Eliminates need for 500+ individual API calls
-- Page loads in <1 second
-
----
-
-## 💰 Billing Logic
-
-### Product Category Billing Rules
-```
-Category Code        | Billing Type
----------------------|------------------
-broadcast, podcast   | Previous month (services rendered)
-print                | 15th of month BEFORE issue month
-programmatic, events,| Following month (advance billing)
-web_social           |
-```
+| Section | Approximate Lines | Purpose |
+|---------|-------------------|---------|
+| Imports & Constants | 1-50 | Dependencies, API_BASE |
+| useResponsive Hook | 53-91 | Mobile/tablet/desktop detection |
+| AuthContext | 96-212 | Auth state, View As functionality |
+| API Helper | 217-280 | api.get/post/put/delete |
+| Sidebar | 595-960 | Navigation with Super Admin links |
+| Dashboard | 1000-1500 | Home page |
+| ClientsPage | 1763-2700 | CRM & Client views |
+| ClientDetailPage | 2700-3500 | Individual client |
+| UsersPage | 11685-12680 | Team, Audit Log tabs |
+| SystemDiagnosticsPanel | 11186-11670 | Health dashboard component |
+| SystemDiagnosticsPage | 13236-13310 | /settings/system route |
+| DiagnosticsPanel | 13550-14050 | Legacy modal (Preferences) |
+| Routes | 14230-14270 | All route definitions |
 
 ---
 
@@ -246,6 +217,10 @@ BASE_URL=https://myadvertisingreport.com
 SUPABASE_URL=...
 SUPABASE_SERVICE_KEY=...
 
+# Simpli.fi
+SIMPLIFI_APP_KEY=...
+SIMPLIFI_USER_KEY=...
+
 # Stripe (per entity)
 STRIPE_WSIC_SECRET_KEY=sk_live_...
 STRIPE_LKN_SECRET_KEY=sk_live_...
@@ -256,12 +231,21 @@ STRIPE_LWP_SECRET_KEY=sk_live_...
 
 ## 📝 Important Notes
 
-### App.jsx Sections (~12,000 lines)
-- Routes: end of file
-- Sidebar: ~lines 528-760
-- Dashboard: ~lines 800-1100
-- **ClientsPage: ~lines 1763-2700** ⭐
-- Client Detail: ~lines 2700-3500
+### Super Admin Access
+- 3 Super Admins: Justin, Mamie, Bill
+- Sidebar shows "System" link with SA badge
+- Users page shows "Audit Log" tab
+- View As button in Users table
+
+### System Diagnostics Components Monitored
+| Component | What's Checked |
+|-----------|----------------|
+| Application Server | Uptime, Node version |
+| Database | Connection, client/user counts |
+| Simpli.fi Ad Platform | API connection |
+| Image Proxy | Safari fix availability |
+| Security | Headers, rate limiting |
+| Client Configuration | Missing Simpli.fi IDs |
 
 ### Client Status Values
 - `lead` - New potential client
@@ -275,7 +259,7 @@ STRIPE_LWP_SECRET_KEY=sk_live_...
 - `LKNW` - Lake Norman Woman client
 - Both = Multi-Platform client
 
-### Client Data (270 total)
-- 95 Active, 175 Prospect
+### Client Data (2,812 total)
+- ~122 Active, ~2,690 Prospect
 - 77 WSIC, 157 LKNW, 32 Multi-Platform
 - 28 Trade/Barter clients

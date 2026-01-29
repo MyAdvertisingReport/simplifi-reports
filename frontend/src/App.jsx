@@ -9,7 +9,9 @@ import {
   CheckCircle, AlertCircle, Clock, Bookmark, Flag, Download, History, Award,
   TrendingDown, Zap, Star, ChevronUp, ChevronDown, FileDown, Search, Globe, List,
   Database, RefreshCw, Shield, EyeOff, UserCheck, Activity, Cpu, HardDrive, 
-  Mail, CreditCard, Wifi, Server, Lock, AlertTriangle, CheckCircle2, XCircle
+  Mail, CreditCard, Wifi, Server, Lock, AlertTriangle, CheckCircle2, XCircle,
+  BookOpen, GraduationCap, User, Briefcase, Package, Wrench, PlayCircle,
+  FileQuestion, ChevronLeft, BarChart2, Phone, Send, Handshake, UserPlus
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
 import OrderForm from './components/OrderForm';
@@ -618,6 +620,7 @@ function Sidebar({ isOpen }) {
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/clients', icon: Building2, label: 'Clients' },
+    { path: '/training', icon: GraduationCap, label: 'Training' },
   ];
   
   // Order Management section items (no Billing here now)
@@ -12259,6 +12262,13 @@ function UsersPage() {
                     </td>
                     <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                        <button
+                          onClick={() => navigate(`/users/${u.id}/profile`)}
+                          title={`View ${u.name}'s profile`}
+                          style={{ padding: '0.375rem 0.5rem', background: '#f3f4f6', color: '#374151', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.75rem' }}
+                        >
+                          <User size={14} />
+                        </button>
                         {u.is_sales && (
                           <button
                             onClick={() => handleSelectUser(u)}
@@ -14074,6 +14084,1015 @@ Has JWT Secret: ${diagnostics?.environment?.hasJwtSecret ? 'Yes' : 'No'}
 }
 
 // ============================================
+// USER PROFILE PAGE
+// ============================================
+function UserProfilePage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user: currentUser, isSuperAdmin } = useAuth();
+  const [profileUser, setProfileUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState(null);
+  const [goals, setGoals] = useState(null);
+  const [trainingProgress, setTrainingProgress] = useState(null);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [timeRange, setTimeRange] = useState('30'); // days
+  
+  useEffect(() => {
+    loadProfileData();
+  }, [id, timeRange]);
+  
+  const loadProfileData = async () => {
+    setLoading(true);
+    try {
+      // Load user profile and stats
+      const [userData, statsData, goalsData, trainingData] = await Promise.all([
+        api.get(`/api/users/${id}`).catch(() => null),
+        api.get(`/api/users/${id}/stats?days=${timeRange}`).catch(() => null),
+        api.get(`/api/users/${id}/goals`).catch(() => ({ goals: [] })),
+        api.get(`/api/users/${id}/training-progress`).catch(() => ({ progress: [], summary: {} }))
+      ]);
+      
+      setProfileUser(userData);
+      setStats(statsData);
+      setGoals(goalsData?.goals || []);
+      setTrainingProgress(trainingData);
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+    }
+    setLoading(false);
+  };
+  
+  // Check if user can view this profile
+  const canViewProfile = currentUser?.role === 'admin' || 
+                         currentUser?.id === id || 
+                         isSuperAdmin;
+  
+  if (!canViewProfile) {
+    return (
+      <DashboardLayout>
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+          <h2>Access Denied</h2>
+          <p style={{ color: '#6b7280' }}>You don't have permission to view this profile.</p>
+          <button 
+            onClick={() => navigate(-1)}
+            style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
+          >
+            Go Back
+          </button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+  
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+          <div className="spinner" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+  
+  if (!profileUser) {
+    return (
+      <DashboardLayout>
+        <div style={{ padding: '2rem', textAlign: 'center' }}>
+          <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+          <h2>User Not Found</h2>
+          <button 
+            onClick={() => navigate('/users')}
+            style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.5rem', cursor: 'pointer' }}
+          >
+            Back to Users
+          </button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+  
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+  const currentGoal = goals?.find(g => g.month === currentMonth && g.year === currentYear);
+  
+  // Calculate KPI progress
+  const kpiData = [
+    {
+      label: 'Appointments',
+      target: currentGoal?.appointments_target || 0,
+      actual: stats?.activities?.appointments || 0,
+      icon: Calendar,
+      color: '#3b82f6'
+    },
+    {
+      label: 'Proposals',
+      target: currentGoal?.proposals_target || 0,
+      actual: stats?.activities?.proposals || 0,
+      icon: Send,
+      color: '#8b5cf6'
+    },
+    {
+      label: 'Closed Deals',
+      target: currentGoal?.closed_deals_target || 0,
+      actual: stats?.activities?.closed_deals || 0,
+      icon: Handshake,
+      color: '#10b981'
+    },
+    {
+      label: 'New Clients',
+      target: currentGoal?.new_clients_target || 0,
+      actual: stats?.new_clients || 0,
+      icon: UserPlus,
+      color: '#f59e0b'
+    }
+  ];
+  
+  const getRoleBadge = (role) => {
+    const config = {
+      admin: { bg: '#fee2e2', color: '#991b1b', label: 'Admin' },
+      sales_manager: { bg: '#dbeafe', color: '#1e40af', label: 'Sales Manager' },
+      sales_associate: { bg: '#dcfce7', color: '#166534', label: 'Sales Associate' },
+      staff: { bg: '#f3f4f6', color: '#374151', label: 'Staff' }
+    };
+    const c = config[role] || config.staff;
+    return (
+      <span style={{ background: c.bg, color: c.color, padding: '0.25rem 0.75rem', borderRadius: '9999px', fontSize: '0.75rem', fontWeight: 500 }}>
+        {c.label}
+      </span>
+    );
+  };
+  
+  return (
+    <DashboardLayout>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <button 
+          onClick={() => navigate('/users')}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '1rem' }}
+        >
+          <ArrowLeft size={18} />
+          Back to Users
+        </button>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+          <div style={{ 
+            width: 80, height: 80, borderRadius: '50%', 
+            background: profileUser.is_super_admin 
+              ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' 
+              : 'linear-gradient(135deg, #3b82f6, #0d9488)', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center', 
+            color: 'white', fontWeight: 700, fontSize: '2rem'
+          }}>
+            {profileUser.name?.charAt(0) || 'U'}
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <h1 style={{ margin: 0, fontSize: '1.5rem' }}>{profileUser.name}</h1>
+              {getRoleBadge(profileUser.role)}
+              {profileUser.is_super_admin && (
+                <span style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.625rem', fontWeight: 700 }}>
+                  SUPER ADMIN
+                </span>
+              )}
+            </div>
+            <div style={{ color: '#6b7280', marginTop: '0.25rem' }}>{profileUser.email}</div>
+            {profileUser.start_date && (
+              <div style={{ color: '#9ca3af', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+                Started: {new Date(profileUser.start_date).toLocaleDateString()}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '1px solid #e5e7eb', paddingBottom: '0.5rem' }}>
+        {['overview', 'kpis', 'training'].map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              padding: '0.5rem 1rem',
+              background: activeTab === tab ? '#3b82f6' : 'transparent',
+              color: activeTab === tab ? 'white' : '#6b7280',
+              border: 'none',
+              borderRadius: '0.375rem',
+              cursor: 'pointer',
+              fontWeight: 500,
+              textTransform: 'capitalize'
+            }}
+          >
+            {tab === 'kpis' ? 'Goals & KPIs' : tab}
+          </button>
+        ))}
+      </div>
+      
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Time Range Filter */}
+          <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+            {[{ value: '30', label: '30 Days' }, { value: '90', label: '90 Days' }, { value: '365', label: 'All Time' }].map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setTimeRange(opt.value)}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  background: timeRange === opt.value ? '#e0e7ff' : '#f3f4f6',
+                  color: timeRange === opt.value ? '#3730a3' : '#6b7280',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  cursor: 'pointer',
+                  fontSize: '0.8125rem'
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Stats Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <Building2 size={18} color="#3b82f6" />
+                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>Total Clients</span>
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700 }}>{stats?.totals?.total_clients || 0}</div>
+            </div>
+            
+            <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <CheckCircle size={18} color="#10b981" />
+                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>Active Clients</span>
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#10b981' }}>{stats?.totals?.active_clients || 0}</div>
+            </div>
+            
+            <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <Target size={18} color="#f59e0b" />
+                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>Prospects/Leads</span>
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#f59e0b' }}>{stats?.totals?.prospect_clients || 0}</div>
+            </div>
+            
+            <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <DollarSign size={18} color="#8b5cf6" />
+                <span style={{ color: '#6b7280', fontSize: '0.875rem' }}>Total Revenue</span>
+              </div>
+              <div style={{ fontSize: '1.75rem', fontWeight: 700, color: '#8b5cf6' }}>
+                ${(stats?.totals?.total_revenue || 0).toLocaleString()}
+              </div>
+            </div>
+          </div>
+          
+          {/* Activity Stats */}
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem' }}>Activity ({timeRange} Days)</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
+              <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                <Phone size={24} color="#3b82f6" style={{ marginBottom: '0.5rem' }} />
+                <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats?.activities?.calls || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Calls Logged</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                <Calendar size={24} color="#10b981" style={{ marginBottom: '0.5rem' }} />
+                <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats?.activities?.appointments || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Appointments</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                <Send size={24} color="#8b5cf6" style={{ marginBottom: '0.5rem' }} />
+                <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats?.activities?.proposals || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Proposals Sent</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                <Handshake size={24} color="#f59e0b" style={{ marginBottom: '0.5rem' }} />
+                <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats?.activities?.closed_deals || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Deals Closed</div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Orders Summary */}
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem' }}>Orders</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700 }}>{stats?.orders?.total || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Total Created</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#10b981' }}>{stats?.orders?.approved || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Approved</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f59e0b' }}>{stats?.orders?.pending || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Pending</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ef4444' }}>{stats?.orders?.rejected || 0}</div>
+                <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Rejected</div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+      
+      {/* KPIs Tab */}
+      {activeTab === 'kpis' && (
+        <>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem' }}>
+                {new Date().toLocaleString('default', { month: 'long' })} {currentYear} Goals
+              </h3>
+              {(currentUser?.role === 'admin' || isSuperAdmin) && (
+                <button
+                  onClick={() => navigate(`/users/${id}/goals/edit`)}
+                  style={{ padding: '0.375rem 0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8125rem' }}
+                >
+                  Edit Goals
+                </button>
+              )}
+            </div>
+            
+            {currentGoal ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                {kpiData.map((kpi, i) => {
+                  const percent = kpi.target > 0 ? Math.min(100, Math.round((kpi.actual / kpi.target) * 100)) : 0;
+                  const IconComponent = kpi.icon;
+                  return (
+                    <div key={i} style={{ padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                        <IconComponent size={18} color={kpi.color} />
+                        <span style={{ fontWeight: 500 }}>{kpi.label}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>{kpi.actual}</span>
+                        <span style={{ color: '#6b7280' }}>/ {kpi.target}</span>
+                      </div>
+                      <div style={{ background: '#e5e7eb', borderRadius: '9999px', height: '8px', overflow: 'hidden' }}>
+                        <div style={{ 
+                          width: `${percent}%`, 
+                          height: '100%', 
+                          background: percent >= 100 ? '#10b981' : kpi.color,
+                          borderRadius: '9999px',
+                          transition: 'width 0.3s ease'
+                        }} />
+                      </div>
+                      <div style={{ textAlign: 'right', fontSize: '0.75rem', color: percent >= 100 ? '#10b981' : '#6b7280', marginTop: '0.25rem' }}>
+                        {percent}%
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+                <Target size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+                <p>No goals set for this month</p>
+                {(currentUser?.role === 'admin' || isSuperAdmin) && (
+                  <button
+                    onClick={() => navigate(`/users/${id}/goals/edit`)}
+                    style={{ marginTop: '0.5rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
+                  >
+                    Set Goals
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          
+          {/* Revenue Goal */}
+          {currentGoal?.revenue_target > 0 && (
+            <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+              <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem' }}>Revenue Target</h3>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 700 }}>${(stats?.totals?.monthly_revenue || 0).toLocaleString()}</span>
+                <span style={{ color: '#6b7280' }}>/ ${currentGoal.revenue_target.toLocaleString()}</span>
+              </div>
+              <div style={{ background: '#e5e7eb', borderRadius: '9999px', height: '12px', overflow: 'hidden' }}>
+                <div style={{ 
+                  width: `${Math.min(100, ((stats?.totals?.monthly_revenue || 0) / currentGoal.revenue_target) * 100)}%`, 
+                  height: '100%', 
+                  background: 'linear-gradient(90deg, #3b82f6, #10b981)',
+                  borderRadius: '9999px'
+                }} />
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      
+      {/* Training Tab */}
+      {activeTab === 'training' && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', padding: '1.25rem', border: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1rem' }}>Training Progress</h3>
+            <button
+              onClick={() => navigate('/training')}
+              style={{ padding: '0.375rem 0.75rem', background: '#e0e7ff', color: '#3730a3', border: 'none', borderRadius: '0.375rem', cursor: 'pointer', fontSize: '0.8125rem' }}
+            >
+              Go to Training Center
+            </button>
+          </div>
+          
+          {trainingProgress?.summary ? (
+            <>
+              {/* Overall Progress */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+                <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '2rem', fontWeight: 700, color: '#3b82f6' }}>
+                    {trainingProgress.summary.completion_percent || 0}%
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Overall Complete</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '2rem', fontWeight: 700 }}>
+                    {trainingProgress.summary.completed_modules || 0}
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Modules Completed</div>
+                </div>
+                <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                  <div style={{ fontSize: '2rem', fontWeight: 700, color: '#f59e0b' }}>
+                    {trainingProgress.summary.required_remaining || 0}
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Required Remaining</div>
+                </div>
+              </div>
+              
+              {/* Module List */}
+              {trainingProgress.progress?.length > 0 && (
+                <div>
+                  <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: '#6b7280' }}>Recent Activity</h4>
+                  {trainingProgress.progress.slice(0, 5).map((item, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', borderBottom: '1px solid #f3f4f6' }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: '50%',
+                        background: item.status === 'completed' ? '#dcfce7' : '#fef3c7',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        {item.status === 'completed' ? (
+                          <CheckCircle size={16} color="#16a34a" />
+                        ) : (
+                          <Clock size={16} color="#d97706" />
+                        )}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{item.module_title}</div>
+                        <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>{item.category_name}</div>
+                      </div>
+                      <div style={{ color: '#9ca3af', fontSize: '0.75rem' }}>
+                        {item.completed_at ? new Date(item.completed_at).toLocaleDateString() : 'In Progress'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#6b7280' }}>
+              <GraduationCap size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+              <p>No training progress yet</p>
+              <button
+                onClick={() => navigate('/training')}
+                style={{ marginTop: '0.5rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.375rem', cursor: 'pointer' }}
+              >
+                Start Training
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </DashboardLayout>
+  );
+}
+
+// ============================================
+// TRAINING CENTER PAGE
+// ============================================
+function TrainingCenterPage() {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [categories, setCategories] = useState([]);
+  const [modules, setModules] = useState([]);
+  const [progress, setProgress] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedModule, setSelectedModule] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  useEffect(() => {
+    loadTrainingData();
+  }, []);
+  
+  const loadTrainingData = async () => {
+    try {
+      const [categoriesData, modulesData, progressData] = await Promise.all([
+        api.get('/api/training/categories').catch(() => ({ categories: [] })),
+        api.get('/api/training/modules').catch(() => ({ modules: [] })),
+        api.get('/api/training/my-progress').catch(() => ({ progress: {} }))
+      ]);
+      
+      setCategories(categoriesData.categories || []);
+      setModules(modulesData.modules || []);
+      setProgress(progressData.progress || {});
+    } catch (err) {
+      console.error('Failed to load training data:', err);
+    }
+    setLoading(false);
+  };
+  
+  const markModuleComplete = async (moduleId) => {
+    try {
+      await api.post(`/api/training/modules/${moduleId}/complete`);
+      setProgress(prev => ({
+        ...prev,
+        [moduleId]: { ...prev[moduleId], status: 'completed', completed_at: new Date().toISOString() }
+      }));
+    } catch (err) {
+      console.error('Failed to mark complete:', err);
+    }
+  };
+  
+  const getCategoryIcon = (iconName) => {
+    const icons = {
+      Briefcase, Target, Package, Monitor, Wrench, Settings, BookOpen, GraduationCap
+    };
+    return icons[iconName] || BookOpen;
+  };
+  
+  const getCategoryProgress = (categoryId) => {
+    const categoryModules = modules.filter(m => m.category_id === categoryId);
+    if (categoryModules.length === 0) return { completed: 0, total: 0, percent: 0 };
+    
+    const completed = categoryModules.filter(m => progress[m.id]?.status === 'completed').length;
+    return {
+      completed,
+      total: categoryModules.length,
+      percent: Math.round((completed / categoryModules.length) * 100)
+    };
+  };
+  
+  const filteredModules = selectedCategory 
+    ? modules.filter(m => m.category_id === selectedCategory.id)
+    : modules;
+    
+  const searchedModules = searchTerm 
+    ? filteredModules.filter(m => 
+        m.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        m.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : filteredModules;
+  
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+          <div className="spinner" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+  
+  // Module Detail View
+  if (selectedModule) {
+    const moduleProgress = progress[selectedModule.id];
+    const isCompleted = moduleProgress?.status === 'completed';
+    
+    return (
+      <DashboardLayout>
+        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+          <button 
+            onClick={() => setSelectedModule(null)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '1rem' }}
+          >
+            <ArrowLeft size={18} />
+            Back to {selectedCategory?.name || 'Training'}
+          </button>
+          
+          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+            {/* Module Header */}
+            <div style={{ padding: '1.5rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '1.5rem' }}>{selectedModule.title}</h1>
+                  <p style={{ margin: 0, color: '#6b7280' }}>{selectedModule.description}</p>
+                  <div style={{ display: 'flex', gap: '1rem', marginTop: '0.75rem', fontSize: '0.875rem', color: '#9ca3af' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Clock size={14} />
+                      {selectedModule.estimated_minutes} min
+                    </span>
+                    {selectedModule.is_required && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#f59e0b' }}>
+                        <Star size={14} />
+                        Required
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {isCompleted && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#dcfce7', color: '#166534', padding: '0.5rem 1rem', borderRadius: '9999px', fontSize: '0.875rem' }}>
+                    <CheckCircle size={16} />
+                    Completed
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Module Content */}
+            <div style={{ padding: '1.5rem' }}>
+              {selectedModule.content_type === 'markdown' && (
+                <div style={{ 
+                  lineHeight: 1.7, 
+                  color: '#374151',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  {selectedModule.content || 'Content coming soon...'}
+                </div>
+              )}
+              
+              {selectedModule.content_type === 'video' && selectedModule.video_url && (
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <div style={{ 
+                    background: '#000', 
+                    borderRadius: '0.5rem', 
+                    aspectRatio: '16/9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <a 
+                      href={selectedModule.video_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}
+                    >
+                      <PlayCircle size={48} />
+                      <span>Watch Video</span>
+                    </a>
+                  </div>
+                </div>
+              )}
+              
+              {selectedModule.content_type === 'link' && selectedModule.external_url && (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <ExternalLink size={48} color="#3b82f6" style={{ marginBottom: '1rem' }} />
+                  <p style={{ color: '#6b7280', marginBottom: '1rem' }}>This module links to an external resource</p>
+                  <a 
+                    href={selectedModule.external_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.75rem 1.5rem',
+                      background: '#3b82f6',
+                      color: 'white',
+                      borderRadius: '0.5rem',
+                      textDecoration: 'none',
+                      fontWeight: 500
+                    }}
+                  >
+                    <ExternalLink size={18} />
+                    Open Resource
+                  </a>
+                </div>
+              )}
+              
+              {selectedModule.content_type === 'pdf' && (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <FileText size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+                  <p style={{ color: '#6b7280', marginBottom: '1rem' }}>PDF Document</p>
+                  {selectedModule.document_path && (
+                    <a 
+                      href={selectedModule.document_path} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '0.5rem',
+                        padding: '0.75rem 1.5rem',
+                        background: '#ef4444',
+                        color: 'white',
+                        borderRadius: '0.5rem',
+                        textDecoration: 'none',
+                        fontWeight: 500
+                      }}
+                    >
+                      <Download size={18} />
+                      Download PDF
+                    </a>
+                  )}
+                </div>
+              )}
+              
+              {selectedModule.content_type === 'quiz' && (
+                <div style={{ textAlign: 'center', padding: '2rem' }}>
+                  <FileQuestion size={48} color="#8b5cf6" style={{ marginBottom: '1rem' }} />
+                  <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
+                    Test your knowledge with this quiz
+                  </p>
+                  <p style={{ fontSize: '0.875rem', color: '#9ca3af', marginBottom: '1rem' }}>
+                    Passing score: {selectedModule.quiz_passing_score || 70}%
+                  </p>
+                  <button
+                    style={{ 
+                      padding: '0.75rem 1.5rem',
+                      background: '#8b5cf6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      fontWeight: 500
+                    }}
+                  >
+                    Start Quiz
+                  </button>
+                </div>
+              )}
+            </div>
+            
+            {/* Mark Complete Button */}
+            {!isCompleted && (
+              <div style={{ padding: '1.5rem', borderTop: '1px solid #e5e7eb', background: '#f9fafb' }}>
+                <button
+                  onClick={() => markModuleComplete(selectedModule.id)}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  <CheckCircle size={18} />
+                  Mark as Complete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+  
+  return (
+    <DashboardLayout>
+      {/* Header */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h1 style={{ margin: '0 0 0.5rem 0', fontSize: '1.5rem' }}>Training Center</h1>
+        <p style={{ margin: 0, color: '#6b7280' }}>
+          Master your skills with our comprehensive training program
+        </p>
+      </div>
+      
+      {/* Progress Overview */}
+      <div style={{ 
+        background: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)', 
+        borderRadius: '0.75rem', 
+        padding: '1.5rem', 
+        marginBottom: '1.5rem',
+        color: 'white'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ fontSize: '0.875rem', opacity: 0.9, marginBottom: '0.25rem' }}>Your Progress</div>
+            <div style={{ fontSize: '2rem', fontWeight: 700 }}>
+              {Object.values(progress).filter(p => p.status === 'completed').length} / {modules.length} Modules
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '2rem' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                {modules.filter(m => m.is_required && progress[m.id]?.status === 'completed').length}
+              </div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>Required Complete</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>
+                {modules.filter(m => m.is_required && progress[m.id]?.status !== 'completed').length}
+              </div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.9 }}>Required Remaining</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Search */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ position: 'relative' }}>
+          <Search size={18} color="#9ca3af" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            type="text"
+            placeholder="Search training modules..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '0.75rem 0.75rem 0.75rem 2.5rem',
+              border: '1px solid #d1d5db',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem'
+            }}
+          />
+        </div>
+      </div>
+      
+      {/* Categories Grid (when no category selected) */}
+      {!selectedCategory && !searchTerm && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+          {categories.map(category => {
+            const IconComponent = getCategoryIcon(category.icon);
+            const catProgress = getCategoryProgress(category.id);
+            
+            return (
+              <div
+                key={category.id}
+                onClick={() => setSelectedCategory(category)}
+                style={{
+                  background: 'white',
+                  borderRadius: '0.75rem',
+                  border: '1px solid #e5e7eb',
+                  padding: '1.25rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  ':hover': { borderColor: category.color }
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+                  <div style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '0.75rem',
+                    background: `${category.color}20`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <IconComponent size={24} color={category.color} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1rem' }}>{category.name}</h3>
+                    <p style={{ margin: 0, color: '#6b7280', fontSize: '0.8125rem', lineHeight: 1.4 }}>
+                      {category.description}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Progress bar */}
+                <div style={{ marginTop: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.25rem' }}>
+                    <span>{catProgress.completed} / {catProgress.total} modules</span>
+                    <span>{catProgress.percent}%</span>
+                  </div>
+                  <div style={{ background: '#e5e7eb', borderRadius: '9999px', height: '6px', overflow: 'hidden' }}>
+                    <div style={{ 
+                      width: `${catProgress.percent}%`, 
+                      height: '100%', 
+                      background: category.color,
+                      borderRadius: '9999px',
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      
+      {/* Category Detail View */}
+      {selectedCategory && !searchTerm && (
+        <>
+          <button 
+            onClick={() => setSelectedCategory(null)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '1rem' }}
+          >
+            <ArrowLeft size={18} />
+            All Categories
+          </button>
+          
+          <div style={{ 
+            background: `linear-gradient(135deg, ${selectedCategory.color}20 0%, ${selectedCategory.color}10 100%)`,
+            borderRadius: '0.75rem',
+            padding: '1.5rem',
+            marginBottom: '1.5rem',
+            border: `1px solid ${selectedCategory.color}40`
+          }}>
+            <h2 style={{ margin: '0 0 0.5rem 0' }}>{selectedCategory.name}</h2>
+            <p style={{ margin: 0, color: '#6b7280' }}>{selectedCategory.description}</p>
+          </div>
+        </>
+      )}
+      
+      {/* Modules List */}
+      {(selectedCategory || searchTerm) && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          {searchedModules.length > 0 ? (
+            searchedModules.map((module, i) => {
+              const isCompleted = progress[module.id]?.status === 'completed';
+              const category = categories.find(c => c.id === module.category_id);
+              
+              return (
+                <div
+                  key={module.id}
+                  onClick={() => setSelectedModule(module)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    padding: '1rem 1.25rem',
+                    borderBottom: i < searchedModules.length - 1 ? '1px solid #f3f4f6' : 'none',
+                    cursor: 'pointer',
+                    background: isCompleted ? '#f0fdf4' : 'transparent'
+                  }}
+                >
+                  <div style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    background: isCompleted ? '#dcfce7' : '#f3f4f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    {isCompleted ? (
+                      <CheckCircle size={20} color="#16a34a" />
+                    ) : (
+                      <span style={{ fontWeight: 600, color: '#6b7280' }}>{i + 1}</span>
+                    )}
+                  </div>
+                  
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 500 }}>{module.title}</span>
+                      {module.is_required && (
+                        <span style={{ background: '#fef3c7', color: '#92400e', padding: '0.125rem 0.5rem', borderRadius: '9999px', fontSize: '0.625rem', fontWeight: 600 }}>
+                          REQUIRED
+                        </span>
+                      )}
+                    </div>
+                    {searchTerm && category && (
+                      <div style={{ fontSize: '0.75rem', color: category.color, marginTop: '0.125rem' }}>
+                        {category.name}
+                      </div>
+                    )}
+                    {module.description && (
+                      <div style={{ fontSize: '0.8125rem', color: '#6b7280', marginTop: '0.25rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {module.description}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+                    <span style={{ fontSize: '0.75rem', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Clock size={12} />
+                      {module.estimated_minutes} min
+                    </span>
+                    <ChevronRight size={18} color="#9ca3af" />
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ padding: '3rem', textAlign: 'center', color: '#6b7280' }}>
+              <Search size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+              <p>No modules found</p>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Empty state for no categories */}
+      {!selectedCategory && !searchTerm && categories.length === 0 && (
+        <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '3rem', textAlign: 'center' }}>
+          <GraduationCap size={48} color="#9ca3af" style={{ marginBottom: '1rem' }} />
+          <h3 style={{ margin: '0 0 0.5rem 0' }}>Training Content Coming Soon</h3>
+          <p style={{ margin: 0, color: '#6b7280' }}>
+            We're building out the training center. Check back soon!
+          </p>
+        </div>
+      )}
+    </DashboardLayout>
+  );
+}
+
+// ============================================
 // MAIN APP
 // ============================================
 function App() {
@@ -14236,6 +15255,8 @@ function App() {
           <Route path="/client/:slug" element={<ProtectedRoute><ClientDetailPage /></ProtectedRoute>} />
           <Route path="/client/:slug/campaign/:campaignId" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
+          <Route path="/users/:id/profile" element={<ProtectedRoute><UserProfilePage /></ProtectedRoute>} />
+          <Route path="/training" element={<ProtectedRoute><TrainingCenterPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/settings/system" element={<ProtectedRoute><SystemDiagnosticsPage /></ProtectedRoute>} />
           <Route path="/admin/products" element={<ProtectedRoute><ProductManagement /></ProtectedRoute>} />

@@ -23,7 +23,7 @@ simplifi-reports/              ← Git root (push from here)
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (~13.7k lines) ⭐
+        ├── App.jsx            ← Main app (~14.3k lines) ⭐
         └── components/
             ├── BillingPage.jsx
             └── ...
@@ -85,7 +85,7 @@ is_primary               -- Boolean
 
 ---
 
-## 🔐 Super Admin System
+## 🔐 Super Admin System ✅ COMPLETE
 
 ### Super Admins (3 users)
 | Name | Email | Role |
@@ -94,10 +94,19 @@ is_primary               -- Boolean
 | Mamie Lee | mamie@wsicnews.com | admin |
 | Bill Blakely | bill@wsicnews.com | staff |
 
-### Capabilities
-- **View As**: See the app as any user would see it
-- **Audit Log**: View all Super Admin actions
-- **All Admin powers**: Plus audit trail access
+### Super Admin Features
+- **View As**: Impersonate any user (logged in audit)
+- **Audit Log**: View all Super Admin actions (Users → Audit Log tab)
+- **System Diagnostics**: Monitor system health (Settings → System)
+- All admin powers plus audit trail access
+
+### Super Admin UI Locations
+| Feature | Location |
+|---------|----------|
+| View As button | Users page → Actions column (purple eye) |
+| Audit Log | Users page → Audit Log tab |
+| System Diagnostics | Settings → System (sidebar) |
+| SA Badge | Next to Super Admin names everywhere |
 
 ---
 
@@ -112,70 +121,73 @@ is_primary               -- Boolean
 | Team Members | 18 |
 | Super Admins | 3 |
 | RAB Contacts Imported | ~300 |
+| System Health | ✅ All Green |
 
 ---
 
-## ✅ Recently Completed (January 28-29, 2026)
+## ✅ Recently Completed (January 29, 2026)
 
-### Client Page Updates
-- ✅ Removed Tier badge from client detail pages
-- ✅ Fixed Assigned Representative to show actual name
-- ✅ Merged Notes tab into Activity tab (unified view)
-- ✅ Activity tab now has note input at top
-- ✅ Removed standalone Notes tab
+### System Diagnostics Page
+- ✅ New `/settings/system` route (Super Admin only)
+- ✅ Visual health dashboard with 6 system components
+- ✅ Overall status banner (green/yellow/red)
+- ✅ Expandable component details for technical info
+- ✅ Environment configuration panel
+- ✅ Mobile compatibility fixes documentation
+- ✅ Sidebar "System" link with SA badge
 
-### CRM View Updates
-- ✅ All/Mine/Open toggle for ALL users (not just admins)
-- ✅ Sales associates can VIEW all clients for prospecting
-- ✅ View button permissions maintained (only own clients clickable)
-- ✅ Client View: All/Current/Past toggle (defaults to Current)
+### Super Admin Frontend
+- ✅ View As button on Users page
+- ✅ View As indicator in sidebar when active
+- ✅ Audit Log tab on Users page
+- ✅ System Diagnostics page
 
-### Add Contact Feature
-- ✅ Green "Add Contact" button for all users
-- ✅ Prospect vs Lead type selection
-- ✅ Auto-assignment to current user
-- ✅ Warning to check Master List first
-
-### RAB Contact Import
-- ✅ SQL scripts generated for contact import
-- ✅ ~300 contacts from 5 sales associates
-- ✅ Contacts stored with first_name/last_name structure
-- ✅ contact_type = 'decision_maker' for imported contacts
+### Client Page Improvements
+- ✅ Removed Tier badge from client pages
+- ✅ Fixed Assigned Representative display
+- ✅ Merged Notes into Activity tab
+- ✅ All/Mine/Open toggle for ALL users
+- ✅ Add Contact feature (Prospect/Lead)
 
 ---
 
-## 🎯 IMMEDIATE PRIORITY: Orders & Campaign Display
+## 🎯 NEXT PRIORITY: Training Center
 
-### Next Session Goals
+### Vision
+Build a Training Center that:
+1. **Integrates with User Profiles** - Each user has a profile with KPIs, goals, training progress
+2. **Role-based Training Paths** - Different training for different roles
+3. **Connects to Notion** - Import existing training content
+4. **Tracks Completion** - Know who completed what
 
-#### 1. Import Actual Client Orders
-- Need to import real order data to identify true active clients
-- Orders determine "active" vs "prospect" status
-- Revenue tracking depends on order data
+### User Profile Page (New)
+Accessible from Users page, shows:
+- Personal info (name, role, email, start date)
+- Client metrics (total, active, prospects, leads)
+- Order metrics (created, approved, revenue)
+- Activity metrics (touchpoints, appointments, proposals)
+- Goals & KPIs (monthly targets vs actuals)
+- Training progress (assigned, completed, certifications)
 
-#### 2. Multi-Product Campaign Display
-Currently only Programmatic (Simpli.fi) campaigns display. Need to add:
+### Users Page Actions Update
+| Current | Planned |
+|---------|---------|
+| View Clients | Keep |
+| View As (SA) | Keep |
+| — | Add "Profile" button |
 
-| Product Type | Data Source | Display Needs |
-|--------------|-------------|---------------|
-| Programmatic | Simpli.fi API | ✅ Working |
-| Radio/Broadcast | Manual entry | Needs UI |
-| Print (LKNW) | Manual entry | Needs UI |
-| Podcast | Manual entry | Needs UI |
-| Events | Manual entry | Needs UI |
-| Web/Social | Manual entry | Needs UI |
-
-#### 3. Brand-Specific Views
-- WSIC Radio: Broadcast, Podcast, Events
-- Lake Norman Woman: Print, Events, Digital
-- Multi-Platform: All products
+### Training Content from Notion
+- Justin will provide Notion export
+- Contains current training materials
+- Videos, documents, checklists
+- Will need to structure for platform
 
 ---
 
 ## 👤 User System
 
 ### Roles
-- `admin` - Full access
+- `admin` - Full access + Super Admin eligible
 - `sales_manager` - Team oversight
 - `sales_associate` - Own clients only
 - `staff` - Limited access
@@ -203,6 +215,13 @@ GET  /api/users/extended                 - All users with stats
 GET  /api/super-admin/view-as/:userId    - View As mode
 POST /api/super-admin/view-as/:userId/end - Exit View As
 GET  /api/super-admin/audit-log          - Audit trail
+```
+
+### Diagnostics (Admin/Super Admin)
+```
+GET  /api/diagnostics/public             - Basic status (no auth)
+GET  /api/diagnostics/admin              - Full system health (admin)
+POST /api/diagnostics/clear-cache        - Clear cache (admin)
 ```
 
 ### Orders
@@ -234,11 +253,16 @@ git push origin main
 
 ## 📚 Session Docs to Upload
 
+### For Training Center Session:
 1. **NEW_CHAT_PROMPT.md** - This file (always upload first)
-2. **ROADMAP.md** - Current priorities
+2. **ROADMAP.md** - Current priorities (updated with Training Center plans)
 3. **SESSION_SUMMARY.md** - Last session's work
-4. **App.jsx** - For frontend changes
-5. **server.js** - For backend reference
+4. **Notion Training Export** - Current training content (Justin to provide)
+5. **App.jsx** - For frontend changes (if needed)
+
+### Optional:
+- **server.js** - For backend reference
+- **SECURITY_AUDIT.md** - If security work needed
 
 ---
 
@@ -248,3 +272,5 @@ git push origin main
 - Rate limiting ✅
 - JWT validation ✅
 - Super Admin audit logging ✅
+- System diagnostics access controlled ✅
+- Diagnostic endpoints properly protected ✅

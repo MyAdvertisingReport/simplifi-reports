@@ -1,88 +1,83 @@
-# Session Summary - January 29, 2026
+# Session Summary - January 29, 2026 (Evening)
 
 ## 🎯 Session Goals
-1. Client page UX improvements (tier badge, assigned rep, notes/activity merge)
-2. CRM view filtering enhancements
-3. Add Contact feature for sales associates
-4. RAB contact import from PDFs
+1. Build Super Admin System Diagnostics UI
+2. Create visual health dashboard for non-technical users
+3. Move diagnostics to dedicated page under Settings
 
 ---
 
 ## ✅ What We Accomplished
 
-### 1. Client Detail Page Improvements
+### 1. System Diagnostics Page (Super Admin Only)
 
-**Removed Tier Badge:**
-- Removed Bronze/Silver/Gold/Platinum badge from client header
-- Removed Tier field from Edit Client modal
-- Cleaned up all tier references from formData
+**New Route: `/settings/system`**
+- Dedicated full-page diagnostics dashboard
+- Only visible to Super Admins (Justin, Mamie, Bill)
+- Purple "SA" badge in sidebar navigation
 
-**Fixed Assigned Representative Display:**
-- Now properly shows rep name (e.g., "Stephanie Sullivan")
-- Checks both `assigned_to_name` and `assigned_user_name` fields
-- Shows email below name when available
-- No longer shows just "Assigned" with question mark
+**Visual Health Dashboard Features:**
+- Overall health banner with color-coded status (green/yellow/red)
+- "Run Health Check" button with loading state
+- Last checked timestamp display
 
-**Merged Notes into Activity Tab:**
-- Removed standalone "Notes" tab from navigation
-- Added note input section at top of Activity tab
-- Tab now called "Activity & Notes"
-- Users can add notes directly while viewing activity timeline
-- InternalNotesSection component updated with `compact` prop
+**System Components Tree (6 components monitored):**
+| Component | What It Checks | User-Friendly Message |
+|-----------|----------------|----------------------|
+| Application Server | Uptime, Node version | "Server is running smoothly" |
+| Database | Connection, client/user counts | "Database connected with X clients and Y users" |
+| Simpli.fi Ad Platform | API connection status | "Ad platform connection is active" |
+| Image Proxy (Safari Fix) | Browser compatibility | "Images display correctly in all browsers" |
+| Security | Headers, rate limiting, JWT | "All security measures are active" |
+| Client Configuration | Missing Simpli.fi IDs/slugs | "All X clients are properly configured" |
 
-### 2. CRM View Enhancements
+**Expandable Details:**
+- Click any component to see technical details
+- Non-technical users see friendly messages
+- Technical users can expand for specifics
 
-**All/Mine/Open Toggle - Now Universal:**
-- Previously: Only admins had All tab
-- Now: ALL users see All/Mine/Open toggle
-- Sales associates can VIEW all 2,812 clients for prospecting research
-- View button still respects permissions (only clickable on own clients)
+**Environment Configuration Panel:**
+- Shows configured vs missing environment variables
+- Visual green checkmarks / red X indicators
+- Covers: Environment, Simpli.fi keys, Database URL, JWT Secret
 
-**Client View Toggle:**
-- New All/Current/Past toggle
-- Defaults to "Current" (active clients)
-- Current: Has active orders OR active status
-- Past: Has historical orders but not currently active
-- All: Entire book of business
+**Mobile Compatibility Fixes Documentation:**
+- Safari Image Fix (proxy solution)
+- Video Autoplay (muted + playsinline)
+- Text Overflow (word-break CSS)
 
-### 3. Add Contact Feature
+### 2. Sidebar Navigation Update
 
-**Type Selection Modal:**
-- Green "Add Contact" button in CRM header
-- Warning to check Master List first
-- Two options: Add Prospect (business only) vs Add Lead (business + contact)
+**Settings Section Now Shows:**
+```
+Settings
+├── Users
+├── Preferences  
+└── System [SA]  ← New! Purple highlight, SA badge
+```
 
-**Prospect Form:**
-- Business name (required)
-- Industry, phone, website, notes (optional)
-- Auto-assigns to current user
+- "System" link only visible to Super Admins
+- Purple color scheme matches Super Admin branding
+- Active state highlighting when selected
 
-**Lead Form:**
-- Business info section
-- Decision Maker contact section (name required)
-- Contact title, email, phone (optional)
-- Creates both client record and contact record
+### 3. Cleanup
 
-### 4. RAB Contact Import
+**Removed from Preferences Page:**
+- Old "System Diagnostics" button and modal
+- `showDiagnostics` state variable
 
-**PDFs Processed:**
-| Sales Associate | Contacts |
-|-----------------|----------|
-| Stephanie Sullivan | ~280 |
-| Elizabeth Campbell | 12 |
-| Jennifer Gatto | 3 |
-| Brooke McReynolds | 2 |
-| Taylor Capen | 2 |
-| **TOTAL** | ~300 |
+**Removed from Users Page:**
+- "System" tab (moved to dedicated page)
+- System-related state variables
+- `loadSystemHealth` function
 
-**SQL Scripts Generated:**
-- `stephanie_final.sql` - Stephanie's contacts
-- `others_final.sql` - Other 4 associates
+### 4. Bug Fix: Diagnostics Authentication
 
-**Schema Discovery:**
-- Table is `advertising_clients` (not `clients`)
-- Contacts use `first_name` + `last_name` (not `name`)
-- No `is_decision_maker` column - use `contact_type = 'decision_maker'`
+**Problem:** DiagnosticsPanel was getting "Invalid or expired token" error
+
+**Root Cause:** Code tried to get `token` from `useAuth()` but AuthContext doesn't export token
+
+**Fix:** Changed to get token from `localStorage.getItem('token')` directly
 
 ---
 
@@ -91,51 +86,58 @@
 ### Frontend
 | File | Changes |
 |------|---------|
-| `App.jsx` | Removed tier badge, fixed assigned rep, merged notes into activity, universal All/Mine/Open toggle, Add Contact modal |
+| `App.jsx` | Added SystemDiagnosticsPage, SystemDiagnosticsPanel component, sidebar System link, fixed DiagnosticsPanel auth, new route `/settings/system` |
 
-### SQL Scripts Created
-| File | Purpose |
-|------|---------|
-| `stephanie_final.sql` | Import ~280 contacts for Stephanie Sullivan |
-| `others_final.sql` | Import 19 contacts for Brooke, Taylor, Elizabeth, Jennifer |
-
----
-
-## 🗄️ Database Schema Notes
-
-### advertising_clients (NOT clients)
-```sql
-business_name          -- Company name
-primary_contact_name   -- Denormalized for display
-assigned_to            -- FK to users
--- NO "name" column
-```
-
-### contacts
-```sql
-first_name, last_name  -- NOT "name"
-contact_type           -- 'decision_maker', etc.
-is_primary             -- Boolean
--- NO "is_decision_maker" column
-```
+### New Icons Added
+- `Cpu` - System page icon
+- `HardDrive`, `Server`, `Lock` - Component icons
+- `CheckCircle2`, `XCircle`, `AlertTriangle` - Status indicators
 
 ---
 
-## 🎯 What's Next
+## 🔐 Security Updates
 
-### Immediate Priorities:
-1. **Import Actual Orders** - Need real order data to identify true active clients
-2. **Multi-Product Campaign Display** - Currently only Programmatic shows
-3. **Super Admin Frontend** - Backend ready, needs UI
+### Diagnostics Endpoint Security
+| Endpoint | Protection | Access |
+|----------|------------|--------|
+| `/api/diagnostics/public` | None (intentional) | Anyone - limited info |
+| `/api/diagnostics/admin` | `authenticateToken` + `requireAdmin` | Admins only |
+| `/settings/system` (UI) | Super Admin check in component | Super Admins only |
 
-### Product Display Needs:
-| Product | Brand | Status |
-|---------|-------|--------|
-| Programmatic | All | ✅ Working |
-| Radio/Broadcast | WSIC | ❌ Needs UI |
-| Print | LKNW | ❌ Needs UI |
-| Podcast | WSIC | ❌ Needs UI |
-| Events | All | ❌ Needs UI |
+### Token Handling Fix
+```javascript
+// OLD (broken) - token was undefined
+const { user, token } = useAuth();
+
+// NEW (working) - gets actual token
+const token = localStorage.getItem('token');
+```
+
+---
+
+## 🎯 What's Next: Training Center
+
+### Vision
+- Connect training to individual Sales Associates
+- User Profiles with KPIs, goals, activity metrics
+- Role-specific training paths
+- Integration with Notion training content
+
+### User Profile Page (Future)
+Each user will have a profile showing:
+- Orders (created, approved, rejected)
+- Clients (total, active, prospects)
+- Leads generated
+- Activities (touchpoints, appointments, proposals)
+- Goals & KPIs
+- Training progress/completion
+
+### Users Page Actions Update (Future)
+| Action | Icon | Purpose |
+|--------|------|---------|
+| View Clients | Blue button | See user's client list |
+| View As | Purple eye | Super Admin impersonation |
+| Profile | New button | Full user dashboard |
 
 ---
 
@@ -145,22 +147,33 @@ is_primary             -- Boolean
 cd simplifi-reports
 copy C:\Users\Justin\Downloads\App.jsx frontend\src\App.jsx
 git add frontend/src/App.jsx
-git commit -m "Client UX: Remove tier, fix assigned rep, merge notes into activity, universal CRM toggles, Add Contact modal"
+git commit -m "Add System Diagnostics page under Settings (Super Admin only)"
 git push origin main
-```
-
-### SQL Import (Supabase)
-```sql
--- Run stephanie_final.sql first
--- Run others_final.sql second
 ```
 
 ---
 
 ## 📚 Files for Next Chat
 
+### Required
 1. **NEW_CHAT_PROMPT.md** - Updated context
 2. **ROADMAP.md** - Updated priorities
 3. **SESSION_SUMMARY.md** - This file
-4. **App.jsx** - Current frontend state
-5. **server.js** - For backend reference
+4. **Notion Training Export** - Current training content
+
+### Optional (if needed)
+5. **App.jsx** - Current frontend state
+6. **server.js** - For backend reference
+7. **SECURITY_AUDIT.md** - If security work needed
+
+---
+
+## 📊 Current Platform State
+
+| Metric | Count |
+|--------|-------|
+| Total Clients | 2,812 |
+| Active Clients | ~122 |
+| Team Members | 18 |
+| Super Admins | 3 |
+| System Health | ✅ All Green |

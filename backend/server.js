@@ -4149,6 +4149,323 @@ app.use((err, req, res, next) => {
 });
 
 // ============================================
+// TRAINING CENTER ROUTES
+// ============================================
+
+// Get all training categories
+app.get('/api/training/categories', authenticateToken, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      SELECT * FROM training_categories 
+      WHERE is_active = true 
+      ORDER BY sort_order
+    `);
+    res.json({ categories: result.rows });
+  } catch (error) {
+    console.error('Get training categories error:', error);
+    // Return empty array if table doesn't exist yet
+    res.json({ categories: [] });
+  }
+});
+
+// Get all training modules
+app.get('/api/training/modules', authenticateToken, async (req, res) => {
+  try {
+    const { category } = req.query;
+    let query = `
+      SELECT tm.*, tc.name as category_name, tc.color as category_color
+      FROM training_modules tm
+      LEFT JOIN training_categories tc ON tc.id = tm.category_id
+      WHERE tm.is_active = true
+    `;
+    const params = [];
+    
+    if (category) {
+      query += ` AND tm.category_id = $1`;
+      params.push(category);
+    }
+    
+    query += ` ORDER BY tm.sort_order`;
+    
+    const result = await adminPool.query(query, params);
+    res.json({ modules: result.rows });
+  } catch (error) {
+    console.error('Get training modules error:', error);
+    res.json({ modules: [] });
+  }
+});
+
+// Get single training module
+app.get('/api/training/modules/:id', authenticateToken, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      SELECT tm.*, tc.name as category_name
+      FROM training_modules tm
+      LEFT JOIN training_categories tc ON tc.id = tm.category_id
+      WHERE tm.id = $1
+    `, [req.params.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Module not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Get training module error:', error);
+    res.status(500).json({ error: 'Failed to get module' });
+  }
+});
+
+// Get user's training progress
+app.get('/api/training/my-progress', authenticateToken, async (req, res) => {
+  try {
+    const result = await adminPool.query(`
+      SELECT tp.*, tm.title as module_title, tc.name as category_name
+      FROM training_progress tp
+      JOIN training_modules tm ON tm.id = tp.module_id
+      LEFT JOIN training_categories tc ON tc.id = tm.category_id
+      WHERE tp.user_id = $1
+      ORDER BY tp.last_accessed_at DESC
+    `, [req.user.id]);
+    
+    // Convert to object keyed by module_id for easy lookup
+    const progress = {};
+    result.rows.forEach(row => {
+      progress[row.module_id] = row;
+    });
+    
+    res.json({ progress });
+  } catch (error) {
+    console.error('Get training progress error:', error);
+    res.json({ progress: {} });
+  }
+});
+
+// Mark module as complete
+app.post('/api/training/modules/:id/complete', authenticateToken, async (req, res) => {
+  try {
+    const moduleId = req.params.id;
+    const userId = req.user.id;
+    
+    // Upsert progress record
+    const result = await adminPool.query(`
+      INSERT INTO training_progress (user_id, module_id, status, progress_percent, completed_at, last_accessed_at)
+      VALUES ($1, $2, 'completed', 100, NOW(), NOW())
+      ON CONFLICT (user_id, module_id) 
+      DO UPDATE SET 
+        status = 'completed',
+        progress_percent = 100,
+        completed_at = NOW(),
+        last_accessed_at = NOW(),
+        updated_at = NOW()
+      RETURNING *
+    `, [userId, moduleId]);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Mark module complete error:', error);
+    res.status(500).json({ error: 'Failed to mark complete' });
+  }
+});
+
+// Get user's training progress (for profile page)
+app.get('/api/users/:id/training-progress', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Check permission
+    if (req.user.role !== 'admin' && req.user.id !== userId && !req.user.is_super_admin) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    
+    const progressResult = await adminPool.query(`
+      SELECT tp.*, tm.title as module_title, tm.is_required, tc.name as category_name
+      FROM training_progress tp
+      JOIN training_modules tm ON tm.id = tp.module_id
+      LEFT JOIN training_categories tc ON tc.id = tm.category_id
+      WHERE tp.user_id = $1
+      ORDER BY tp.completed_at DESC NULLS LAST
+    `, [userId]);
+    
+    // Get total counts
+    const totalResult = await adminPool.query(`
+      SELECT 
+        COUNT(*) as total_modules,
+        COUNT(CASE WHEN is_required THEN 1 END) as required_modules
+      FROM training_modules 
+      WHERE is_active = true
+    `);
+    
+    const completedCount = progressResult.rows.filter(p => p.status === 'completed').length;
+    const requiredCompleted = progressResult.rows.filter(p => p.status === 'completed' && p.is_required).length;
+    const totalModules = parseInt(totalResult.rows[0]?.total_modules || 0);
+    const requiredModules = parseInt(totalResult.rows[0]?.required_modules || 0);
+    
+    res.json({
+      progress: progressResult.rows,
+      summary: {
+        completed_modules: completedCount,
+        total_modules: totalModules,
+        completion_percent: totalModules > 0 ? Math.round((completedCount / totalModules) * 100) : 0,
+        required_completed: requiredCompleted,
+        required_remaining: requiredModules - requiredCompleted
+      }
+    });
+  } catch (error) {
+    console.error('Get user training progress error:', error);
+    res.json({ progress: [], summary: {} });
+  }
+});
+
+// ============================================
+// USER PROFILE & STATS ROUTES
+// ============================================
+
+// Get user profile with extended stats
+app.get('/api/users/:id/stats', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const days = parseInt(req.query.days) || 30;
+    
+    // Check permission
+    if (req.user.role !== 'admin' && req.user.id !== userId && !req.user.is_super_admin) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    
+    // Get user info
+    const userResult = await adminPool.query(
+      'SELECT id, name, email, role, is_super_admin, start_date, manager_id, created_at FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = userResult.rows[0];
+    
+    // Get client counts
+    const clientsResult = await adminPool.query(`
+      SELECT 
+        COUNT(*) as total_clients,
+        COUNT(CASE WHEN status = 'active' THEN 1 END) as active_clients,
+        COUNT(CASE WHEN status IN ('prospect', 'lead') THEN 1 END) as prospect_clients,
+        COUNT(CASE WHEN status = 'churned' THEN 1 END) as churned_clients,
+        COALESCE(SUM(CASE WHEN status = 'active' THEN total_revenue END), 0) as total_revenue
+      FROM advertising_clients
+      WHERE assigned_to = $1
+    `, [userId]);
+    
+    // Get order counts
+    const ordersResult = await adminPool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(CASE WHEN status = 'approved' THEN 1 END) as approved,
+        COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending,
+        COUNT(CASE WHEN status = 'rejected' THEN 1 END) as rejected
+      FROM orders
+      WHERE created_by = $1
+    `, [userId]);
+    
+    // Get activity counts within time range
+    const activitiesResult = await adminPool.query(`
+      SELECT 
+        COUNT(CASE WHEN activity_type = 'call_logged' THEN 1 END) as calls,
+        COUNT(CASE WHEN activity_type IN ('meeting_scheduled', 'appointment_scheduled') THEN 1 END) as appointments,
+        COUNT(CASE WHEN activity_type = 'proposal_sent' THEN 1 END) as proposals,
+        COUNT(CASE WHEN activity_type IN ('order_signed', 'deal_closed') THEN 1 END) as closed_deals
+      FROM client_activities
+      WHERE user_id = $1
+        AND created_at >= NOW() - INTERVAL '1 day' * $2
+    `, [userId, days]);
+    
+    // Get new clients in period
+    const newClientsResult = await adminPool.query(`
+      SELECT COUNT(*) as new_clients
+      FROM advertising_clients
+      WHERE assigned_to = $1
+        AND created_at >= NOW() - INTERVAL '1 day' * $2
+    `, [userId, days]);
+    
+    res.json({
+      user,
+      totals: clientsResult.rows[0],
+      orders: ordersResult.rows[0],
+      activities: activitiesResult.rows[0],
+      new_clients: parseInt(newClientsResult.rows[0]?.new_clients || 0)
+    });
+  } catch (error) {
+    console.error('Get user stats error:', error);
+    res.status(500).json({ error: 'Failed to get user stats' });
+  }
+});
+
+// Get user goals
+app.get('/api/users/:id/goals', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Check permission
+    if (req.user.role !== 'admin' && req.user.id !== userId && !req.user.is_super_admin) {
+      return res.status(403).json({ error: 'Not authorized' });
+    }
+    
+    const result = await adminPool.query(`
+      SELECT * FROM user_goals
+      WHERE user_id = $1
+      ORDER BY year DESC, month DESC
+      LIMIT 12
+    `, [userId]);
+    
+    res.json({ goals: result.rows });
+  } catch (error) {
+    console.error('Get user goals error:', error);
+    res.json({ goals: [] });
+  }
+});
+
+// Create/update user goals
+app.post('/api/users/:id/goals', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { year, month, appointments_target, proposals_target, closed_deals_target, new_clients_target, revenue_target, notes } = req.body;
+    
+    const result = await adminPool.query(`
+      INSERT INTO user_goals (
+        user_id, year, month, 
+        appointments_target, proposals_target, closed_deals_target, 
+        new_clients_target, revenue_target, notes, created_by
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (user_id, year, month)
+      DO UPDATE SET
+        appointments_target = EXCLUDED.appointments_target,
+        proposals_target = EXCLUDED.proposals_target,
+        closed_deals_target = EXCLUDED.closed_deals_target,
+        new_clients_target = EXCLUDED.new_clients_target,
+        revenue_target = EXCLUDED.revenue_target,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      RETURNING *
+    `, [
+      userId, year, month,
+      appointments_target || 0,
+      proposals_target || 0,
+      closed_deals_target || 0,
+      new_clients_target || 0,
+      revenue_target || 0,
+      notes,
+      req.user.id
+    ]);
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Create user goals error:', error);
+    res.status(500).json({ error: 'Failed to save goals' });
+  }
+});
+
+// ============================================
 // START SERVER
 // ============================================
 
