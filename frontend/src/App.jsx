@@ -11,7 +11,7 @@ import {
   Database, RefreshCw, Shield, EyeOff, UserCheck, Activity, Cpu, HardDrive, 
   Mail, CreditCard, Wifi, Server, Lock, AlertTriangle, CheckCircle2, XCircle,
   BookOpen, GraduationCap, User, Briefcase, Package, Wrench, PlayCircle,
-  FileQuestion, ChevronLeft, BarChart2, Phone, Send, Handshake, UserPlus
+  FileQuestion, BarChart2, Phone, Send, UserPlus, ThumbsUp
 } from 'lucide-react';
 import ProductManagement from './components/ProductManagement';
 import OrderForm from './components/OrderForm';
@@ -14197,7 +14197,7 @@ function UserProfilePage() {
       label: 'Closed Deals',
       target: currentGoal?.closed_deals_target || 0,
       actual: stats?.activities?.closed_deals || 0,
-      icon: Handshake,
+      icon: ThumbsUp,
       color: '#10b981'
     },
     {
@@ -14370,7 +14370,7 @@ function UserProfilePage() {
                 <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Proposals Sent</div>
               </div>
               <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
-                <Handshake size={24} color="#f59e0b" style={{ marginBottom: '0.5rem' }} />
+                <ThumbsUp size={24} color="#f59e0b" style={{ marginBottom: '0.5rem' }} />
                 <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{stats?.activities?.closed_deals || 0}</div>
                 <div style={{ color: '#6b7280', fontSize: '0.75rem' }}>Deals Closed</div>
               </div>
