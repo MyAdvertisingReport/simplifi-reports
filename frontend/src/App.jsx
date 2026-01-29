@@ -4361,7 +4361,6 @@ function ClientDetailPage({ publicMode = false }) {
               { id: 'invoices', label: 'Invoices', icon: DollarSign },
               { id: 'contacts', label: 'Contacts', icon: Users },
               { id: 'documents', label: 'Documents', icon: FileText },
-              { id: 'notes', label: 'Notes', icon: MessageSquare },
               { id: 'reports', label: 'Reports', icon: BarChart3 },
             ].map(tab => (
               <button
@@ -5110,25 +5109,6 @@ function ClientDetailPage({ publicMode = false }) {
                         }}>
                           {client?.status || 'prospect'}
                         </span>
-                        {/* Tier Badge */}
-                        {client?.tier && (
-                          <span style={{
-                            padding: '0.25rem 0.75rem',
-                            borderRadius: '9999px',
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            textTransform: 'capitalize',
-                            background: client?.tier === 'platinum' ? '#ede9fe' :
-                                       client?.tier === 'gold' ? '#fef3c7' :
-                                       client?.tier === 'silver' ? '#f3f4f6' : '#fef3c7',
-                            color: client?.tier === 'platinum' ? '#5b21b6' :
-                                   client?.tier === 'gold' ? '#b45309' :
-                                   client?.tier === 'silver' ? '#374151' : '#92400e'
-                          }}>
-                            {client?.tier === 'platinum' ? '⭐ ' : client?.tier === 'gold' ? '🥇 ' : client?.tier === 'silver' ? '🥈 ' : '🥉 '}
-                            {client?.tier}
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -5333,11 +5313,11 @@ function ClientDetailPage({ publicMode = false }) {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       color: 'white', fontWeight: 600, fontSize: '1.125rem'
                     }}>
-                      {client?.assigned_user_name?.charAt(0) || '?'}
+                      {(client?.assigned_to_name || client?.assigned_user_name || '?').charAt(0)}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 500 }}>{client?.assigned_user_name || 'Assigned'}</div>
-                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{client?.assigned_user_email || ''}</div>
+                      <div style={{ fontWeight: 500 }}>{client?.assigned_to_name || client?.assigned_user_name || 'Unknown'}</div>
+                      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{client?.assigned_to_email || client?.assigned_user_email || ''}</div>
                     </div>
                   </div>
                 ) : (
@@ -5531,7 +5511,7 @@ function ClientDetailPage({ publicMode = false }) {
         <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Activity History</h3>
+              <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 600, color: '#111827' }}>Activity & Notes</h3>
               <p style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#6b7280' }}>
                 All activity for {client?.business_name || client?.name}
               </p>
@@ -5540,7 +5520,13 @@ function ClientDetailPage({ publicMode = false }) {
               {clientActivities.length} activities
             </div>
           </div>
-          <div style={{ padding: '1.5rem', maxHeight: '70vh', overflowY: 'auto' }}>
+          
+          {/* Add Note Section */}
+          <div style={{ padding: '1rem 1.5rem', background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+            <InternalNotesSection clientId={client?.id} isCollapsible={false} compact={true} />
+          </div>
+          
+          <div style={{ padding: '1.5rem', maxHeight: '60vh', overflowY: 'auto' }}>
             {activitiesLoading ? (
               <div style={{ textAlign: 'center', padding: '3rem' }}>
                 <div className="spinner" />
@@ -5565,7 +5551,6 @@ function ClientDetailPage({ publicMode = false }) {
                     meeting_scheduled: { icon: Calendar, bg: '#fef3c7', color: '#92400e', label: 'Meeting' },
                     document_uploaded: { icon: FileText, bg: '#e0e7ff', color: '#3730a3', label: 'Document' },
                     payment_received: { icon: DollarSign, bg: '#dcfce7', color: '#166534', label: 'Payment' },
-                    tier_change: { icon: TrendingUp, bg: '#fef3c7', color: '#92400e', label: 'Tier Change' },
                     assigned_change: { icon: Users, bg: '#e0e7ff', color: '#3730a3', label: 'Assignment' },
                     other: { icon: Clock, bg: '#f3f4f6', color: '#6b7280', label: 'Activity' },
                     default: { icon: Clock, bg: '#f3f4f6', color: '#6b7280', label: 'Activity' }
@@ -5639,16 +5624,11 @@ function ClientDetailPage({ publicMode = false }) {
               <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
                 <History size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
                 <p style={{ margin: 0, fontSize: '1rem' }}>No activity recorded yet</p>
-                <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}>Activities will appear here as you interact with this client</p>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}>Add a note above or activities will appear as you interact with this client</p>
               </div>
             )}
           </div>
         </div>
-      )}
-
-      {/* Notes Tab Content */}
-      {!publicMode && activeTab === 'notes' && (
-        <InternalNotesSection clientId={client?.id} isCollapsible={false} />
       )}
 
       {/* Contacts Tab Content */}
@@ -9858,7 +9838,7 @@ function KeywordsTable({ keywords }) {
 // ============================================
 // INTERNAL NOTES COMPONENT (Staff Only)
 // ============================================
-function InternalNotesSection({ clientId, showFullHistory = true, isCollapsible = false }) {
+function InternalNotesSection({ clientId, showFullHistory = true, isCollapsible = false, compact = false }) {
   const [notes, setNotes] = useState([]);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState('general');
@@ -9937,6 +9917,66 @@ function InternalNotesSection({ clientId, showFullHistory = true, isCollapsible 
 
   const displayNotes = showAll ? sortedNotes : sortedNotes.slice(0, 3);
   const hasMoreNotes = sortedNotes.length > 3;
+
+  // Compact mode for embedding in Activity tab - just shows note input
+  if (compact) {
+    return (
+      <div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <select 
+            value={noteType} 
+            onChange={(e) => setNoteType(e.target.value)}
+            style={{ 
+              padding: '0.5rem', 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '0.375rem', 
+              fontSize: '0.8125rem', 
+              background: 'white',
+              minWidth: '100px'
+            }}
+          >
+            <option value="general">General</option>
+            <option value="strategy">Strategy</option>
+            <option value="issue">Issue</option>
+            <option value="milestone">Milestone</option>
+            <option value="billing">Billing</option>
+          </select>
+          <input
+            type="text"
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            placeholder="Add a note..."
+            onKeyPress={(e) => e.key === 'Enter' && handleAddNote()}
+            style={{ 
+              flex: 1, 
+              padding: '0.5rem 0.75rem', 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '0.375rem', 
+              fontSize: '0.875rem',
+              background: 'white'
+            }}
+          />
+          <button
+            onClick={handleAddNote}
+            disabled={loading || !newNote.trim()}
+            style={{ 
+              padding: '0.5rem 1.25rem', 
+              background: '#10b981', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: '0.375rem', 
+              fontSize: '0.875rem', 
+              fontWeight: 500,
+              cursor: loading || !newNote.trim() ? 'not-allowed' : 'pointer', 
+              opacity: loading || !newNote.trim() ? 0.5 : 1 
+            }}
+          >
+            {loading ? 'Adding...' : 'Add'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Collapsible header for when used as standalone component
   if (isCollapsible) {
@@ -10913,7 +10953,6 @@ function EditClientForm({ client, onSave, onCancel }) {
     startDate: client?.start_date || '',
     // New CRM fields
     status: client?.status || 'prospect',
-    tier: client?.tier || 'bronze',
     industry: client?.industry || '',
     clientSince: client?.client_since || '',
     source: client?.source || '',
@@ -10938,7 +10977,6 @@ function EditClientForm({ client, onSave, onCancel }) {
       startDate: formData.startDate || null,
       // New CRM fields
       status: formData.status,
-      tier: formData.tier,
       industry: formData.industry || null,
       clientSince: formData.clientSince || null,
       source: formData.source || null,
@@ -10970,19 +11008,6 @@ function EditClientForm({ client, onSave, onCancel }) {
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
               <option value="churned">Churned</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>Tier</label>
-            <select
-              value={formData.tier}
-              onChange={(e) => setFormData({...formData, tier: e.target.value})}
-              style={{ width: '100%', padding: '0.625rem', border: '1px solid #d1d5db', borderRadius: '0.5rem', background: 'white' }}
-            >
-              <option value="bronze">🥉 Bronze</option>
-              <option value="silver">🥈 Silver</option>
-              <option value="gold">🥇 Gold</option>
-              <option value="platinum">⭐ Platinum</option>
             </select>
           </div>
         </div>
