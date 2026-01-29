@@ -132,6 +132,71 @@ const statusConfig = {
   cancelled: { label: 'Cancelled', bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
 };
 
+// Category styling with icons
+const categoryConfig = {
+  'Print': { bg: '#dbeafe', color: '#1e40af', icon: '📰' },
+  'print': { bg: '#dbeafe', color: '#1e40af', icon: '📰' },
+  'Broadcast': { bg: '#fce7f3', color: '#9d174d', icon: '📻' },
+  'broadcast': { bg: '#fce7f3', color: '#9d174d', icon: '📻' },
+  'Podcast': { bg: '#f3e8ff', color: '#7c3aed', icon: '🎙️' },
+  'podcast': { bg: '#f3e8ff', color: '#7c3aed', icon: '🎙️' },
+  'Digital': { bg: '#dcfce7', color: '#166534', icon: '💻' },
+  'digital': { bg: '#dcfce7', color: '#166534', icon: '💻' },
+  'Programmatic': { bg: '#dcfce7', color: '#166534', icon: '📊' },
+  'programmatic': { bg: '#dcfce7', color: '#166534', icon: '📊' },
+  'Events': { bg: '#fef3c7', color: '#92400e', icon: '🎪' },
+  'events': { bg: '#fef3c7', color: '#92400e', icon: '🎪' },
+  'Web': { bg: '#e0e7ff', color: '#3730a3', icon: '🌐' },
+  'web': { bg: '#e0e7ff', color: '#3730a3', icon: '🌐' },
+  'web_social': { bg: '#ffe4e6', color: '#be123c', icon: '📱' },
+  'Social': { bg: '#ffe4e6', color: '#be123c', icon: '📱' },
+  'social': { bg: '#ffe4e6', color: '#be123c', icon: '📱' },
+};
+
+const getCategoryStyle = (category) => {
+  if (!category) return { bg: '#f3f4f6', color: '#374151', icon: '📋' };
+  return categoryConfig[category] || { bg: '#f3f4f6', color: '#374151', icon: '📋' };
+};
+
+// Get unique brands from order items
+const getOrderBrands = (items) => {
+  if (!items || items.length === 0) return [];
+  const seen = new Set();
+  return items.filter(item => {
+    if (!item.entity_name || seen.has(item.entity_name)) return false;
+    seen.add(item.entity_name);
+    return true;
+  }).map(item => ({
+    name: item.entity_name,
+    logo: item.entity_logo
+  }));
+};
+
+// Get unique categories from order items
+const getOrderCategories = (items) => {
+  if (!items || items.length === 0) return [];
+  const categories = {};
+  items.forEach(item => {
+    const cat = item.product_category || item.category || 'Other';
+    categories[cat] = (categories[cat] || 0) + 1;
+  });
+  return Object.entries(categories).map(([name, count]) => ({ name, count }));
+};
+
+// Check if order has price adjustments (for approval clarity)
+const getAdjustedProducts = (items) => {
+  if (!items) return [];
+  return items.filter(item => {
+    // Check if item has a discount or adjusted price
+    const hasDiscount = item.discount_percent && parseFloat(item.discount_percent) > 0;
+    const hasAdjustedPrice = item.original_price && 
+      parseFloat(item.original_price) !== parseFloat(item.unit_price || item.line_total);
+    const hasWaivedSetup = item.original_setup_fee && 
+      parseFloat(item.original_setup_fee) > parseFloat(item.setup_fee || 0);
+    return hasDiscount || hasAdjustedPrice || hasWaivedSetup;
+  });
+};
+
 export default function OrderList() {
   // Data states
   const [orders, setOrders] = useState([]);
@@ -551,6 +616,7 @@ export default function OrderList() {
                     </div>
                   </th>
                   <th style={styles.th}>Status</th>
+                  <th style={styles.th}>Brands</th>
                   <th style={styles.th} onClick={() => handleSort('contract_start_date')}>
                     <div style={styles.thContent}>
                       Contract Period
@@ -583,12 +649,13 @@ export default function OrderList() {
               <tbody>
                 {paginatedOrders.map(order => {
                   const status = statusConfig[order.status] || statusConfig.draft;
+                  const brands = getOrderBrands(order.items);
+                  const categories = getOrderCategories(order.items);
                   return (
                     <tr key={order.id} style={styles.tr}>
                       <td style={styles.td}>
                         <div style={styles.clientCell}>
                           <span style={styles.clientName}>{order.client_name || 'Unknown Client'}</span>
-                          <span style={{ fontSize: '12px', color: '#64748b' }}>{order.order_number}</span>
                         </div>
                       </td>
                       <td style={styles.td}>
@@ -602,6 +669,26 @@ export default function OrderList() {
                         </span>
                       </td>
                       <td style={styles.td}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {brands.length > 0 ? brands.map((brand, idx) => (
+                            <span key={idx} style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              backgroundColor: '#1e3a8a',
+                              color: 'white',
+                              borderRadius: '6px',
+                            }}>
+                              {brand.name}
+                            </span>
+                          )) : (
+                            <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={styles.td}>
                         <div style={styles.dateCell}>
                           <span>{formatDate(order.contract_start_date)}</span>
                           <span style={styles.dateSeparator}>→</span>
@@ -612,9 +699,31 @@ export default function OrderList() {
                         </span>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.productCount}>
-                          {order.item_count || order.items?.length || 0} products
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span style={styles.productCount}>
+                            {order.item_count || order.items?.length || 0} products
+                          </span>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                            {categories.slice(0, 3).map((cat, idx) => {
+                              const catStyle = getCategoryStyle(cat.name);
+                              return (
+                                <span key={idx} style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '2px',
+                                  padding: '2px 6px',
+                                  fontSize: '10px',
+                                  fontWeight: '500',
+                                  backgroundColor: catStyle.bg,
+                                  color: catStyle.color,
+                                  borderRadius: '4px',
+                                }}>
+                                  {catStyle.icon} {cat.count}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
                       </td>
                       <td style={styles.td}>
                         <div style={styles.valueCell}>
@@ -830,7 +939,7 @@ export default function OrderList() {
             <div style={styles.modalHeader}>
               <div>
                 <h2 style={styles.modalTitle}>
-                  Order {selectedOrder.order_number}
+                  {selectedOrder.client_name}
                 </h2>
                 <span style={{
                   ...styles.statusBadge,
@@ -847,16 +956,153 @@ export default function OrderList() {
             </div>
 
             <div style={styles.modalBody}>
-              {/* Client Info */}
-              <div style={styles.modalSection}>
-                <h3 style={styles.modalSectionTitle}>
-                  <Icons.Building /> Client
-                </h3>
-                <div style={styles.modalInfo}>
-                  <span style={styles.modalInfoLabel}>Business Name</span>
-                  <span style={styles.modalInfoValue}>{selectedOrder.client_name}</span>
-                </div>
-              </div>
+              {/* Brand Bubbles */}
+              {(() => {
+                const brands = getOrderBrands(selectedOrder.items);
+                const categories = getOrderCategories(selectedOrder.items);
+                const adjustedProducts = getAdjustedProducts(selectedOrder.items);
+                return (
+                  <>
+                    {/* Brands Section */}
+                    {brands.length > 0 && (
+                      <div style={{ marginBottom: '20px', display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'center' }}>
+                        {brands.map((brand, idx) => (
+                          <span key={idx} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '8px 16px',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            backgroundColor: '#1e3a8a',
+                            color: 'white',
+                            borderRadius: '8px',
+                          }}>
+                            {brand.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Category Bubbles */}
+                    {categories.length > 0 && (
+                      <div style={{ marginBottom: '20px', display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
+                        {categories.map((cat, idx) => {
+                          const catStyle = getCategoryStyle(cat.name);
+                          return (
+                            <span key={idx} style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              padding: '6px 12px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              backgroundColor: catStyle.bg,
+                              color: catStyle.color,
+                              borderRadius: '12px',
+                            }}>
+                              {catStyle.icon} {cat.name} ({cat.count})
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Approval Reason Alert - Show ONLY when pending approval */}
+                    {selectedOrder.status === 'pending_approval' && (
+                      <div style={{
+                        backgroundColor: '#fef3c7',
+                        border: '2px solid #fcd34d',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        marginBottom: '20px',
+                      }}>
+                        <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          ⚠️ Approval Required
+                        </div>
+                        {adjustedProducts.length > 0 ? (
+                          <>
+                            <p style={{ color: '#92400e', fontSize: '13px', margin: '0 0 12px 0' }}>
+                              The following products have price adjustments that require approval:
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {adjustedProducts.map((item, idx) => {
+                                const catStyle = getCategoryStyle(item.product_category);
+                                const discount = item.discount_percent ? parseFloat(item.discount_percent) : 0;
+                                const originalPrice = item.original_price || item.book_price;
+                                const currentPrice = item.unit_price || item.line_total;
+                                const waivedSetup = item.original_setup_fee && parseFloat(item.original_setup_fee) > parseFloat(item.setup_fee || 0);
+                                
+                                return (
+                                  <div key={idx} style={{
+                                    backgroundColor: 'white',
+                                    borderRadius: '8px',
+                                    padding: '12px',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <span style={{
+                                        display: 'inline-flex',
+                                        padding: '2px 6px',
+                                        fontSize: '10px',
+                                        backgroundColor: catStyle.bg,
+                                        color: catStyle.color,
+                                        borderRadius: '4px',
+                                      }}>
+                                        {catStyle.icon}
+                                      </span>
+                                      <span style={{ fontWeight: '500', color: '#1e293b' }}>{item.product_name}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                      {originalPrice && (
+                                        <span style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: '13px' }}>
+                                          ${parseFloat(originalPrice).toFixed(2)}
+                                        </span>
+                                      )}
+                                      <span style={{ fontWeight: '600', color: '#059669', fontSize: '13px' }}>
+                                        ${parseFloat(currentPrice).toFixed(2)}
+                                      </span>
+                                      {discount > 0 && (
+                                        <span style={{
+                                          backgroundColor: '#fee2e2',
+                                          color: '#991b1b',
+                                          padding: '2px 8px',
+                                          borderRadius: '12px',
+                                          fontSize: '11px',
+                                          fontWeight: '600',
+                                        }}>
+                                          -{discount}%
+                                        </span>
+                                      )}
+                                      {waivedSetup && (
+                                        <span style={{
+                                          backgroundColor: '#dbeafe',
+                                          color: '#1e40af',
+                                          padding: '2px 8px',
+                                          borderRadius: '12px',
+                                          fontSize: '11px',
+                                          fontWeight: '600',
+                                        }}>
+                                          Setup Waived
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        ) : (
+                          <p style={{ color: '#92400e', fontSize: '13px', margin: 0 }}>
+                            This order has been submitted for approval. Review the details below and approve or return to draft.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Contract Details */}
               <div style={styles.modalSection}>
@@ -891,18 +1137,34 @@ export default function OrderList() {
                   <Icons.FileText /> Products ({selectedOrder.items?.length || 0})
                 </h3>
                 <div style={styles.productsList}>
-                  {selectedOrder.items?.map((item, idx) => (
-                    <div key={idx} style={styles.productItem}>
-                      <div style={styles.productItemInfo}>
-                        <span style={styles.productItemName}>{item.product_name}</span>
-                        <span style={styles.productItemMeta}>{item.product_category}</span>
+                  {selectedOrder.items?.map((item, idx) => {
+                    const catStyle = getCategoryStyle(item.product_category);
+                    return (
+                      <div key={idx} style={styles.productItem}>
+                        <div style={styles.productItemInfo}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              backgroundColor: catStyle.bg,
+                              color: catStyle.color,
+                              borderRadius: '4px',
+                            }}>
+                              {catStyle.icon}
+                            </span>
+                            <span style={styles.productItemName}>{item.product_name}</span>
+                          </div>
+                          <span style={styles.productItemMeta}>{item.entity_name || item.product_category}</span>
+                        </div>
+                        <div style={styles.productItemPrice}>
+                          <span>{formatCurrency(item.line_total)}</span>
+                          <span style={styles.productItemQty}>× {item.quantity}</span>
+                        </div>
                       </div>
-                      <div style={styles.productItemPrice}>
-                        <span>{formatCurrency(item.line_total)}</span>
-                        <span style={styles.productItemQty}>× {item.quantity}</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
