@@ -4131,24 +4131,6 @@ app.use('/api/email', authenticateToken, emailRoutes);
 app.use('/api/billing', authenticateToken, billingRoutes);
 
 // ============================================
-// ERROR HANDLING
-// ============================================
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
-
-// ============================================
 // TRAINING CENTER ROUTES
 // ============================================
 
@@ -4489,6 +4471,23 @@ app.post('/api/users/:id/goals', authenticateToken, requireAdmin, async (req, re
     console.error('Create user goals error:', error);
     res.status(500).json({ error: 'Failed to save goals' });
   }
+});
+// ============================================
+// ERROR HANDLING
+// ============================================
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 // ============================================
