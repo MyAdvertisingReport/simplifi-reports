@@ -29,18 +29,81 @@ const FROM_ADDRESSES = {
 // Base URL for links in emails
 const BASE_URL = process.env.BASE_URL || 'https://myadvertisingreport.com';
 
+// Database pool for email logging - will be set by init function
+let dbPool = null;
+
 /**
- * Send an email via Postmark
+ * Initialize database pool for email logging
+ * Call this from server.js after pool is created
  */
-async function sendEmail({ to, from = FROM_ADDRESSES.orders, subject, htmlBody, textBody, tag, metadata }) {
+function initEmailLogging(pool) {
+  dbPool = pool;
+  console.log('✓ Email logging database connection initialized');
+}
+
+/**
+ * Log email to database for tracking and debugging
+ */
+async function logEmailToDatabase({ 
+  to, from, subject, emailType, orderId, invoiceId, clientId, contactId, 
+  status, messageId, errorMessage, metadata 
+}) {
+  if (!dbPool) {
+    console.log('[Email Log] Database not initialized, skipping log');
+    return null;
+  }
+  
+  try {
+    const result = await dbPool.query(`
+      INSERT INTO email_logs (
+        recipient_email, sent_from, subject, email_type,
+        order_id, invoice_id, client_id, contact_id,
+        status, postmark_message_id, error_message, metadata,
+        created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+      RETURNING id
+    `, [
+      to, from, subject, emailType,
+      orderId || null, invoiceId || null, clientId || null, contactId || null,
+      status, messageId || null, errorMessage || null, 
+      metadata ? JSON.stringify(metadata) : null
+    ]);
+    return result.rows[0]?.id;
+  } catch (err) {
+    console.error('[Email Log] Failed to log email:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Send an email via Postmark with logging
+ */
+async function sendEmail({ 
+  to, from = FROM_ADDRESSES.orders, subject, htmlBody, textBody, tag, metadata,
+  // New logging params
+  emailType, orderId, invoiceId, clientId, contactId 
+}) {
   // Check if client is initialized
   if (!client) {
     console.error('Email send failed: Postmark client not initialized (missing API key)');
+    
+    // Log the failure
+    await logEmailToDatabase({
+      to, from, subject, emailType,
+      orderId, invoiceId, clientId, contactId,
+      status: 'failed',
+      errorMessage: 'POSTMARK_API_KEY not configured',
+      metadata
+    });
+    
     return { 
       success: false, 
       error: 'Email service not configured - POSTMARK_API_KEY is missing'
     };
   }
+
+  console.log(`[Email] Attempting to send "${subject}" to ${to}`);
+  console.log(`[Email] From: ${from}, Tag: ${tag || 'none'}`);
 
   try {
     const result = await client.sendEmail({
@@ -56,9 +119,30 @@ async function sendEmail({ to, from = FROM_ADDRESSES.orders, subject, htmlBody, 
     });
     
     console.log(`[Email] ✓ Sent successfully: ${result.MessageID} to ${to}`);
+    
+    // Log success
+    await logEmailToDatabase({
+      to, from, subject, emailType,
+      orderId, invoiceId, clientId, contactId,
+      status: 'sent',
+      messageId: result.MessageID,
+      metadata
+    });
+    
     return { success: true, messageId: result.MessageID };
   } catch (error) {
     console.error('[Email] ✗ Failed to send:', error);
+    console.error('[Email] Error details:', JSON.stringify(error, null, 2));
+    
+    // Log failure
+    await logEmailToDatabase({
+      to, from, subject, emailType,
+      orderId, invoiceId, clientId, contactId,
+      status: 'failed',
+      errorMessage: error.message,
+      metadata
+    });
+    
     return { success: false, error: error.message };
   }
 }
@@ -733,13 +817,20 @@ async function sendContractToClient({ order, contact, signingUrl }) {
     </div>
   `;
 
+  console.log(`[Email] sendContractToClient: Preparing to send to ${contact.email} for order ${order.order_number}`);
+  
   return sendEmail({
     to: contact.email,
     from: FROM_ADDRESSES.orders,
     subject,
     htmlBody: emailTemplate({ title: subject, preheader: `Your ${order.term_months}-month advertising agreement is ready to sign`, content }),
     tag: 'contract-sent',
-    metadata: { orderId: order.id, orderNumber: order.order_number, clientId: order.client_id }
+    metadata: { orderId: order.id, orderNumber: order.order_number, clientId: order.client_id },
+    // Logging params
+    emailType: 'contract_sent',
+    orderId: order.id,
+    clientId: order.client_id,
+    contactId: contact.id
   });
 }
 
@@ -1367,5 +1458,6 @@ module.exports = {
   sendInvoiceToClient,
   sendPaymentReminder,
   sendPaymentReceipt,
-  FROM_ADDRESSES
+  FROM_ADDRESSES,
+  initEmailLogging
 };

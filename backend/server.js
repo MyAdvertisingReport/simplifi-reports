@@ -189,6 +189,12 @@ const setupAdminRoutes = () => {
     console.log('Order routes email service initialized');
   }
   
+  // Initialize email logging with database pool
+  if (emailService.initEmailLogging) {
+    emailService.initEmailLogging(adminPool);
+    console.log('Email service logging initialized');
+  }
+  
   orderRoutesReady = true;
   console.log('Order routes initialized');
   
@@ -6032,6 +6038,216 @@ app.get('/api/tasks', authenticateToken, async (req, res) => {
     const result = await adminPool.query(query, params);
     res.json({ tasks: result.rows });
   } catch (error) {
+    console.error('Get tasks error:', error);
+    res.status(500).json({ error: 'Failed to get tasks' });
+  }
+});
+
+// ============================================
+// EMAIL DASHBOARD & MONITORING
+// ============================================
+
+// Ensure email_logs table has all required columns (run once at startup)
+const ensureEmailLogsColumns = async () => {
+  try {
+    // Add missing columns if they don't exist
+    const alterQueries = [
+      `ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS email_type VARCHAR(50)`,
+      `ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS order_id UUID REFERENCES orders(id)`,
+      `ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES invoices(id)`,
+      `ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP`,
+      `ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMP`,
+      `ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS metadata JSONB`,
+      `ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`
+    ];
+    
+    for (const query of alterQueries) {
+      try {
+        await adminPool.query(query);
+      } catch (err) {
+        // Ignore errors (column might already exist or table doesn't exist yet)
+        if (!err.message.includes('already exists') && !err.message.includes('does not exist')) {
+          console.log('Email logs migration note:', err.message);
+        }
+      }
+    }
+    console.log('Email logs table columns verified');
+  } catch (err) {
+    console.error('Email logs migration error:', err.message);
+  }
+};
+
+// Call migration on first request (lazy init)
+let emailLogsMigrated = false;
+
+// Get email dashboard stats
+app.get('/api/email/dashboard', authenticateToken, async (req, res) => {
+  try {
+    // Run migration once
+    if (!emailLogsMigrated) {
+      await ensureEmailLogsColumns();
+      emailLogsMigrated = true;
+    }
+
+    // Verify admin access
+    if (!req.user.is_super_admin && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const [stats, recentEmails, byType, byStatus] = await Promise.all([
+      // Overall stats (last 30 days)
+      adminPool.query(`
+        SELECT 
+          COUNT(*) as total_sent,
+          COUNT(CASE WHEN status = 'sent' THEN 1 END) as delivered,
+          COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed,
+          COUNT(CASE WHEN opened_at IS NOT NULL THEN 1 END) as opened,
+          COUNT(CASE WHEN clicked_at IS NOT NULL THEN 1 END) as clicked
+        FROM email_logs
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+      `),
+      // Recent emails (last 50)
+      adminPool.query(`
+        SELECT el.*, 
+          ac.business_name as client_name,
+          o.order_number,
+          u.name as sent_by_name
+        FROM email_logs el
+        LEFT JOIN advertising_clients ac ON el.client_id = ac.id
+        LEFT JOIN orders o ON el.order_id = o.id
+        LEFT JOIN users u ON el.sent_by = u.id
+        ORDER BY el.created_at DESC
+        LIMIT 50
+      `),
+      // By email type
+      adminPool.query(`
+        SELECT 
+          COALESCE(email_type, 'unknown') as email_type,
+          COUNT(*) as count,
+          COUNT(CASE WHEN status = 'sent' THEN 1 END) as delivered,
+          COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed
+        FROM email_logs
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY email_type
+        ORDER BY count DESC
+      `),
+      // By status
+      adminPool.query(`
+        SELECT 
+          status,
+          COUNT(*) as count
+        FROM email_logs
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY status
+      `)
+    ]);
+
+    res.json({
+      stats: stats.rows[0] || {},
+      recentEmails: recentEmails.rows,
+      byType: byType.rows,
+      byStatus: byStatus.rows
+    });
+  } catch (error) {
+    console.error('Email dashboard error:', error);
+    res.status(500).json({ error: 'Failed to load email dashboard' });
+  }
+});
+
+// Get emails for a specific order
+app.get('/api/email/order/:orderId', authenticateToken, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const result = await adminPool.query(`
+      SELECT el.*, 
+        ac.business_name as client_name,
+        o.order_number
+      FROM email_logs el
+      LEFT JOIN advertising_clients ac ON el.client_id = ac.id
+      LEFT JOIN orders o ON el.order_id = o.id
+      WHERE el.order_id = $1
+      ORDER BY el.created_at DESC
+    `, [orderId]);
+    
+    res.json({ emails: result.rows });
+  } catch (error) {
+    console.error('Get order emails error:', error);
+    res.status(500).json({ error: 'Failed to get order emails' });
+  }
+});
+
+// Resend a failed email
+app.post('/api/email/:id/resend', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user.is_super_admin && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { id } = req.params;
+    
+    // Get the original email
+    const emailResult = await adminPool.query(
+      'SELECT * FROM email_logs WHERE id = $1',
+      [id]
+    );
+    
+    if (emailResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+    
+    const originalEmail = emailResult.rows[0];
+    
+    // For now, just mark as needing resend - actual resend would require storing the full email body
+    await adminPool.query(
+      'UPDATE email_logs SET status = $1, error_message = $2, updated_at = NOW() WHERE id = $3',
+      ['pending_resend', 'Queued for manual resend', id]
+    );
+    
+    res.json({ 
+      success: true, 
+      message: 'Email marked for resend',
+      note: 'Manual intervention may be required to actually resend'
+    });
+  } catch (error) {
+    console.error('Resend email error:', error);
+    res.status(500).json({ error: 'Failed to resend email' });
+  }
+});
+
+// Test email endpoint - send a test email to verify configuration
+app.post('/api/email/test', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user.is_super_admin && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { to } = req.body;
+    if (!to) {
+      return res.status(400).json({ error: 'Email address required' });
+    }
+
+    console.log(`[Email Test] Sending test email to ${to}`);
+    
+    const result = await emailService.sendTestEmail(to);
+    
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        message: `Test email sent to ${to}`,
+        messageId: result.messageId
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: result.error,
+        hint: 'Check POSTMARK_API_KEY environment variable and Postmark sender signatures'
+      });
+    }
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.status(500).json({ error: 'Failed to send test email: ' + error.message });
+  }
+});
     console.error('Get tasks error:', error);
     res.status(500).json({ error: 'Failed to get tasks' });
   }
