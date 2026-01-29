@@ -13534,7 +13534,7 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [previewError, setPreviewError] = useState(false);
   const { isMobile } = useResponsive();
-  const { user, token } = useAuth();
+  const { user } = useAuth();
 
   useEffect(() => {
     runDiagnostics();
@@ -13544,6 +13544,7 @@ function DiagnosticsPanel({ isPublic = false, onClose }) {
     setLoading(true);
     try {
       const endpoint = isPublic ? '/api/diagnostics/public' : '/api/diagnostics/admin';
+      const token = localStorage.getItem('token');
       const headers = isPublic ? {} : { 'Authorization': `Bearer ${token}` };
       
       const response = await fetch(`${API_BASE}${endpoint}`, { headers });
