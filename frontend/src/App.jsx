@@ -1955,6 +1955,7 @@ function ClientsPage() {
   const [ownerFilter, setOwnerFilter] = useState('all'); // 'all', 'mine', 'open', or a specific user ID
   const [sortBy, setSortBy] = useState('name'); // 'name', 'name-desc', 'revenue', 'revenue-desc', 'recent', 'oldest'
   const [brandFilter, setBrandFilter] = useState('all'); // 'all', 'WSIC', 'LKNW', 'multi'
+  const [clientStatusFilter, setClientStatusFilter] = useState('current'); // 'all', 'current', 'past' - for Client View
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -2261,24 +2262,6 @@ function ClientsPage() {
 
   // Filter clients based on current filters
   const filteredClients = clients.filter(c => {
-    // FIRST: Apply role-based visibility restrictions
-    // If viewing as a non-admin user (or is a non-admin user), only show their own assigned clients OR open accounts
-    if (!effectiveCanSeeAll && viewMode === 'crm') {
-      const isMyClient = c.assigned_to === effectiveUser?.id;
-      const isOpenAccount = !c.assigned_to;
-      
-      // Apply the owner filter toggle for non-admins
-      if (ownerFilter === 'mine' && !isMyClient) return false;
-      if (ownerFilter === 'open' && !isOpenAccount) return false;
-      // If 'all' (default), show both mine and open
-      if (ownerFilter === 'all' && !isMyClient && !isOpenAccount) return false;
-    }
-    
-    // If viewing as a non-admin user in Client View, only show their assigned ACTIVE clients
-    if (!effectiveCanSeeAll && viewMode === 'client') {
-      if (c.assigned_to !== effectiveUser?.id) return false;
-    }
-    
     // Search filter - also search tags
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -2292,37 +2275,48 @@ function ClientsPage() {
         return false;
       }
     }
-    // Status filter (CRM view)
-    if (viewMode === 'crm' && statusFilter !== 'all' && c.status !== statusFilter) return false;
-    // Owner filter (CRM view) - only applicable if user can see all
-    if (viewMode === 'crm' && ownerFilter !== 'all' && effectiveCanSeeAll) {
+    
+    // CRM View filtering
+    if (viewMode === 'crm') {
+      // Status filter
+      if (statusFilter !== 'all' && c.status !== statusFilter) return false;
+      
+      // Owner filter (applies to everyone)
       if (ownerFilter === 'mine' && c.assigned_to !== effectiveUser?.id) return false;
       if (ownerFilter === 'open' && c.assigned_to) return false;
-      if (ownerFilter !== 'mine' && ownerFilter !== 'open' && c.assigned_to !== ownerFilter) return false;
+      // 'all' shows everything
     }
-    // Brand filter (Client view) - check tags for WSIC/LKNW
-    if (viewMode === 'client' && brandFilter !== 'all') {
-      const hasWSIC = c.tags?.includes('WSIC') || c.source?.includes('WSIC');
-      const hasLKNW = c.tags?.includes('LKNW') || c.source?.includes('Lake Norman');
-      if (brandFilter === 'WSIC' && !hasWSIC) return false;
-      if (brandFilter === 'LKNW' && !hasLKNW) return false;
-      if (brandFilter === 'multi' && !(hasWSIC && hasLKNW)) return false;
-    }
-    // Client view shows clients that are active OR have assigned_to match (for non-admin, filtering already applied above)
+    
+    // Client View filtering
     if (viewMode === 'client') {
-      const orderStats = clientOrderStats[c.id];
-      const hasOrders = orderStats?.totalOrders > 0;
-      const isActive = c.status === 'active';
-      // For non-admins viewing their own clients, also include "assigned to them" regardless of status
-      const isAssignedToEffectiveUser = c.assigned_to === effectiveUser?.id;
-      if (!effectiveCanSeeAll) {
-        // Non-admin: show their clients that are active OR have orders OR are assigned to them (their book of business)
-        if (!hasOrders && !isActive && !isAssignedToEffectiveUser) return false;
-      } else {
-        // Admin: standard active/has orders filter
-        if (!hasOrders && !isActive) return false;
+      // For non-admins, only show their assigned clients
+      if (!effectiveCanSeeAll && c.assigned_to !== effectiveUser?.id) return false;
+      
+      // Brand filter - check tags for WSIC/LKNW
+      if (brandFilter !== 'all') {
+        const hasWSIC = c.tags?.includes('WSIC') || c.source?.includes('WSIC');
+        const hasLKNW = c.tags?.includes('LKNW') || c.source?.includes('Lake Norman');
+        if (brandFilter === 'WSIC' && !hasWSIC) return false;
+        if (brandFilter === 'LKNW' && !hasLKNW) return false;
+        if (brandFilter === 'multi' && !(hasWSIC && hasLKNW)) return false;
       }
+      
+      // Client status filter (All/Current/Past)
+      const orderStats = clientOrderStats[c.id];
+      const hasActiveOrders = (orderStats?.activeOrders || 0) > 0;
+      const hasAnyOrders = (orderStats?.totalOrders || 0) > 0;
+      const isActiveStatus = c.status === 'active';
+      
+      if (clientStatusFilter === 'current') {
+        // Current = has active orders OR status is active
+        if (!hasActiveOrders && !isActiveStatus) return false;
+      } else if (clientStatusFilter === 'past') {
+        // Past = has orders but no active orders and not active status
+        if (!hasAnyOrders || hasActiveOrders || isActiveStatus) return false;
+      }
+      // 'all' shows everything assigned to them
     }
+    
     return true;
   }).sort((a, b) => {
     // Apply sorting
@@ -2356,7 +2350,7 @@ function ClientsPage() {
 
   // Owner counts for filter badges - based on effective user
   const ownerCounts = {
-    all: effectiveCanSeeAll ? clients.length : clients.filter(c => c.assigned_to === effectiveUser?.id || !c.assigned_to).length,
+    all: clients.length,
     mine: clients.filter(c => c.assigned_to === effectiveUser?.id).length,
     open: clients.filter(c => !c.assigned_to).length
   };
@@ -2494,97 +2488,57 @@ function ClientsPage() {
         {/* Filters */}
         {viewMode === 'crm' && (
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Open/Claimed Toggle - only show if user can see all */}
-            {effectiveCanSeeAll && (
-              <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
-                <button
-                  onClick={() => setOwnerFilter('all')}
-                  style={{
-                    padding: '0.375rem 0.75rem',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    background: ownerFilter === 'all' ? 'white' : 'transparent',
-                    color: ownerFilter === 'all' ? '#1e3a8a' : '#6b7280',
-                    boxShadow: ownerFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                  }}
-                >
-                  All ({ownerCounts.all})
-                </button>
-                <button
-                  onClick={() => setOwnerFilter('open')}
-                  style={{
-                    padding: '0.375rem 0.75rem',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    background: ownerFilter === 'open' ? '#fef3c7' : 'transparent',
-                    color: ownerFilter === 'open' ? '#92400e' : '#6b7280',
-                    boxShadow: ownerFilter === 'open' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                  }}
-                >
-                  🟡 Open ({ownerCounts.open})
-                </button>
-                <button
-                  onClick={() => setOwnerFilter('mine')}
-                  style={{
-                    padding: '0.375rem 0.75rem',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    background: ownerFilter === 'mine' ? '#dbeafe' : 'transparent',
-                    color: ownerFilter === 'mine' ? '#1e40af' : '#6b7280',
-                    boxShadow: ownerFilter === 'mine' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                  }}
-                >
-                  👤 Mine ({ownerCounts.mine})
-                </button>
-              </div>
-            )}
-            
-            {/* For non-admins, toggle between Mine and Open */}
-            {!effectiveCanSeeAll && (
-              <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
-                <button
-                  onClick={() => setOwnerFilter('mine')}
-                  style={{
-                    padding: '0.375rem 0.75rem',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    background: ownerFilter === 'mine' ? '#dbeafe' : 'transparent',
-                    color: ownerFilter === 'mine' ? '#1e40af' : '#6b7280',
-                    boxShadow: ownerFilter === 'mine' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                  }}
-                >
-                  👤 Mine ({ownerCounts.mine})
-                </button>
-                <button
-                  onClick={() => setOwnerFilter('open')}
-                  style={{
-                    padding: '0.375rem 0.75rem',
-                    border: 'none',
-                    borderRadius: '0.375rem',
-                    fontSize: '0.8125rem',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    background: ownerFilter === 'open' ? '#fef3c7' : 'transparent',
-                    color: ownerFilter === 'open' ? '#92400e' : '#6b7280',
-                    boxShadow: ownerFilter === 'open' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
-                  }}
-                >
-                  🟡 Open ({ownerCounts.open})
-                </button>
-              </div>
-            )}
+            {/* All/Mine/Open Toggle - available to everyone */}
+            <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+              <button
+                onClick={() => setOwnerFilter('all')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: ownerFilter === 'all' ? 'white' : 'transparent',
+                  color: ownerFilter === 'all' ? '#1e3a8a' : '#6b7280',
+                  boxShadow: ownerFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                All ({clients.length})
+              </button>
+              <button
+                onClick={() => setOwnerFilter('mine')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: ownerFilter === 'mine' ? '#dbeafe' : 'transparent',
+                  color: ownerFilter === 'mine' ? '#1e40af' : '#6b7280',
+                  boxShadow: ownerFilter === 'mine' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                👤 Mine ({ownerCounts.mine})
+              </button>
+              <button
+                onClick={() => setOwnerFilter('open')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: ownerFilter === 'open' ? '#fef3c7' : 'transparent',
+                  color: ownerFilter === 'open' ? '#92400e' : '#6b7280',
+                  boxShadow: ownerFilter === 'open' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                🟡 Open ({ownerCounts.open})
+              </button>
+            </div>
             
             {/* Status Filter */}
             <select
@@ -2629,7 +2583,60 @@ function ClientsPage() {
           </div>
         )}
         {viewMode === 'client' && (
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* All/Current/Past Toggle */}
+            <div style={{ display: 'flex', gap: '0.25rem', background: '#f3f4f6', borderRadius: '0.5rem', padding: '0.25rem' }}>
+              <button
+                onClick={() => setClientStatusFilter('all')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: clientStatusFilter === 'all' ? 'white' : 'transparent',
+                  color: clientStatusFilter === 'all' ? '#1e3a8a' : '#6b7280',
+                  boxShadow: clientStatusFilter === 'all' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setClientStatusFilter('current')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: clientStatusFilter === 'current' ? '#dcfce7' : 'transparent',
+                  color: clientStatusFilter === 'current' ? '#166534' : '#6b7280',
+                  boxShadow: clientStatusFilter === 'current' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                ✅ Current
+              </button>
+              <button
+                onClick={() => setClientStatusFilter('past')}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  border: 'none',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.8125rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  background: clientStatusFilter === 'past' ? '#f3f4f6' : 'transparent',
+                  color: clientStatusFilter === 'past' ? '#6b7280' : '#6b7280',
+                  boxShadow: clientStatusFilter === 'past' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                }}
+              >
+                📋 Past
+              </button>
+            </div>
+            
+            {/* Brand Filter */}
             <select
               value={brandFilter}
               onChange={(e) => setBrandFilter(e.target.value)}
@@ -2642,10 +2649,10 @@ function ClientsPage() {
                 cursor: 'pointer'
               }}
             >
-              <option value="all">All Brands ({brandCounts.all})</option>
-              <option value="WSIC">📻 WSIC Radio ({brandCounts.WSIC})</option>
-              <option value="LKNW">📰 Lake Norman Woman ({brandCounts.LKNW})</option>
-              <option value="multi">🌐 Multi-Platform ({brandCounts.multi})</option>
+              <option value="all">All Brands</option>
+              <option value="WSIC">📻 WSIC Radio</option>
+              <option value="LKNW">📰 Lake Norman Woman</option>
+              <option value="multi">🌐 Multi-Platform</option>
             </select>
           </div>
         )}
