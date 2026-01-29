@@ -463,31 +463,69 @@ app.put('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
     const userId = req.params.id;
     
     // Check if user exists
-    const existingUser = await dbHelper.getUserById(userId);
-    if (!existingUser) {
+    const existingResult = await adminPool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (existingResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
+    const existingUser = existingResult.rows[0];
     
     // Check if email is taken by another user
     if (email && email !== existingUser.email) {
-      const emailUser = await dbHelper.getUserByEmail(email);
-      if (emailUser && emailUser.id !== userId) {
+      const emailResult = await adminPool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, userId]);
+      if (emailResult.rows.length > 0) {
         return res.status(400).json({ error: 'Email already exists' });
       }
     }
     
-    // Update user
-    const updates = {};
-    if (email) updates.email = email;
-    if (name) updates.name = name;
-    if (role && ['admin', 'sales', 'sales_associate', 'sales_manager', 'staff', 'event_manager'].includes(role)) updates.role = role;
-    if (password) updates.password = await bcrypt.hash(password, 10);
+    // Build update query
+    const updates = [];
+    const values = [];
+    let paramCount = 0;
     
-    const updatedUser = await dbHelper.updateUser(userId, updates);
-    res.json({ id: updatedUser.id, email: updatedUser.email, name: updatedUser.name, role: updatedUser.role });
+    if (email) {
+      paramCount++;
+      updates.push(`email = $${paramCount}`);
+      values.push(email);
+    }
+    if (name) {
+      paramCount++;
+      updates.push(`name = $${paramCount}`);
+      values.push(name);
+      // Also update first_name and last_name if they exist
+      const nameParts = name.split(' ');
+      paramCount++;
+      updates.push(`first_name = $${paramCount}`);
+      values.push(nameParts[0] || '');
+      paramCount++;
+      updates.push(`last_name = $${paramCount}`);
+      values.push(nameParts.slice(1).join(' ') || '');
+    }
+    if (role && ['admin', 'sales', 'sales_associate', 'sales_manager', 'staff', 'event_manager'].includes(role)) {
+      paramCount++;
+      updates.push(`role = $${paramCount}`);
+      values.push(role);
+    }
+    if (password) {
+      paramCount++;
+      updates.push(`password_hash = $${paramCount}`);
+      values.push(await bcrypt.hash(password, 10));
+    }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid updates provided' });
+    }
+    
+    paramCount++;
+    updates.push(`updated_at = NOW()`);
+    values.push(userId);
+    
+    const updateQuery = `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING id, email, name, role`;
+    const result = await adminPool.query(updateQuery, values);
+    
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Update user error:', error);
-    res.status(500).json({ error: 'Failed to update user' });
+    res.status(500).json({ error: 'Failed to update user: ' + error.message });
   }
 });
 
