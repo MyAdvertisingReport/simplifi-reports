@@ -397,7 +397,23 @@ async function sendOrderSubmittedInternal({ order, submittedBy }) {
 async function sendApprovalRequest({ order, submittedBy, adjustments }) {
   const brandBubbles = buildBrandBubbles(order.items);
   
-  const subject = `⚠️ Approval Needed: ${order.client_name} - $${parseFloat(order.contract_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}`;
+  // Get brand names for subject line
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  const brandText = brandNames.length > 0 ? brandNames.join(' + ') : '';
+  
+  // Subject follows universal format: [ACTION] - [CLIENT] - [BRANDS]
+  const subject = brandText
+    ? `⚠️ Approval Required - ${order.client_name} - ${brandText}`
+    : `⚠️ Approval Required - ${order.client_name}`;
   
   const adjustmentsList = adjustments.map(adj => {
     const style = getCategoryStyle(adj.category || adj.product_category);
@@ -481,7 +497,23 @@ async function sendOrderApproved({ order, approvedBy }) {
   const brandBubbles = buildBrandBubbles(order.items);
   const categoryBubbles = buildCategoryBubbles(order.items);
   
-  const subject = `✓ Approved: ${order.client_name} - Ready to Send`;
+  // Get brand names for subject line
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  const brandText = brandNames.length > 0 ? brandNames.join(' + ') : '';
+  
+  // Subject follows universal format: [ACTION] - [CLIENT] - [BRANDS]
+  const subject = brandText 
+    ? `✓ Approved - ${order.client_name} - ${brandText}`
+    : `✓ Approved - ${order.client_name} - Ready to Send`;
   
   const content = `
     <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
@@ -532,7 +564,23 @@ async function sendOrderApproved({ order, approvedBy }) {
 async function sendOrderRejected({ order, rejectedBy, reason }) {
   const brandBubbles = buildBrandBubbles(order.items);
   
-  const subject = `⚠️ Revision Needed: ${order.client_name}`;
+  // Get brand names for subject line
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  const brandText = brandNames.length > 0 ? brandNames.join(' + ') : '';
+  
+  // Subject follows universal format: [ACTION] - [CLIENT] - [BRANDS]
+  const subject = brandText
+    ? `↩️ Revision Needed - ${order.client_name} - ${brandText}`
+    : `↩️ Revision Needed - ${order.client_name}`;
   
   const content = `
     <div class="header" style="background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%); padding: 32px; text-align: center;">
@@ -948,7 +996,23 @@ async function sendContractSignedInternal({ order, contact }) {
   const brandBubbles = buildBrandBubbles(order.items);
   const categoryBubbles = buildCategoryBubbles(order.items);
   
-  const subject = `🎉 Signed: ${order.client_name} - $${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo`;
+  // Get brand names for subject line
+  const brandNames = [];
+  const seenBrands = new Set();
+  if (order.items) {
+    order.items.forEach(item => {
+      if (item.entity_name && !seenBrands.has(item.entity_name)) {
+        seenBrands.add(item.entity_name);
+        brandNames.push(item.entity_name);
+      }
+    });
+  }
+  const brandText = brandNames.length > 0 ? brandNames.join(' + ') : '';
+  
+  // Subject follows universal format: [ACTION] - [CLIENT] - [BRANDS]
+  const subject = brandText
+    ? `🎉 Contract Signed - ${order.client_name} - ${brandText}`
+    : `🎉 Contract Signed - ${order.client_name} - $${parseFloat(order.monthly_total || 0).toLocaleString('en-US', { minimumFractionDigits: 0 })}/mo`;
   
   const content = `
     <div class="header" style="background: linear-gradient(135deg, #065f46 0%, #10b981 100%); padding: 32px; text-align: center;">
