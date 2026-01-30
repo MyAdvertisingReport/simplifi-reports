@@ -523,13 +523,13 @@ router.get('/', async (req, res) => {
         approver.name as approved_by_name,
         sales_rep.name as sales_associate_name,
         sales_rep.id as sales_associate_id,
-        COALESCE(item_stats.item_count, 0) as item_count,
+        COALESCE(item_stats.item_count, parent_item_stats.item_count, 0) as item_count,
         COALESCE(item_stats.setup_fees_total, 0) as setup_fees_total,
         CASE 
           WHEN o.term_months = 1 THEN COALESCE(o.monthly_total, 0) + COALESCE(item_stats.setup_fees_total, 0)
           ELSE COALESCE(o.monthly_total, 0) * COALESCE(o.term_months, 1) + COALESCE(item_stats.setup_fees_total, 0)
         END as total_value,
-        item_stats.items_json as items
+        COALESCE(item_stats.items_json, parent_item_stats.items_json) as items
       FROM orders o
       JOIN advertising_clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.submitted_by = u.id
@@ -555,6 +555,25 @@ router.get('/', async (req, res) => {
         LEFT JOIN entities e ON oi.entity_id = e.id
         GROUP BY oi.order_id
       ) item_stats ON item_stats.order_id = o.id
+      LEFT JOIN (
+        SELECT 
+          oi.order_id,
+          COUNT(*) as item_count,
+          json_agg(json_build_object(
+            'id', oi.id,
+            'product_name', oi.product_name,
+            'product_category', oi.product_category,
+            'entity_id', oi.entity_id,
+            'entity_name', e.name,
+            'entity_code', e.code,
+            'unit_price', oi.unit_price,
+            'quantity', oi.quantity,
+            'line_total', oi.line_total
+          )) as items_json
+        FROM order_items oi
+        LEFT JOIN entities e ON oi.entity_id = e.id
+        GROUP BY oi.order_id
+      ) parent_item_stats ON parent_item_stats.order_id = o.parent_order_id
       WHERE 1=1
     `;
     const params = [];
