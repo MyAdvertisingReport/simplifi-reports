@@ -6248,10 +6248,6 @@ app.post('/api/email/test', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to send test email: ' + error.message });
   }
 });
-    console.error('Get tasks error:', error);
-    res.status(500).json({ error: 'Failed to get tasks' });
-  }
-});
 
 // ============================================
 // ERROR HANDLING
