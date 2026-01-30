@@ -1556,40 +1556,97 @@ app.put('/api/clients/:id', authenticateToken, async (req, res) => {
       simplifiOrgId
     } = req.body;
     
-    // Build dynamic update query for new CRM fields
+    // Map of frontend field names to possible database column names
+    // We'll try each and skip if the column doesn't exist
+    const fieldMappings = {
+      name: ['business_name', 'name'],
+      contactName: ['primary_contact_name', 'contact_name'],
+      contactEmail: ['primary_contact_email', 'contact_email'],
+      logoPath: ['logo_path', 'logo_url'],
+      primaryColor: ['primary_color'],
+      secondaryColor: ['secondary_color'],
+      monthlyBudget: ['monthly_budget'],
+      campaignGoal: ['campaign_goal'],
+      startDate: ['start_date', 'contract_start_date'],
+      status: ['status'],
+      tier: ['tier'],
+      industry: ['industry'],
+      clientSince: ['client_since'],
+      source: ['source'],
+      tags: ['tags'],
+      website: ['website'],
+      billingTerms: ['billing_terms'],
+      simplifiOrgId: ['simpli_fi_client_id']
+    };
+    
+    // Get actual column names from the database
+    let actualColumns = [];
+    try {
+      const columnsResult = await adminPool.query(`
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_name = 'advertising_clients'
+      `);
+      actualColumns = columnsResult.rows.map(r => r.column_name);
+    } catch (e) {
+      console.log('Could not fetch column names, will try direct update');
+    }
+    
+    // Build dynamic update query - only include columns that exist
     const updates = [];
     const values = [];
     let paramCount = 1;
     
-    // Handle existing fields through dbHelper pattern
-    if (name !== undefined) { updates.push(`business_name = $${paramCount++}`); values.push(name); }
-    if (logoPath !== undefined) { updates.push(`logo_path = $${paramCount++}`); values.push(logoPath); }
-    if (primaryColor !== undefined) { updates.push(`primary_color = $${paramCount++}`); values.push(primaryColor); }
-    if (secondaryColor !== undefined) { updates.push(`secondary_color = $${paramCount++}`); values.push(secondaryColor); }
-    if (monthlyBudget !== undefined) { updates.push(`monthly_budget = $${paramCount++}`); values.push(monthlyBudget); }
-    if (campaignGoal !== undefined) { updates.push(`campaign_goal = $${paramCount++}`); values.push(campaignGoal); }
-    if (contactName !== undefined) { updates.push(`contact_name = $${paramCount++}`); values.push(contactName); }
-    if (contactEmail !== undefined) { updates.push(`contact_email = $${paramCount++}`); values.push(contactEmail); }
-    if (startDate !== undefined) { updates.push(`start_date = $${paramCount++}`); values.push(startDate); }
+    const tryAddUpdate = (fieldValue, possibleColumns) => {
+      if (fieldValue === undefined) return;
+      
+      // Find the first column name that exists in the database
+      let columnToUse = null;
+      if (actualColumns.length > 0) {
+        columnToUse = possibleColumns.find(col => actualColumns.includes(col));
+      } else {
+        // If we couldn't fetch columns, use the first option
+        columnToUse = possibleColumns[0];
+      }
+      
+      if (columnToUse) {
+        updates.push(`${columnToUse} = $${paramCount++}`);
+        values.push(fieldValue);
+      }
+    };
     
-    // New CRM fields
-    if (status !== undefined) { updates.push(`status = $${paramCount++}`); values.push(status); }
-    if (tier !== undefined) { updates.push(`tier = $${paramCount++}`); values.push(tier); }
-    if (industry !== undefined) { updates.push(`industry = $${paramCount++}`); values.push(industry); }
-    if (clientSince !== undefined) { updates.push(`client_since = $${paramCount++}`); values.push(clientSince); }
-    if (source !== undefined) { updates.push(`source = $${paramCount++}`); values.push(source); }
-    if (tags !== undefined) { updates.push(`tags = $${paramCount++}`); values.push(tags); }
-    if (website !== undefined) { updates.push(`website = $${paramCount++}`); values.push(website); }
-    if (billingTerms !== undefined) { updates.push(`billing_terms = $${paramCount++}`); values.push(billingTerms); }
+    // Add all fields that were provided
+    tryAddUpdate(name, fieldMappings.name);
+    tryAddUpdate(contactName, fieldMappings.contactName);
+    tryAddUpdate(contactEmail, fieldMappings.contactEmail);
+    tryAddUpdate(logoPath, fieldMappings.logoPath);
+    tryAddUpdate(primaryColor, fieldMappings.primaryColor);
+    tryAddUpdate(secondaryColor, fieldMappings.secondaryColor);
+    tryAddUpdate(monthlyBudget, fieldMappings.monthlyBudget);
+    tryAddUpdate(campaignGoal, fieldMappings.campaignGoal);
+    tryAddUpdate(startDate, fieldMappings.startDate);
+    tryAddUpdate(status, fieldMappings.status);
+    tryAddUpdate(tier, fieldMappings.tier);
+    tryAddUpdate(industry, fieldMappings.industry);
+    tryAddUpdate(clientSince, fieldMappings.clientSince);
+    tryAddUpdate(source, fieldMappings.source);
+    tryAddUpdate(tags, fieldMappings.tags);
+    tryAddUpdate(website, fieldMappings.website);
+    tryAddUpdate(billingTerms, fieldMappings.billingTerms);
     
-    // Simpli.fi Integration - this is the key field for linking to Simpli.fi
-    if (simplifiOrgId !== undefined) { 
-      updates.push(`simpli_fi_client_id = $${paramCount++}`); 
-      values.push(simplifiOrgId ? parseInt(simplifiOrgId) : null); 
+    // Simpli.fi Integration - handle specially to convert to integer
+    if (simplifiOrgId !== undefined && actualColumns.includes('simpli_fi_client_id')) {
+      updates.push(`simpli_fi_client_id = $${paramCount++}`);
+      values.push(simplifiOrgId ? parseInt(simplifiOrgId) : null);
+    } else if (simplifiOrgId !== undefined) {
+      // Try anyway if we couldn't fetch columns
+      updates.push(`simpli_fi_client_id = $${paramCount++}`);
+      values.push(simplifiOrgId ? parseInt(simplifiOrgId) : null);
     }
     
-    // Always update timestamp
-    updates.push(`updated_at = NOW()`);
+    // Always update timestamp if the column exists
+    if (actualColumns.length === 0 || actualColumns.includes('updated_at')) {
+      updates.push(`updated_at = NOW()`);
+    }
     
     // Add the id as the last parameter
     values.push(req.params.id);
