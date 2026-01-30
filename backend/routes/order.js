@@ -864,6 +864,19 @@ router.post('/', async (req, res) => {
 
     const newOrder = orderResult.rows[0];
 
+    // Check for $0 products - only admins can add $0 line items (barters, comp items, etc.)
+    const isAdmin = req.user && (req.user.is_super_admin || req.user.role === 'admin' || req.user.role === 'manager');
+    for (const item of items) {
+      const lineTotal = parseFloat(item.line_total) || 0;
+      if (lineTotal <= 0 && !isAdmin) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: `Product "${item.product_name}" has a $0 value. Only administrators can add complimentary or barter items. Please contact your manager.`,
+          code: 'ZERO_PRICE_NOT_ALLOWED'
+        });
+      }
+    }
+
     // Create order items
     const createdItems = [];
     for (const item of items) {
@@ -1914,6 +1927,19 @@ router.put('/:id', async (req, res) => {
 
     // If items provided, replace all items
     if (items && items.length >= 0) {
+      // Check for $0 products - only admins can add $0 line items (barters, comp items, etc.)
+      const isAdmin = req.user && (req.user.is_super_admin || req.user.role === 'admin' || req.user.role === 'manager');
+      for (const item of items) {
+        const lineTotal = parseFloat(item.line_total) || 0;
+        if (lineTotal <= 0 && !isAdmin) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ 
+            error: `Product "${item.product_name}" has a $0 value. Only administrators can add complimentary or barter items. Please contact your manager.`,
+            code: 'ZERO_PRICE_NOT_ALLOWED'
+          });
+        }
+      }
+
       // Delete existing items
       await client.query('DELETE FROM order_items WHERE order_id = $1', [id]);
 
