@@ -4,41 +4,50 @@
 
 ---
 
-## 🎯 IMMEDIATE PRIORITY: Orders Page Fixes
+## 🚨 IMMEDIATE PRIORITY: Bug Fixes from QA Testing
 
-### Current Issues to Resolve
+### Issues to Diagnose & Fix
 
-#### 1. Sections View Not Rendering
-- **Status**: Toggle buttons show, but clicking "Sections" does nothing
-- **Root Cause**: `viewMode === 'sections'` conditional rendering not implemented
-- **Files**: `OrderList.jsx`
-- **Solution Needed**: Add the sectioned view JSX that groups orders by status
+#### 1. Client Email Not Coming Through
+- **Status**: Client not receiving email during order process
+- **Need to check**: `email-service.js` → `sendContractToClient()`
+- **Verify**: Postmark delivery, correct email address, spam folders
 
-#### 2. Some Orders Missing Products/Brands
-- **Status**: Some rows show "0 products" and "—" for brands
-- **Root Cause**: These orders genuinely have no items in `order_items` table
-- **Note**: NOT a code bug - data issue from test orders created without products
-- **Parent order items**: Kill/Change orders now show parent order's products ✅
+#### 2. PDF Upload Errors
+- **Status**: Getting error when trying to upload PDFs
+- **Likely files**: Upload order flow, document handling
+- **Need to check**: File upload endpoint, file size limits, PDF validation
 
-#### 3. Completed Features ✅
-- Sales Rep filter dropdown (admin only) ✅
-- Sections/Table toggle buttons visible ✅
-- Brand bubbles with correct colors ✅
-- Category icons showing ✅
-- Admin sees all orders, sales reps see only theirs ✅
-- JWT token decode for user detection ✅
+#### 3. Change Order + Credit Card Error
+- **Status**: Error when adding credit card during electronic signature change order
+- **Likely files**: `ClientSigningPage.jsx`, Stripe integration
+- **Need to check**: Change order flow, payment method creation
 
-### Order Sections Needed
-```javascript
-const orderSections = {
-  needsApproval: { title: '⚠️ Needs Approval', color: '#f59e0b', statuses: ['pending_approval'] },
-  approved: { title: '✅ Approved - Ready to Send', color: '#3b82f6', statuses: ['approved'] },
-  sentToClient: { title: '📤 Sent to Client', color: '#8b5cf6', statuses: ['sent'] },
-  signed: { title: '✍️ Signed', color: '#10b981', statuses: ['signed'] },
-  active: { title: '🟢 Active', color: '#059669', statuses: ['active'] },
-  drafts: { title: '📝 Drafts', color: '#6b7280', statuses: ['draft'] },
-  other: { title: '📁 Other', color: '#9ca3af', statuses: ['cancelled', 'completed', 'expired'] }
-};
+#### 4. Commissions Page - Lalaine Can't See Anything
+- **Status**: Lalaine (admin@wsicnews.com) can't see commissions
+- **Need to check**: User role permissions, commission query filters
+- **User details**: Admin role, should have full access
+
+---
+
+## ✅ Recently Completed (January 30, 2026)
+
+### Orders Page
+- [x] Sections view with status grouping
+- [x] Order modal with product details
+- [x] Order Journey timeline
+- [x] Pricing Summary with Book Value comparison
+- [x] $0 product restriction (admin only)
+- [x] Auto-lookup book prices from product catalog
+- [x] Journey timestamps (activated_at, completed_at, cancelled_at)
+
+### Database Columns Added
+```sql
+-- Orders table
+activated_at, completed_at, cancelled_at
+
+-- Order items table  
+book_price, book_setup_fee
 ```
 
 ---
@@ -57,15 +66,15 @@ simplifi-reports/              ← Git root (push from here)
 │   │   ├── billing.js         
 │   │   └── ...
 │   └── services/
-│       ├── email-service.js   ← Universal Email Design System
-│       └── stripe-service.js  
+│       ├── email-service.js   ← Universal Email Design System ⭐
+│       └── stripe-service.js  ← Payment processing
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (~17k lines)
+        ├── App.jsx            ← Main app (~17k lines) - has Commissions
         └── components/
-            ├── OrderList.jsx  ← Orders page - NEEDS SECTIONS VIEW ⭐
-            ├── ClientSigningPage.jsx
+            ├── OrderList.jsx  ← Orders page ⭐
+            ├── ClientSigningPage.jsx ← Public signing + payments ⭐
             └── ...
 ```
 
@@ -80,7 +89,7 @@ git add order.js OrderList.jsx
 
 ---
 
-## 🏗️ Tech Stack
+## 🗂️ Tech Stack
 
 | Layer | Technology | Hosted On |
 |-------|------------|-----------|
@@ -89,64 +98,60 @@ git add order.js OrderList.jsx
 | Database | PostgreSQL | Supabase |
 | Auth | JWT + bcrypt | Custom |
 | Email | Postmark | ✅ Working |
-| Payments | Stripe | ✅ Working (Financial Connections) |
+| Payments | Stripe | Financial Connections |
 | Domain | myadvertisingreport.com | Vercel |
 
 ---
 
-## 🗄️ Database Tables
+## 👥 User Roles & Permissions
 
-### Key Tables for Orders
-| Table | Purpose |
-|-------|---------|
-| `orders` | Order records with status, client_id, submitted_by |
-| `order_items` | Line items with product details, entity_id |
-| `entities` | Business entities (WSIC, LKN, LWP) |
-| `products` | Product catalog |
-| `users` | Team members (for sales_associate filter) |
+| Role | Orders | Commissions | $0 Products |
+|------|--------|-------------|-------------|
+| Super Admin | All | All | ✅ Allowed |
+| Admin | All | All | ✅ Allowed |
+| Manager | All | All | ✅ Allowed |
+| Sales Associate | Own only | Own only | ❌ Blocked |
+| Staff | Own only | Limited | ❌ Blocked |
 
-### Order Items Query (in order.js)
-```sql
--- Items are fetched via LEFT JOIN with json_agg
--- Kill/Change orders also get parent_item_stats for parent order's items
-COALESCE(item_stats.items_json, parent_item_stats.items_json) as items
-```
+### Key Users
+| Name | Email | Role |
+|------|-------|------|
+| Justin Ckezepis | justin@wsicnews.com | Super Admin |
+| Mamie Lee | mamie@wsicnews.com | Super Admin |
+| Lalaine Agustin | admin@wsicnews.com | Admin |
+| Bill Blakely | bill@wsicnews.com | Super Admin |
 
-### User Detection (in OrderList.jsx)
+---
+
+## 🔍 Debugging References
+
+### User Detection (JWT Token)
 ```javascript
-// User data is stored in JWT token, not localStorage.user
 const token = localStorage.getItem('token');
 const payload = JSON.parse(atob(token.split('.')[1]));
 // payload = { id, email, role, name, iat, exp }
 ```
 
----
-
-## 👥 User Roles
-
-| Role | Orders Access |
-|------|---------------|
-| Super Admin (is_super_admin) | All orders |
-| Admin (role='admin') | All orders |
-| Manager (role='manager') | All orders |
-| Sales Associate | Own orders only |
-| Staff | Own orders only |
-
-### Admin Detection in OrderList.jsx
+### Admin Check Pattern
 ```javascript
 const isAdmin = 
   currentUser.is_super_admin === true || 
   currentUser.role === 'admin' || 
-  currentUser.role === 'manager' ||
-  currentUser.email === 'justin@wsicnews.com' || 
-  currentUser.email === 'mamie@wsicnews.com';
+  currentUser.role === 'manager';
+```
+
+### Email Logging
+Check Railway logs for:
+```
+[Email] Attempting to send "Subject" to email@example.com
+[Email] ✓ Sent successfully: abc123 to email@example.com
+[Email] ✗ Failed to send: Error message
 ```
 
 ---
 
-## 📧 Email System (Reference)
+## 📧 Email Recipients Logic
 
-### Recipients Logic
 ```javascript
 const recipients = [
   'justin@wsicnews.com',
@@ -157,33 +162,6 @@ if (includesWSIC) {
   recipients.push('bill@wsicnews.com');
 }
 ```
-
-### Category Icons
-- 📰 Print (blue) | 📻 Broadcast (pink) | 🎙️ Podcast (purple)
-- 💻 Digital (green) | 🎪 Events (amber) | 🌐 Web (indigo) | 📱 Social (rose)
-
----
-
-## ✅ Completed This Session (January 30, 2026)
-
-### Orders Page
-- [x] Admin sees all orders (JWT token decode working)
-- [x] Sales Rep filter dropdown for admins
-- [x] Sections/Table toggle buttons visible
-- [x] Brand bubbles with entity-specific colors
-- [x] Category bubbles with icons
-- [x] Kill/Change orders show parent's products
-- [x] `viewMode` and `orderSections` state ready
-
-### Server Fixes
-- [x] Fixed `o.created_by` → `o.submitted_by` in sales performance report
-- [x] Fixed same in leaderboard report
-- [x] Email logging infrastructure added
-- [x] Auto-send on approval (when primary contact exists)
-
-### Still Needed
-- [ ] **Sections view rendering** (main priority)
-- [ ] Orders with no items - data cleanup or handling
 
 ---
 
@@ -197,32 +175,63 @@ if (includesWSIC) {
 ### Git Workflow
 ```cmd
 cd simplifi-reports
-del frontend\src\components\OrderList.jsx
-copy "C:\Users\WSIC BILLING\Downloads\OrderList.jsx" frontend\src\components\OrderList.jsx
+del frontend\src\components\ComponentName.jsx
+copy "C:\Users\WSIC BILLING\Downloads\ComponentName.jsx" frontend\src\components\ComponentName.jsx
 git add -A
-git commit -m "Add sections view to orders page"
+git commit -m "Description of changes"
 git push origin main
 ```
 
 ---
 
-## 📚 Files to Upload for Next Session
+## 📚 Files to Upload for This Session
 
 ### Required
 1. **NEW_CHAT_PROMPT.md** - This file (always first)
-2. **OrderList.jsx** - Current version for sections view work
-3. **order.js** - Backend orders route (for reference)
 
-### Optional (if needed)
-- **App.jsx** - For dashboard work
-- **server.js** - For backend reference
-- **email-service.js** - For email work
+### For Bug Fixes
+2. **email-service.js** - For client email issue
+3. **ClientSigningPage.jsx** - For change order + credit card issue
+4. **App.jsx** - For commissions page issue (search for "Commission")
+5. **order.js** - For upload order / PDF issue
+
+### Supporting Docs
+- **ORDER_TESTING_GUIDE.md** - QA testing procedures
+- **FILE_STRUCTURE.md** - Full project layout
 
 ---
 
-## 🔒 Security Notes
+## 🔑 Key Endpoints
 
-- Order numbers: NEVER in client/public emails
-- JWT authentication with 24h expiry
-- User data in JWT token payload (not localStorage.user)
-- Stripe Financial Connections for secure bank verification
+### Orders
+```
+POST /api/orders                      - Create order
+PUT  /api/orders/:id                  - Update order
+PUT  /api/orders/:id/approve          - Approve (auto-sends if contact exists)
+POST /api/orders/:id/send-to-client   - Send for signing
+```
+
+### Email
+```
+GET  /api/email/dashboard             - Email stats
+POST /api/email/test                  - Send test email
+```
+
+### Commissions
+```
+GET  /api/commissions                 - List commissions
+GET  /api/commissions/pending         - Pending approvals
+```
+
+---
+
+## 🗄️ Database Quick Reference
+
+### Key Tables
+| Table | Purpose |
+|-------|---------|
+| `orders` | Order records with journey timestamps |
+| `order_items` | Line items with book_price, book_setup_fee |
+| `commissions` | Commission records |
+| `email_logs` | Email delivery tracking |
+| `products` | Product catalog (default_rate, setup_fee) |

@@ -277,6 +277,18 @@ export const api = {
 };
 
 // ============================================
+// ROLE HELPERS
+// ============================================
+// Helper function to check if a user has admin-level access
+// Admins include: role='admin', role='manager', or is_super_admin=true
+const isAdminUser = (user) => {
+  if (!user) return false;
+  return user.role === 'admin' || 
+         user.role === 'manager' || 
+         user.is_super_admin === true;
+};
+
+// ============================================
 // FORMATTING HELPERS
 // ============================================
 const formatNumber = (num) => {
@@ -16377,7 +16389,7 @@ function CommissionsPage() {
         api.get(`/api/commissions?period_year=${selectedYear}${selectedUser ? `&user_id=${selectedUser}` : ''}`),
       ];
       
-      if (user?.role === 'admin') {
+      if (isAdminUser(user)) {
         requests.push(api.get('/api/commissions/rates'));
         requests.push(api.get('/api/commissions/pending'));
       }
@@ -16386,7 +16398,7 @@ function CommissionsPage() {
       setSummary(results[0]);
       setCommissions(results[1].commissions || []);
       
-      if (user?.role === 'admin') {
+      if (isAdminUser(user)) {
         setRates(results[2].rates || []);
         setDefaults(results[2].defaults || []);
         setPendingCommissions(results[3].commissions || []);
@@ -16446,11 +16458,11 @@ function CommissionsPage() {
   // Get tabs based on role
   const getTabs = () => {
     const tabs = [{ id: 'overview', label: 'Overview' }];
-    if (user?.role === 'admin') {
+    if (isAdminUser(user)) {
       tabs.unshift({ id: 'approvals', label: `Approvals${pendingCommissions.length > 0 ? ` (${pendingCommissions.length})` : ''}` });
     }
     tabs.push({ id: 'details', label: 'All Commissions' });
-    if (user?.role === 'admin') {
+    if (isAdminUser(user)) {
       tabs.push({ id: 'rates', label: 'Rate Configuration' });
     }
     return tabs;
@@ -16465,7 +16477,7 @@ function CommissionsPage() {
             style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
             {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          {user?.role === 'admin' && activeTab !== 'approvals' && (
+          {isAdminUser(user) && activeTab !== 'approvals' && (
             <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}
               style={{ padding: '0.5rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '0.375rem', fontSize: '0.875rem' }}>
               <option value="">All Team Members</option>

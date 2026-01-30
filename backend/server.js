@@ -282,7 +282,11 @@ const authenticateToken = (req, res, next) => {
 
 // Admin-only middleware
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'admin') {
+  // Allow admin role, manager role, or super_admin flag
+  const isAdmin = req.user.role === 'admin' || 
+                  req.user.role === 'manager' || 
+                  req.user.is_super_admin === true;
+  if (!isAdmin) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
@@ -2868,12 +2872,17 @@ app.get('/api/diagnostics/admin', authenticateToken, requireAdmin, async (req, r
     simplifiApi: { status: 'unknown' },
     imageProxy: { status: 'unknown' },
     clients: { status: 'unknown' },
+    email: { status: 'unknown' },
+    stripe: { status: 'unknown' },
     environment: {
       nodeEnv: process.env.NODE_ENV || 'development',
       hasSimplifiAppKey: !!process.env.SIMPLIFI_APP_KEY,
       hasSimplifiUserKey: !!process.env.SIMPLIFI_USER_KEY,
       hasDatabaseUrl: !!process.env.DATABASE_URL,
       hasJwtSecret: !!process.env.JWT_SECRET,
+      hasPostmarkApiKey: !!process.env.POSTMARK_API_KEY,
+      hasStripeWsicKeys: !!(process.env.STRIPE_WSIC_SECRET_KEY && process.env.STRIPE_WSIC_PUBLISHABLE_KEY),
+      hasStripeLknKeys: !!(process.env.STRIPE_LKN_SECRET_KEY && process.env.STRIPE_LKN_PUBLISHABLE_KEY),
       securityHeadersEnabled: !!helmet,
       rateLimitingEnabled: !!rateLimit
     }
@@ -2949,6 +2958,126 @@ app.get('/api/diagnostics/admin', authenticateToken, requireAdmin, async (req, r
     }
   } catch (error) {
     results.clients = { status: 'error', message: error.message };
+  }
+
+  // Test Email Service (Postmark)
+  try {
+    const hasPostmarkKey = !!process.env.POSTMARK_API_KEY;
+    
+    if (!hasPostmarkKey) {
+      results.email = { 
+        status: 'error', 
+        message: 'POSTMARK_API_KEY not configured',
+        canSendEmails: false
+      };
+    } else {
+      // Check recent email logs from database
+      let recentEmails = { sent: 0, failed: 0, total: 0 };
+      let lastEmail = null;
+      
+      try {
+        const emailStatsResult = await adminPool.query(`
+          SELECT 
+            COUNT(*) as total,
+            COUNT(*) FILTER (WHERE status = 'sent') as sent,
+            COUNT(*) FILTER (WHERE status = 'failed') as failed,
+            MAX(created_at) as last_sent
+          FROM email_logs 
+          WHERE created_at > NOW() - INTERVAL '24 hours'
+        `);
+        
+        if (emailStatsResult.rows[0]) {
+          recentEmails = {
+            total: parseInt(emailStatsResult.rows[0].total) || 0,
+            sent: parseInt(emailStatsResult.rows[0].sent) || 0,
+            failed: parseInt(emailStatsResult.rows[0].failed) || 0
+          };
+          lastEmail = emailStatsResult.rows[0].last_sent;
+        }
+        
+        // Get recent failures for debugging
+        const recentFailuresResult = await adminPool.query(`
+          SELECT recipient_email, subject, error_message, created_at
+          FROM email_logs 
+          WHERE status = 'failed' AND created_at > NOW() - INTERVAL '24 hours'
+          ORDER BY created_at DESC
+          LIMIT 5
+        `);
+        
+        results.email = {
+          status: recentEmails.failed > recentEmails.sent ? 'warning' : 'ok',
+          provider: 'Postmark',
+          configured: true,
+          last24Hours: recentEmails,
+          lastEmailAt: lastEmail,
+          recentFailures: recentFailuresResult.rows.map(f => ({
+            to: f.recipient_email,
+            subject: f.subject?.substring(0, 50) + (f.subject?.length > 50 ? '...' : ''),
+            error: f.error_message,
+            at: f.created_at
+          })),
+          fromAddresses: {
+            orders: 'orders@myadvertisingreport.com',
+            billing: 'billing@myadvertisingreport.com',
+            noreply: 'noreply@myadvertisingreport.com'
+          }
+        };
+      } catch (dbError) {
+        results.email = {
+          status: 'warning',
+          provider: 'Postmark',
+          configured: true,
+          message: 'Email service configured but could not fetch logs',
+          error: dbError.message
+        };
+      }
+    }
+  } catch (error) {
+    results.email = { status: 'error', message: error.message };
+  }
+
+  // Test Stripe Configuration
+  try {
+    const stripeConfig = {
+      wsic: {
+        hasSecretKey: !!process.env.STRIPE_WSIC_SECRET_KEY,
+        hasPublishableKey: !!process.env.STRIPE_WSIC_PUBLISHABLE_KEY,
+        secretKeyType: process.env.STRIPE_WSIC_SECRET_KEY?.substring(0, 7) || 'not set',
+        publishableKeyType: process.env.STRIPE_WSIC_PUBLISHABLE_KEY?.substring(0, 7) || 'not set'
+      },
+      lkn: {
+        hasSecretKey: !!process.env.STRIPE_LKN_SECRET_KEY,
+        hasPublishableKey: !!process.env.STRIPE_LKN_PUBLISHABLE_KEY,
+        secretKeyType: process.env.STRIPE_LKN_SECRET_KEY?.substring(0, 7) || 'not set',
+        publishableKeyType: process.env.STRIPE_LKN_PUBLISHABLE_KEY?.substring(0, 7) || 'not set'
+      }
+    };
+    
+    // Check for common misconfigurations
+    const issues = [];
+    for (const [entity, config] of Object.entries(stripeConfig)) {
+      if (config.hasSecretKey && !config.hasPublishableKey) {
+        issues.push(`${entity.toUpperCase()}: Missing publishable key`);
+      }
+      if (!config.hasSecretKey && config.hasPublishableKey) {
+        issues.push(`${entity.toUpperCase()}: Missing secret key`);
+      }
+      if (config.secretKeyType.startsWith('pk_')) {
+        issues.push(`${entity.toUpperCase()}: Secret key appears to be a publishable key (starts with pk_)`);
+      }
+      if (config.publishableKeyType.startsWith('sk_')) {
+        issues.push(`${entity.toUpperCase()}: Publishable key appears to be a secret key (starts with sk_)`);
+      }
+    }
+    
+    results.stripe = {
+      status: issues.length > 0 ? 'error' : 'ok',
+      entities: stripeConfig,
+      issues: issues.length > 0 ? issues : undefined,
+      testMode: process.env.STRIPE_WSIC_SECRET_KEY?.includes('_test_') || false
+    };
+  } catch (error) {
+    results.stripe = { status: 'error', message: error.message };
   }
 
   // Known fixes and mobile compatibility notes
@@ -3050,6 +3179,85 @@ app.get('/api/diagnostics/test-image', async (req, res) => {
   }
 
   res.json(results);
+});
+
+// POST /api/diagnostics/test-email - Send a test email (admin only)
+app.post('/api/diagnostics/test-email', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { to } = req.body;
+    
+    if (!to) {
+      return res.status(400).json({ error: 'Recipient email (to) is required' });
+    }
+    
+    if (!process.env.POSTMARK_API_KEY) {
+      return res.status(500).json({ error: 'POSTMARK_API_KEY not configured' });
+    }
+    
+    const postmark = require('postmark');
+    const client = new postmark.ServerClient(process.env.POSTMARK_API_KEY);
+    
+    const result = await client.sendEmail({
+      From: 'noreply@myadvertisingreport.com',
+      To: to,
+      Subject: '🧪 WSIC Diagnostics - Test Email',
+      HtmlBody: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #1e3a8a;">✅ Email System Test</h2>
+          <p>This is a test email from the WSIC Advertising Platform diagnostics.</p>
+          <p><strong>Sent at:</strong> ${new Date().toISOString()}</p>
+          <p><strong>Sent to:</strong> ${to}</p>
+          <p><strong>Sent by:</strong> ${req.user.email}</p>
+          <hr style="border: 1px solid #e5e7eb; margin: 20px 0;">
+          <p style="color: #6b7280; font-size: 12px;">
+            If you received this email, the Postmark integration is working correctly.
+          </p>
+        </div>
+      `,
+      TextBody: `Email System Test\n\nThis is a test email from the WSIC Advertising Platform.\nSent at: ${new Date().toISOString()}\nSent to: ${to}\nSent by: ${req.user.email}\n\nIf you received this, Postmark is working correctly.`,
+      Tag: 'diagnostics-test',
+      TrackOpens: true
+    });
+    
+    // Log to database
+    try {
+      await adminPool.query(`
+        INSERT INTO email_logs (recipient_email, sent_from, subject, email_type, status, postmark_message_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `, [to, 'noreply@myadvertisingreport.com', '🧪 WSIC Diagnostics - Test Email', 'test', 'sent', result.MessageID]);
+    } catch (logError) {
+      console.warn('Failed to log test email:', logError.message);
+    }
+    
+    console.log(`[DIAGNOSTICS] Test email sent to ${to} by ${req.user.email}, MessageID: ${result.MessageID}`);
+    
+    res.json({
+      success: true,
+      messageId: result.MessageID,
+      to: to,
+      sentAt: new Date().toISOString(),
+      sentBy: req.user.email
+    });
+    
+  } catch (error) {
+    console.error('[DIAGNOSTICS] Test email failed:', error);
+    
+    // Log failure to database
+    try {
+      await adminPool.query(`
+        INSERT INTO email_logs (recipient_email, sent_from, subject, email_type, status, error_message, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `, [req.body.to || 'unknown', 'noreply@myadvertisingreport.com', '🧪 WSIC Diagnostics - Test Email', 'test', 'failed', error.message]);
+    } catch (logError) {
+      console.warn('Failed to log test email failure:', logError.message);
+    }
+    
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      code: error.code
+    });
+  }
 });
 
 // ============================================

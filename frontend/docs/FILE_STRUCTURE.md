@@ -32,12 +32,12 @@ simplifi-reports/                    ← Git root (all commands from here)
     ├── 📄 package.json
     │
     └── 📁 src/
-        ├── 📄 App.jsx               # Main app (~17k lines)
+        ├── 📄 App.jsx               # Main app (~17k lines) - Commissions here
         ├── 📄 main.jsx              # React entry point
         │
         └── 📁 components/
-            ├── 📄 OrderList.jsx              # Orders page - NEEDS SECTIONS VIEW ⭐
-            ├── 📄 ClientSigningPage.jsx      # Public signing + Stripe Financial Connections
+            ├── 📄 OrderList.jsx              # Orders page with sections view ⭐
+            ├── 📄 ClientSigningPage.jsx      # Public signing + Stripe ⭐
             ├── 📄 BillingPage.jsx            # Invoice list + Dashboard
             ├── 📄 OrderForm.jsx              # New order form
             ├── 📄 OrderTypeSelector.jsx      # 6-type order selection
@@ -46,67 +46,44 @@ simplifi-reports/                    ← Git root (all commands from here)
 
 ---
 
-## 🔑 Key Files Reference
+## 🔑 Key Files by Task
 
 | Task | Files Needed |
 |------|--------------|
-| **Orders Page Sections** | `OrderList.jsx` ⭐ |
-| **Orders Backend** | `order.js` ⭐ |
-| **Emails** | `email-service.js` |
-| **Dashboards** | `App.jsx` (Dashboard component) |
-| **Server/API** | `server.js` |
+| **Client email issue** | `email-service.js` ⭐ |
+| **PDF upload errors** | `order.js`, upload endpoints |
+| **Change Order + CC error** | `ClientSigningPage.jsx` ⭐ |
+| **Commissions page** | `App.jsx` (search "Commission") |
+| **Orders page** | `OrderList.jsx` |
+| **Order backend** | `order.js` |
 
 ---
 
 ## 📋 OrderList.jsx Key Components
 
-### State Variables
+### View Modes
 ```javascript
 const [viewMode, setViewMode] = useState('sections');  // 'sections' or 'table'
-const [salesRepFilter, setSalesRepFilter] = useState('');
-const [salesUsers, setSalesUsers] = useState([]);
 ```
 
-### User Detection (JWT Token)
+### Order Sections
 ```javascript
-const getUserFromStorage = () => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload;  // { id, email, role, name, iat, exp }
-    } catch (e) {}
-  }
-  return {};
+const orderSections = {
+  needsApproval: { title: '⚠️ Needs Approval', color: '#f59e0b', statuses: ['pending_approval'] },
+  approved: { title: '✅ Approved - Ready to Send', color: '#3b82f6', statuses: ['approved'] },
+  sentToClient: { title: '📤 Sent to Client', color: '#8b5cf6', statuses: ['sent'] },
+  signed: { title: '✍️ Signed', color: '#10b981', statuses: ['signed'] },
+  active: { title: '🟢 Active', color: '#059669', statuses: ['active'] },
+  drafts: { title: '📝 Drafts', color: '#6b7280', statuses: ['draft'] },
+  other: { title: '📁 Other', color: '#9ca3af', statuses: ['cancelled', 'completed', 'expired'] }
 };
 ```
 
-### Admin Check
-```javascript
-const isAdmin = 
-  currentUser.is_super_admin === true || 
-  currentUser.role === 'admin' || 
-  currentUser.role === 'manager' ||
-  currentUser.email === 'justin@wsicnews.com' || 
-  currentUser.email === 'mamie@wsicnews.com';
-```
-
-### Order Sections Computed
-```javascript
-const orderSections = useMemo(() => {
-  const sections = {
-    needsApproval: { title: '⚠️ Needs Approval', orders: [], color: '#f59e0b', bgColor: '#fef3c7' },
-    approved: { title: '✅ Approved - Ready to Send', orders: [], color: '#3b82f6', bgColor: '#dbeafe' },
-    sentToClient: { title: '📤 Sent to Client', orders: [], color: '#8b5cf6', bgColor: '#f3e8ff' },
-    signed: { title: '✍️ Signed', orders: [], color: '#10b981', bgColor: '#d1fae5' },
-    active: { title: '🟢 Active', orders: [], color: '#059669', bgColor: '#dcfce7' },
-    drafts: { title: '📝 Drafts', orders: [], color: '#6b7280', bgColor: '#f3f4f6' },
-    other: { title: '📁 Other', orders: [], color: '#9ca3af', bgColor: '#f9fafb' }
-  };
-  // ... grouping logic
-  return sections;
-}, [filteredOrders]);
-```
+### Order Modal Features
+- Product cards with brand/category bubbles
+- Book Price vs Actual Price comparison
+- Order Journey timeline
+- Pricing Summary with discount display
 
 ---
 
@@ -114,36 +91,22 @@ const orderSections = useMemo(() => {
 
 ### email-service.js Key Functions
 ```javascript
-// Initialization (called from server.js)
-initEmailLogging(pool)           // Set up DB connection for logging
+// Initialization
+initEmailLogging(pool)           // Set up DB connection
 
-// Logging (internal)
-logEmailToDatabase(...)          // Log all email attempts
-
-// Email functions
+// Order emails
 sendOrderSubmittedInternal({ order, submittedBy })
 sendApprovalRequest({ order, submittedBy, adjustments })
 sendOrderApproved({ order, approvedBy, autoSent, sentTo })
 sendOrderRejected({ order, rejectedBy, reason })
-sendContractToClient({ order, contact, signingUrl })
+sendContractToClient({ order, contact, signingUrl })  // ⭐ Check this for client email issue
 sendSignatureConfirmation({ order, contact, pdfUrl })
 sendContractSignedInternal({ order, contact })
+
+// Billing emails
 sendInvoiceToClient({ invoice, contact })
 sendPaymentReminder({ invoice, contact, reminder_type })
 sendPaymentReceipt({ invoice, contact, payment })
-```
-
-### Category Configuration
-```javascript
-const categoryConfig = {
-  'Print':       { bg: '#dbeafe', color: '#1e40af', icon: '📰' },
-  'Broadcast':   { bg: '#fce7f3', color: '#9d174d', icon: '📻' },
-  'Podcast':     { bg: '#f3e8ff', color: '#7c3aed', icon: '🎙️' },
-  'Digital':     { bg: '#dcfce7', color: '#166534', icon: '💻' },
-  'Events':      { bg: '#fef3c7', color: '#92400e', icon: '🎪' },
-  'Web':         { bg: '#e0e7ff', color: '#3730a3', icon: '🌐' },
-  'Social':      { bg: '#ffe4e6', color: '#be123c', icon: '📱' },
-};
 ```
 
 ---
@@ -155,11 +118,12 @@ const categoryConfig = {
 users                 - User accounts, roles, is_super_admin
 advertising_clients   - Client companies (CRM)
 contacts              - Client contacts
-orders                - Advertising orders
-order_items           - Line items with book_price, book_setup_fee
-products              - Available products
+orders                - Advertising orders (with journey timestamps)
+order_items           - Line items (with book_price, book_setup_fee)
+products              - Product catalog (default_rate, setup_fee)
 entities              - Business entities (WSIC, LKN, LWP)
-email_logs            - Email tracking with email_type, order_id ⭐ NEW
+commissions           - Commission records
+email_logs            - Email tracking
 ```
 
 ### Order Items Query (order.js)
@@ -169,17 +133,29 @@ SELECT
   COALESCE(item_stats.items_json, parent_item_stats.items_json) as items
 FROM orders o
 LEFT JOIN (
-  -- Order's own items
-  SELECT order_id, json_agg(...) as items_json
+  SELECT order_id, json_agg(json_build_object(
+    'product_name', oi.product_name,
+    'book_price', oi.book_price,
+    'unit_price', oi.unit_price,
+    'book_setup_fee', oi.book_setup_fee,
+    'setup_fee', oi.setup_fee,
+    ...
+  )) as items_json
   FROM order_items oi
   GROUP BY order_id
 ) item_stats ON item_stats.order_id = o.id
-LEFT JOIN (
-  -- Parent order's items (for kill/change orders)
-  SELECT order_id, json_agg(...) as items_json
-  FROM order_items oi
-  GROUP BY order_id
-) parent_item_stats ON parent_item_stats.order_id = o.parent_order_id
+```
+
+### Journey Timestamp Fields (orders table)
+```
+created_at              - Order created
+submitted_signature_date - Sales rep submitted
+approved_at             - Admin approved
+sent_to_client_at       - Sent for signing
+client_signature_date   - Client signed
+activated_at            - Contract activated (NEW)
+completed_at            - Contract completed (NEW)
+cancelled_at            - Contract cancelled (NEW)
 ```
 
 ---
@@ -189,18 +165,27 @@ LEFT JOIN (
 ### Orders
 ```
 GET  /api/orders                      - List orders with items
-GET  /api/orders/:id                  - Get order with items
-POST /api/orders/:id/status           - Update status
+GET  /api/orders/:id                  - Get single order with items
+POST /api/orders                      - Create order
+PUT  /api/orders/:id                  - Update order
+PUT  /api/orders/:id/status           - Update status (sets journey timestamps)
 PUT  /api/orders/:id/approve          - Approve order (auto-sends if contact exists)
 POST /api/orders/:id/send-to-client   - Send for signing
 ```
 
-### Email (NEW)
+### Email
 ```
 GET  /api/email/dashboard             - Email stats (admin only)
 GET  /api/email/order/:orderId        - Emails for specific order
-POST /api/email/:id/resend            - Mark for resend (admin only)
-POST /api/email/test                  - Send test email (admin only)
+POST /api/email/:id/resend            - Mark for resend
+POST /api/email/test                  - Send test email
+```
+
+### Commissions
+```
+GET  /api/commissions                 - List commissions
+GET  /api/commissions/pending         - Pending approvals
+PUT  /api/commissions/:id/approve     - Approve commission
 ```
 
 ### Users
@@ -235,12 +220,20 @@ STRIPE_LWP_SECRET_KEY=sk_live_...
 - Must decode token: `JSON.parse(atob(token.split('.')[1]))`
 - Returns: `{ id, email, role, name, iat, exp }`
 
-### Orders with No Products
-- Some orders show "0 products" because they were created without items
-- Kill/Change orders now fetch parent order's items
-- This is a **data issue**, not a code bug
+### $0 Product Restriction
+- Only Admins/Managers can add $0 products
+- Sales Associates blocked with error message
+- Used for barters, comp items, etc.
 
-### Email Logging
-- All emails are logged to `email_logs` table
-- Check Railway logs for `[Email]` messages
-- Use `/api/email/dashboard` to view stats
+### Book Price Auto-Lookup
+- When items added, backend looks up `products.default_rate`
+- Sets `book_price` automatically
+- Shows discount comparison in order modal
+
+### Email Debugging
+Check Railway logs for:
+```
+[Email] Attempting to send "Subject" to email@example.com
+[Email] ✓ Sent successfully: abc123
+[Email] ✗ Failed to send: Error message
+```

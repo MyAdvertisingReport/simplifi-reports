@@ -1,173 +1,124 @@
 # Session Summary - January 30, 2026
-## Orders Page Improvements & Email Infrastructure
+## Orders Page Enhancements & Book Price Tracking
 
 ---
 
 ## 🎯 Session Goals
-1. ✅ Fix brand bubble colors to match product categories
-2. ✅ Debug email delivery issues (Lalaine not receiving)
-3. ✅ Add email logging infrastructure
-4. ✅ Auto-send orders to client after approval
-5. ✅ Add sectioned view to Orders page
-6. ✅ Add Sales Rep filter for admins
-7. ⏳ Sections view rendering (partially complete)
+1. ✅ Complete Sections View rendering for Orders page
+2. ✅ Fix order modal showing "Products (0)" 
+3. ✅ Add Order Journey timeline to modal
+4. ✅ Add Pricing Summary with Book Value comparison
+5. ✅ Add $0 product restriction (admin only)
+6. ✅ Auto-lookup book prices from product catalog
+7. ✅ Add journey timestamp tracking (activated_at, completed_at, cancelled_at)
 
 ---
 
 ## ✅ What We Accomplished
 
-### 1. Email Logging Infrastructure - COMPLETE
+### 1. Sections View - COMPLETE
 
-**New Features:**
-- All emails now logged to `email_logs` table with:
-  - `email_type` (contract-sent, order-approved, etc.)
-  - `order_id`, `invoice_id`, `client_id`, `contact_id`
-  - `status` (sent, failed, pending_resend)
-  - `metadata` (JSONB for additional context)
-- Console logging: `[Email] Attempting to send "Subject" to email@example.com`
-- Success/failure tracking with Postmark MessageID
+**Orders page now has two view modes:**
+- **Sections View**: Groups orders by status with colored headers
+- **Table View**: Traditional table with all orders
 
-**New API Endpoints:**
-```
-GET  /api/email/dashboard     - Email stats (last 30 days)
-GET  /api/email/order/:id     - Emails for specific order
-POST /api/email/:id/resend    - Mark email for resend
-POST /api/email/test          - Send test email
-```
-
-**Files Changed:** `email-service.js`, `server.js`
+**Sections:**
+| Section | Color | Statuses |
+|---------|-------|----------|
+| ⚠️ Needs Approval | Amber | pending_approval |
+| ✅ Approved - Ready to Send | Blue | approved |
+| 📤 Sent to Client | Purple | sent |
+| ✍️ Signed | Green | signed |
+| 🟢 Active | Dark Green | active |
+| 📝 Drafts | Gray | draft |
+| 📁 Other | Light Gray | cancelled, completed, expired |
 
 ---
 
-### 2. Auto-Send After Approval - COMPLETE
+### 2. Order Modal Enhancements - COMPLETE
 
-**New Behavior:**
-- When order is approved AND has primary contact:
-  - Status changes directly to `sent` (not just `approved`)
-  - Generates signing token
-  - Sends contract email automatically
-  - Response includes `auto_sent: true` and `signing_url`
+**Products Section:**
+- Brand bubbles (dark blue) for each entity
+- Category bubbles with icons (📰📻🎙️💻🎪🌐📱)
+- Book Price vs Actual Price comparison
+- Setup fee comparison (with "WAIVED" indicator)
+- Yellow border on discounted items
 
-- When order approved but NO primary contact:
-  - Status changes to `approved`
-  - Message: "Order approved (no primary contact found - please add contact and send manually)"
+**Pricing Summary:**
+- Monthly Rate (with discount comparison if applicable)
+- Setup Fees (with waived indicator)
+- Contract Term
+- Book Value total (crossed out if discounted)
+- Total Discount amount and percentage (red)
+- Contract Total (green if discounted, blue if full price)
+- "✓ Approved by [Name]" badge when admin approved
 
-**Files Changed:** `order.js`
-
----
-
-### 3. Orders Page - User Detection Fixed - COMPLETE
-
-**Problem:** `localStorage.getItem('user')` returned `null`
-
-**Solution:** User data is in JWT token, not localStorage
-```javascript
-const token = localStorage.getItem('token');
-const payload = JSON.parse(atob(token.split('.')[1]));
-// Returns: { id, email, role, name, iat, exp }
-```
-
-**Result:** `isAdmin: true` now correctly detected for admin users
+**Order Journey Timeline:**
+- 📍 Order Created (who, when)
+- 📍 Submitted for Approval (if applicable)
+- 📍 Admin Approved (who, when)
+- 📍 Sent to Client (when)
+- 📍 Client Signed (who, when)
+- 📍 Contract Activated (when)
+- ⭕ Awaiting [next step] indicator
+- Future placeholders: Creative Submitted, Scheduled
 
 ---
 
-### 4. Sales Rep Filter & View Toggle - COMPLETE
+### 3. Backend Enhancements - COMPLETE
 
-**Added to Orders page:**
-- Sales Rep dropdown (admin only) - filter by sales associate
-- Sections/Table toggle buttons
-- `orderSections` computed grouping orders by status
-- `viewMode` state ('sections' or 'table')
+**$0 Product Validation:**
+- Sales Associates cannot add $0 products
+- Only Admins/Managers can add barter/comp items
+- Error: "Only administrators can add complimentary or barter items"
 
-**Files Changed:** `OrderList.jsx`
+**Auto Book Price Lookup:**
+- When items added to order, backend looks up `products.default_rate`
+- Automatically sets `book_price` from product catalog
+- Same for `book_setup_fee` from `products.setup_fee`
+
+**Journey Timestamps:**
+- `activated_at` - set when status → active
+- `completed_at` - set when status → completed
+- `cancelled_at` - set when status → cancelled
 
 ---
 
-### 5. Kill/Change Orders Show Parent Products - COMPLETE
+### 4. Database Migrations - COMPLETE
 
-**Problem:** Kill orders showed "0 products" because they don't have their own items
-
-**Solution:** Query now fetches parent order's items:
 ```sql
-COALESCE(item_stats.items_json, parent_item_stats.items_json) as items
+-- Orders table: Journey timestamps
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS activated_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+
+-- Order items: Book price tracking
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS book_price NUMERIC;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS book_setup_fee NUMERIC;
+
+-- Backfill existing data
+UPDATE order_items SET book_price = unit_price WHERE book_price IS NULL;
+UPDATE order_items SET book_setup_fee = setup_fee WHERE book_setup_fee IS NULL AND setup_fee IS NOT NULL;
 ```
 
-**Files Changed:** `order.js`
-
 ---
 
-### 6. Server Fixes - COMPLETE
-
-**Fixed SQL errors:**
-- `o.created_by` → `o.submitted_by` in sales performance report
-- Same fix in leaderboard report
-
-**Files Changed:** `server.js`
-
----
-
-## ⏳ Partially Complete
-
-### Sections View Rendering
-- ✅ Toggle buttons visible
-- ✅ `orderSections` grouping logic ready
-- ✅ `viewMode` state working
-- ❌ Sectioned view JSX not fully implemented (still shows table in both modes)
-
-**Next Step:** Add the conditional rendering for `viewMode === 'sections'`
-
----
-
-## 📝 Files Modified
+## 📁 Files Modified
 
 | File | Changes |
 |------|---------|
-| `email-service.js` | Logging infrastructure, `initEmailLogging()`, database logging |
-| `server.js` | Email dashboard API, test endpoint, SQL fixes |
-| `order.js` | Auto-send on approval, parent order items for kill/change |
-| `OrderList.jsx` | JWT user detection, sales rep filter, view toggle, sections grouping |
+| `OrderList.jsx` | Sections view, enhanced modal with journey timeline and pricing summary |
+| `order.js` | Book price auto-lookup, $0 validation, journey timestamps, items query updates |
 
 ---
 
-## 🗄️ Database Changes
+## 🚨 Issues Identified for Next Session
 
-### email_logs Table Additions
-```sql
-ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS email_type VARCHAR(50);
-ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS order_id UUID REFERENCES orders(id);
-ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES invoices(id);
-ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP;
-ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMP;
-ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS metadata JSONB;
-```
-
----
-
-## 🎯 Next Session Goals
-
-### 1. Complete Sections View (Priority)
-Add the JSX for sectioned view:
-```jsx
-{viewMode === 'sections' ? (
-  <div>
-    {Object.entries(orderSections).map(([key, section]) => (
-      // Section header with color
-      // Table of orders in that section
-    ))}
-  </div>
-) : (
-  // Existing table view
-)}
-```
-
-### 2. Test Email Delivery
-- Use `/api/email/test` endpoint to verify Postmark
-- Check email dashboard for delivery stats
-- Verify Lalaine receives emails
-
-### 3. Data Cleanup (Optional)
-- Identify orders with no items
-- Either delete test orders or add placeholder items
+### From QA Testing:
+1. **Client email in order process** - Not coming through
+2. **PDF upload errors** - Getting error when trying to upload PDFs
+3. **Change Order + Credit Card** - Error when adding credit card to electronic signature change order
+4. **Commissions page** - Lalaine can't see anything
 
 ---
 
@@ -176,20 +127,16 @@ Add the JSX for sectioned view:
 ```cmd
 cd simplifi-reports
 
-REM Backend files
-del backend\server.js
+REM Backend
 del backend\routes\order.js
-del backend\services\email-service.js
-copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
 copy "C:\Users\WSIC BILLING\Downloads\order.js" backend\routes\order.js
-copy "C:\Users\WSIC BILLING\Downloads\email-service.js" backend\services\email-service.js
 
 REM Frontend
 del frontend\src\components\OrderList.jsx
 copy "C:\Users\WSIC BILLING\Downloads\OrderList.jsx" frontend\src\components\OrderList.jsx
 
 git add -A
-git commit -m "Email logging, auto-send, orders page improvements"
+git commit -m "Order journey timeline, book price tracking, sections view"
 git push origin main
 ```
 
@@ -198,38 +145,34 @@ git push origin main
 ## 📚 Files for Next Chat
 
 ### Required
-1. `NEW_CHAT_PROMPT.md` - Updated with orders page focus
-2. `OrderList.jsx` - For sections view implementation
+1. `NEW_CHAT_PROMPT.md` - Updated with current priorities
+2. `order.js` - For debugging order/payment issues
+3. `OrderList.jsx` - Current version
 
-### For Reference
-- `order.js` - Backend orders route
-- `server.js` - If email work needed
+### Likely Needed
+- `ClientSigningPage.jsx` - For credit card/change order issue
+- `email-service.js` - For client email issue
+- Commissions-related components from `App.jsx`
 
 ---
 
-## 🔍 Debugging Notes
+## 🔍 Key Learnings
 
-### User Detection in OrderList.jsx
-```javascript
-// This is how user data is accessed (NOT localStorage.user)
-const token = localStorage.getItem('token');
-const payload = JSON.parse(atob(token.split('.')[1]));
-// payload.email, payload.role, payload.id, payload.name
-```
+### Database Schema Verified
+**Orders table has these timestamp fields:**
+- `created_at` ✅
+- `submitted_signature_date` ✅
+- `approved_at` ✅
+- `sent_to_client_at` ✅
+- `client_signature_date` ✅
+- `activated_at` ✅ (added this session)
+- `completed_at` ✅ (added this session)
+- `cancelled_at` ✅ (added this session)
 
-### Orders with No Products
-Some orders show "0 products" because:
-1. Test orders created without adding products
-2. Kill orders whose parent also has no products
-This is a **data issue**, not a code bug.
+**Order items table:**
+- `book_price` ✅ (added this session)
+- `book_setup_fee` ✅ (added this session)
 
-### Email Debugging
-Check Railway logs for:
-```
-[Email] Attempting to send "Subject" to email@example.com
-[Email] ✓ Sent successfully: abc123 to email@example.com
-```
-Or:
-```
-[Email] ✗ Failed to send: Error message
-```
+**Products table has:**
+- `default_rate` - Used as book price
+- `setup_fee` - Used as book setup fee
