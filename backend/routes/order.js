@@ -1891,6 +1891,14 @@ router.post('/sign/:token', async (req, res) => {
       }
     }
 
+    // Auto-create commission for the sales rep
+    try {
+      await createCommissionForOrder(pool, signedOrder);
+    } catch (commissionError) {
+      console.error('Failed to create commission (non-blocking):', commissionError);
+      // Don't fail the signing - commission can be created manually
+    }
+
     res.json({
       success: true,
       order_number: signedOrder.order_number,
@@ -2355,12 +2363,7 @@ router.post('/change', async (req, res) => {
       management_approval_confirmed,
       signature,
       change_summary,
-      items,
-      // Contract term update fields
-      update_contract_term,
-      new_term_months,
-      new_start_date,
-      new_end_date
+      items
     } = req.body;
 
     if (!parent_order_id) {
@@ -2401,11 +2404,6 @@ router.post('/change', async (req, res) => {
 
     let submitted_by = req.user?.id || null;
 
-    // Determine contract dates - use new values if updating term, otherwise parent values
-    const finalStartDate = update_contract_term && new_start_date ? new_start_date : parentOrder.contract_start_date;
-    const finalEndDate = update_contract_term && new_end_date ? new_end_date : parentOrder.contract_end_date;
-    const finalTermMonths = update_contract_term && new_term_months ? parseInt(new_term_months) : parentOrder.term_months;
-
     // Create change order
     const orderResult = await client.query(
       `INSERT INTO orders (
@@ -2422,8 +2420,9 @@ router.post('/change', async (req, res) => {
       ) RETURNING *`,
       [
         changeOrderNumber, parentOrder.client_id, parent_order_id,
-        finalStartDate, finalEndDate, finalTermMonths, monthly_total,
-        (monthly_total * (finalTermMonths || 1)) + setup_fees_total,
+        parentOrder.contract_start_date, parentOrder.contract_end_date,
+        parentOrder.term_months, monthly_total,
+        (monthly_total * (parentOrder.term_months || 1)) + setup_fees_total,
         notes, effective_date, management_approval_confirmed,
         JSON.stringify(change_summary), submitted_by, signature
       ]
@@ -2462,27 +2461,7 @@ router.post('/change', async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error creating change order:', error);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      detail: error.detail,
-      constraint: error.constraint
-    });
-    
-    // Return more helpful error message
-    let errorMessage = 'Failed to create change order';
-    if (error.code === '23505') {
-      errorMessage = 'A change order with this number already exists';
-    } else if (error.code === '23503') {
-      errorMessage = 'Referenced record not found (invalid client, product, or parent order)';
-    } else if (error.code === '22P02') {
-      errorMessage = 'Invalid data format provided';
-    }
-    
-    res.status(500).json({ 
-      error: errorMessage,
-      details: process.env.NODE_ENV !== 'production' ? error.message : undefined
-    });
+    res.status(500).json({ error: 'Failed to create change order' });
   } finally {
     client.release();
   }
@@ -2818,31 +2797,9 @@ router.post('/payment-method/card', async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating card payment method:', error);
-    
-    // Provide more helpful error messages based on Stripe error codes
-    let errorMessage = error.message || 'Failed to create payment method';
-    
-    if (error.code === 'card_declined') {
-      errorMessage = 'Card was declined. Please try a different card.';
-    } else if (error.code === 'invalid_card_number' || error.code === 'incorrect_number') {
-      errorMessage = 'Invalid card number. Please check and try again.';
-    } else if (error.code === 'expired_card') {
-      errorMessage = 'Card has expired. Please use a different card.';
-    } else if (error.code === 'incorrect_cvc') {
-      errorMessage = 'Incorrect CVC. Please check and try again.';
-    } else if (error.code === 'invalid_expiry_month' || error.code === 'invalid_expiry_year') {
-      errorMessage = 'Invalid expiration date. Please check and try again.';
-    } else if (error.type === 'StripeCardError') {
-      errorMessage = `Card error: ${error.message}`;
-    } else if (error.message?.includes('raw card data')) {
-      console.error('[STRIPE] Raw card data API may need to be enabled in Stripe dashboard');
-      errorMessage = 'Payment processing configuration issue. Please contact support.';
-    }
-    
     res.status(400).json({ 
-      error: errorMessage,
+      error: error.message || 'Failed to create payment method',
       code: error.code,
-      type: error.type,
     });
   }
 });
@@ -2945,6 +2902,328 @@ router.post('/payment-method/verify-ach', async (req, res) => {
   res.status(400).json({ 
     error: 'Micro-deposit verification not required for this integration. Bank accounts are ready to use immediately.',
   });
+});
+
+// ============================================================
+// COMMISSION FUNCTIONS
+// ============================================================
+
+/**
+ * Auto-create commission for an order when it's signed
+ * @param {Pool} dbPool - Database connection pool
+ * @param {Object} order - The signed order
+ */
+async function createCommissionForOrder(dbPool, order) {
+  // Get order items with product categories
+  const itemsResult = await dbPool.query(`
+    SELECT oi.*, p.category as product_category
+    FROM order_items oi
+    LEFT JOIN products p ON oi.product_id = p.id
+    WHERE oi.order_id = $1
+  `, [order.id]);
+
+  const items = itemsResult.rows;
+  if (items.length === 0) {
+    console.log(`[Commission] No items found for order ${order.order_number}`);
+    return;
+  }
+
+  // Get the sales rep (submitted_by or created_by)
+  const userId = order.submitted_by || order.created_by;
+  if (!userId) {
+    console.log(`[Commission] No sales rep found for order ${order.order_number}`);
+    return;
+  }
+
+  // Check if commission already exists for this order
+  const existingResult = await dbPool.query(
+    'SELECT id FROM commissions WHERE order_id = $1',
+    [order.id]
+  );
+  if (existingResult.rows.length > 0) {
+    console.log(`[Commission] Commission already exists for order ${order.order_number}`);
+    return;
+  }
+
+  // Calculate commission by category - get the dominant category
+  const categoryTotals = {};
+  for (const item of items) {
+    const cat = item.product_category || 'other';
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + parseFloat(item.line_total || 0);
+  }
+  
+  // Find dominant category (highest $ value)
+  const dominantCategory = Object.entries(categoryTotals)
+    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'other';
+
+  // Get commission rate - first check user-specific, then default
+  let rateResult = await dbPool.query(`
+    SELECT rate_value, rate_type FROM commission_rates 
+    WHERE user_id = $1 AND is_active = true
+    AND (product_category = $2 OR product_category IS NULL)
+    ORDER BY product_category NULLS LAST
+    LIMIT 1
+  `, [userId, dominantCategory]);
+
+  // Fall back to default rate
+  if (rateResult.rows.length === 0) {
+    rateResult = await dbPool.query(`
+      SELECT rate_value, rate_type FROM commission_rate_defaults 
+      WHERE is_active = true
+      AND (product_category = $1 OR product_category IS NULL)
+      ORDER BY product_category NULLS LAST
+      LIMIT 1
+    `, [dominantCategory]);
+  }
+
+  if (rateResult.rows.length === 0) {
+    console.log(`[Commission] No rate found for category ${dominantCategory}, user ${userId}`);
+    return;
+  }
+
+  const rate = rateResult.rows[0];
+  const orderAmount = parseFloat(order.contract_total || order.monthly_total || 0);
+  
+  let commissionAmount;
+  if (rate.rate_type === 'percentage') {
+    commissionAmount = orderAmount * (parseFloat(rate.rate_value) / 100);
+  } else {
+    commissionAmount = parseFloat(rate.rate_value);
+  }
+
+  const now = new Date();
+
+  // Create commission record
+  const result = await dbPool.query(`
+    INSERT INTO commissions (
+      id, user_id, order_id, client_id,
+      order_amount, commission_rate, rate_type, commission_amount,
+      period_month, period_year, status, created_at, updated_at
+    ) VALUES (
+      gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW()
+    )
+    RETURNING *
+  `, [
+    userId, order.id, order.client_id,
+    orderAmount, rate.rate_value, rate.rate_type, commissionAmount,
+    now.getMonth() + 1, now.getFullYear()
+  ]);
+
+  console.log(`[Commission] Created commission for order ${order.order_number}: $${commissionAmount.toFixed(2)} (${rate.rate_value}% of $${orderAmount})`);
+  return result.rows[0];
+}
+
+// GET /api/orders/:id/commissions - Get commissions for an order
+router.get('/:id/commissions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await pool.query(`
+      SELECT 
+        c.*,
+        u.name as user_name,
+        u.email as user_email,
+        su.name as split_with_name,
+        ab.name as approved_by_name
+      FROM commissions c
+      LEFT JOIN users u ON c.user_id = u.id
+      LEFT JOIN users su ON c.split_with_user_id = su.id
+      LEFT JOIN users ab ON c.approved_by = ab.id
+      WHERE c.order_id = $1
+      ORDER BY c.created_at DESC
+    `, [id]);
+
+    res.json({ commissions: result.rows });
+  } catch (error) {
+    console.error('Error fetching order commissions:', error);
+    res.status(500).json({ error: 'Failed to fetch commissions' });
+  }
+});
+
+// POST /api/orders/:id/commissions - Manually create commission for an order
+router.post('/:id/commissions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { user_id, commission_rate, rate_type, commission_amount, notes } = req.body;
+
+    // Get order details
+    const orderResult = await pool.query(
+      'SELECT * FROM orders WHERE id = $1',
+      [id]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orderResult.rows[0];
+    const now = new Date();
+    const orderAmount = parseFloat(order.contract_total || order.monthly_total || 0);
+
+    // Calculate commission amount if not provided
+    let finalAmount = commission_amount;
+    if (!finalAmount && commission_rate) {
+      if (rate_type === 'percentage') {
+        finalAmount = orderAmount * (parseFloat(commission_rate) / 100);
+      } else {
+        finalAmount = parseFloat(commission_rate);
+      }
+    }
+
+    const result = await pool.query(`
+      INSERT INTO commissions (
+        id, user_id, order_id, client_id,
+        order_amount, commission_rate, rate_type, commission_amount,
+        period_month, period_year, status, notes, created_at, updated_at
+      ) VALUES (
+        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, NOW(), NOW()
+      )
+      RETURNING *
+    `, [
+      user_id, id, order.client_id,
+      orderAmount, commission_rate || 0, rate_type || 'percentage', finalAmount || 0,
+      now.getMonth() + 1, now.getFullYear(), notes
+    ]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating commission:', error);
+    res.status(500).json({ error: 'Failed to create commission' });
+  }
+});
+
+// PUT /api/orders/:orderId/commissions/:commissionId - Update commission
+router.put('/:orderId/commissions/:commissionId', async (req, res) => {
+  try {
+    const { commissionId } = req.params;
+    const { commission_amount, commission_rate, notes, adjustment_amount, adjustment_reason } = req.body;
+
+    const result = await pool.query(`
+      UPDATE commissions SET
+        commission_amount = COALESCE($1, commission_amount),
+        commission_rate = COALESCE($2, commission_rate),
+        notes = COALESCE($3, notes),
+        adjustment_amount = COALESCE($4, adjustment_amount),
+        adjustment_reason = COALESCE($5, adjustment_reason),
+        updated_at = NOW()
+      WHERE id = $6
+      RETURNING *
+    `, [commission_amount, commission_rate, notes, adjustment_amount, adjustment_reason, commissionId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Commission not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating commission:', error);
+    res.status(500).json({ error: 'Failed to update commission' });
+  }
+});
+
+// POST /api/orders/:orderId/commissions/:commissionId/split - Split a commission
+router.post('/:orderId/commissions/:commissionId/split', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const { commissionId } = req.params;
+    const { split_user_id, split_percentage, split_reason } = req.body;
+
+    if (!split_user_id || !split_percentage) {
+      return res.status(400).json({ error: 'Split user and percentage are required' });
+    }
+
+    // Get original commission
+    const originalResult = await client.query(
+      'SELECT * FROM commissions WHERE id = $1',
+      [commissionId]
+    );
+
+    if (originalResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Commission not found' });
+    }
+
+    const original = originalResult.rows[0];
+    const splitPct = parseFloat(split_percentage) / 100;
+    const originalPct = 1 - splitPct;
+
+    // Update original commission
+    const originalAmount = parseFloat(original.commission_amount) * originalPct;
+    await client.query(`
+      UPDATE commissions SET
+        commission_amount = $1,
+        is_split = true,
+        split_with_user_id = $2,
+        split_percentage = $3,
+        split_reason = $4,
+        status = 'pending_approval',
+        updated_at = NOW()
+      WHERE id = $5
+    `, [originalAmount, split_user_id, (originalPct * 100), split_reason, commissionId]);
+
+    // Create new commission for split recipient
+    const splitAmount = parseFloat(original.commission_amount) * splitPct;
+    const splitResult = await client.query(`
+      INSERT INTO commissions (
+        id, user_id, order_id, client_id,
+        order_amount, commission_rate, rate_type, commission_amount,
+        period_month, period_year, status,
+        is_split, split_with_user_id, split_percentage, split_reason,
+        parent_commission_id, created_at, updated_at
+      ) VALUES (
+        gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_approval',
+        true, $10, $11, $12, $13, NOW(), NOW()
+      )
+      RETURNING *
+    `, [
+      split_user_id, original.order_id, original.client_id,
+      original.order_amount, original.commission_rate, original.rate_type, splitAmount,
+      original.period_month, original.period_year,
+      original.user_id, (splitPct * 100), split_reason, commissionId
+    ]);
+
+    await client.query('COMMIT');
+
+    res.json({
+      original: { ...original, commission_amount: originalAmount, is_split: true },
+      split: splitResult.rows[0]
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error splitting commission:', error);
+    res.status(500).json({ error: 'Failed to split commission' });
+  } finally {
+    client.release();
+  }
+});
+
+// POST /api/orders/:orderId/commissions/:commissionId/approve - Approve commission
+router.post('/:orderId/commissions/:commissionId/approve', async (req, res) => {
+  try {
+    const { commissionId } = req.params;
+    const approvedBy = req.user?.id;
+
+    const result = await pool.query(`
+      UPDATE commissions SET
+        status = 'approved',
+        approved_by = $1,
+        approved_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `, [approvedBy, commissionId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Commission not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error approving commission:', error);
+    res.status(500).json({ error: 'Failed to approve commission' });
+  }
 });
 
 module.exports = router;

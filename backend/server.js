@@ -1668,12 +1668,12 @@ app.get('/api/public/client/:token', async (req, res) => {
     if (!client) {
       return res.status(404).json({ error: 'Client not found' });
     }
-    // Return limited public info
+    // Return limited public info - support both column naming conventions
     res.json({
       id: client.id,
       name: client.name,
       slug: client.slug,
-      simplifi_org_id: client.simplifi_org_id,
+      simplifi_org_id: client.simplifi_org_id || client.simpli_fi_client_id,
       primary_color: client.primary_color,
       secondary_color: client.secondary_color,
       logo_path: client.logo_path
@@ -1688,7 +1688,7 @@ app.get('/api/public/client/:token', async (req, res) => {
 app.get('/api/public/client/slug/:slug', async (req, res) => {
   try {
     const result = await adminPool.query(
-      'SELECT * FROM advertising_clients WHERE slug = $1',
+      'SELECT *, simpli_fi_client_id as simplifi_org_id FROM advertising_clients WHERE slug = $1',
       [req.params.slug]
     );
     
@@ -1703,7 +1703,7 @@ app.get('/api/public/client/slug/:slug', async (req, res) => {
       name: client.business_name || client.name,
       business_name: client.business_name,
       slug: client.slug,
-      simplifi_org_id: client.simplifi_org_id,
+      simplifi_org_id: client.simplifi_org_id || client.simpli_fi_client_id,
       primary_color: client.primary_color,
       secondary_color: client.secondary_color,
       logo_path: client.logo_path
@@ -1718,19 +1718,21 @@ app.get('/api/public/client/slug/:slug', async (req, res) => {
 app.get('/api/public/client/:token/stats', async (req, res) => {
   try {
     const client = await dbHelper.getClientByShareToken(req.params.token);
-    if (!client || !client.simplifi_org_id) {
+    // Support both column naming conventions
+    const orgId = client?.simplifi_org_id || client?.simpli_fi_client_id;
+    if (!client || !orgId) {
       return res.status(404).json({ error: 'Client not found' });
     }
 
     const { startDate, endDate } = req.query;
     
     // Fetch campaigns
-    const campaignsData = await simplifiClient.getCampaigns(client.simplifi_org_id);
+    const campaignsData = await simplifiClient.getCampaigns(orgId);
     const campaigns = campaignsData.campaigns || [];
 
     // Fetch stats
-    const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
-    const dailyStats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, true, false);
+    const stats = await simplifiClient.getOrganizationStats(orgId, startDate, endDate, false, true);
+    const dailyStats = await simplifiClient.getOrganizationStats(orgId, startDate, endDate, true, false);
 
     res.json({
       campaigns,
@@ -1747,7 +1749,7 @@ app.get('/api/public/client/:token/stats', async (req, res) => {
 app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
   try {
     const result = await adminPool.query(
-      'SELECT * FROM advertising_clients WHERE slug = $1',
+      'SELECT *, simpli_fi_client_id as simplifi_org_id FROM advertising_clients WHERE slug = $1',
       [req.params.slug]
     );
     
@@ -1756,14 +1758,16 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
     }
     
     const client = result.rows[0];
-    if (!client.simplifi_org_id) {
+    // Support both column names for backwards compatibility
+    const orgId = client.simplifi_org_id || client.simpli_fi_client_id;
+    if (!orgId) {
       return res.status(404).json({ error: 'Client has no Simpli.fi integration' });
     }
 
     const { startDate, endDate } = req.query;
     
     // Fetch campaigns with ads included
-    const campaignsData = await simplifiClient.getCampaignsWithAds(client.simplifi_org_id);
+    const campaignsData = await simplifiClient.getCampaignsWithAds(orgId);
     const campaigns = campaignsData.campaigns || [];
 
     // Build ad details map from campaigns
@@ -1794,7 +1798,7 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
     const activeCampaigns = campaigns.filter(c => c.status?.toLowerCase() === 'active');
     for (const campaign of activeCampaigns.slice(0, 10)) { // Limit to first 10 for performance
       try {
-        const adsData = await simplifiClient.getCampaignAds(client.simplifi_org_id, campaign.id);
+        const adsData = await simplifiClient.getCampaignAds(orgId, campaign.id);
         (adsData.ads || []).forEach(ad => {
           if (ad.primary_creative_url) {
             const width = ad.original_width ? parseInt(ad.original_width) : 
@@ -1823,15 +1827,15 @@ app.get('/api/public/client/slug/:slug/stats', async (req, res) => {
     console.log(`Built adDetailsMap with ${Object.keys(adDetailsMap).length} ads, ${Object.values(adDetailsMap).filter(a => a.preview_url).length} have preview URLs`);
 
     // Fetch stats by campaign
-    const stats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, false, true);
+    const stats = await simplifiClient.getOrganizationStats(orgId, startDate, endDate, false, true);
     
     // Fetch daily stats
-    const dailyStats = await simplifiClient.getOrganizationStats(client.simplifi_org_id, startDate, endDate, true, false);
+    const dailyStats = await simplifiClient.getOrganizationStats(orgId, startDate, endDate, true, false);
     
     // Fetch ad stats and enrich them
     let enrichedAdStats = [];
     try {
-      const adStatsData = await simplifiClient.getAdStats(client.simplifi_org_id, { startDate, endDate });
+      const adStatsData = await simplifiClient.getAdStats(orgId, { startDate, endDate });
       const rawAdStats = adStatsData.campaign_stats || [];
       
       // Get active campaign IDs

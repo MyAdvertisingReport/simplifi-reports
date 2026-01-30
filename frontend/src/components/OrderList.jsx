@@ -309,6 +309,17 @@ export default function OrderList() {
   const [modalStep, setModalStep] = useState(1); // 1 = select type, 2 = select signature method
   const [selectedOrderType, setSelectedOrderType] = useState(null); // 'new', 'change', 'kill'
 
+  // Commission states
+  const [orderCommissions, setOrderCommissions] = useState([]);
+  const [loadingCommissions, setLoadingCommissions] = useState(false);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [splitCommission, setSplitCommission] = useState(null);
+  const [splitUserId, setSplitUserId] = useState('');
+  const [splitPercentage, setSplitPercentage] = useState('50');
+  const [splitReason, setSplitReason] = useState('');
+  const [showEditCommissionModal, setShowEditCommissionModal] = useState(false);
+  const [editingCommission, setEditingCommission] = useState(null);
+
   // Fetch data on mount
   useEffect(() => {
     fetchOrders();
@@ -410,6 +421,113 @@ export default function OrderList() {
       alert('Failed to update order status');
     }
   };
+
+  // Fetch commissions for an order
+  const fetchOrderCommissions = async (orderId) => {
+    setLoadingCommissions(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/${orderId}/commissions`, {
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) throw new Error('Failed to fetch commissions');
+      const data = await response.json();
+      setOrderCommissions(data.commissions || []);
+    } catch (err) {
+      console.error('Error fetching commissions:', err);
+      setOrderCommissions([]);
+    } finally {
+      setLoadingCommissions(false);
+    }
+  };
+
+  // Create commission for order
+  const createCommission = async (orderId, commissionData) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/${orderId}/commissions`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(commissionData),
+      });
+      if (!response.ok) throw new Error('Failed to create commission');
+      await fetchOrderCommissions(orderId);
+      return true;
+    } catch (err) {
+      console.error('Error creating commission:', err);
+      alert('Failed to create commission');
+      return false;
+    }
+  };
+
+  // Update commission
+  const updateCommission = async (orderId, commissionId, updateData) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/${orderId}/commissions/${commissionId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(updateData),
+      });
+      if (!response.ok) throw new Error('Failed to update commission');
+      await fetchOrderCommissions(orderId);
+      setShowEditCommissionModal(false);
+      setEditingCommission(null);
+      return true;
+    } catch (err) {
+      console.error('Error updating commission:', err);
+      alert('Failed to update commission');
+      return false;
+    }
+  };
+
+  // Split commission
+  const handleSplitCommission = async () => {
+    if (!splitCommission || !splitUserId || !splitPercentage) {
+      alert('Please fill in all split details');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/${selectedOrder.id}/commissions/${splitCommission.id}/split`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          split_user_id: splitUserId,
+          split_percentage: parseFloat(splitPercentage),
+          split_reason: splitReason,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to split commission');
+      await fetchOrderCommissions(selectedOrder.id);
+      setShowSplitModal(false);
+      setSplitCommission(null);
+      setSplitUserId('');
+      setSplitPercentage('50');
+      setSplitReason('');
+    } catch (err) {
+      console.error('Error splitting commission:', err);
+      alert('Failed to split commission');
+    }
+  };
+
+  // Approve commission
+  const approveCommission = async (orderId, commissionId) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/orders/${orderId}/commissions/${commissionId}/approve`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) throw new Error('Failed to approve commission');
+      await fetchOrderCommissions(orderId);
+    } catch (err) {
+      console.error('Error approving commission:', err);
+      alert('Failed to approve commission');
+    }
+  };
+
+  // Load commissions when order modal opens
+  useEffect(() => {
+    if (showOrderModal && selectedOrder) {
+      fetchOrderCommissions(selectedOrder.id);
+    }
+  }, [showOrderModal, selectedOrder?.id]);
 
   // Filter and sort orders
   const filteredOrders = useMemo(() => {
@@ -2194,6 +2312,188 @@ export default function OrderList() {
                 </div>
               </div>
 
+              {/* Commission Section - Admin Only */}
+              {isAdmin && (
+                <div style={styles.modalSection}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={styles.modalSectionTitle}>💰 Commission</h3>
+                    {orderCommissions.length === 0 && ['signed', 'active', 'completed'].includes(selectedOrder.status) && (
+                      <button
+                        onClick={() => {
+                          const userId = selectedOrder.submitted_by || selectedOrder.created_by;
+                          if (userId) {
+                            createCommission(selectedOrder.id, {
+                              user_id: userId,
+                              commission_rate: 30,
+                              rate_type: 'percentage',
+                              notes: 'Manually created'
+                            });
+                          } else {
+                            alert('No sales rep assigned to this order');
+                          }
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          background: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        + Create Commission
+                      </button>
+                    )}
+                  </div>
+
+                  {loadingCommissions ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: '#6b7280' }}>Loading commissions...</div>
+                  ) : orderCommissions.length === 0 ? (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '24px', 
+                      background: '#f9fafb', 
+                      borderRadius: '8px',
+                      color: '#6b7280',
+                      fontSize: '14px'
+                    }}>
+                      {['signed', 'active', 'completed'].includes(selectedOrder.status) 
+                        ? 'No commission created yet. Click "Create Commission" to add one.'
+                        : 'Commission will be created when the order is signed.'}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {orderCommissions.map((commission) => (
+                        <div 
+                          key={commission.id} 
+                          style={{ 
+                            padding: '16px', 
+                            background: commission.status === 'approved' ? '#ecfdf5' : commission.status === 'pending_approval' ? '#fef3c7' : '#f8fafc',
+                            borderRadius: '10px',
+                            border: `1px solid ${commission.status === 'approved' ? '#a7f3d0' : commission.status === 'pending_approval' ? '#fcd34d' : '#e2e8f0'}`,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                            <div>
+                              <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '15px' }}>
+                                {commission.user_name || 'Unknown Rep'}
+                              </div>
+                              <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                                {commission.user_email}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ 
+                                fontWeight: '700', 
+                                fontSize: '18px', 
+                                color: commission.status === 'approved' ? '#059669' : '#1e293b' 
+                              }}>
+                                ${parseFloat(commission.commission_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                                {commission.commission_rate}% of ${parseFloat(commission.order_amount || 0).toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Split indicator */}
+                          {commission.is_split && (
+                            <div style={{ 
+                              padding: '8px 12px', 
+                              background: '#e0e7ff', 
+                              borderRadius: '6px', 
+                              fontSize: '13px',
+                              color: '#3730a3',
+                              marginBottom: '12px'
+                            }}>
+                              🔀 Split: {commission.split_percentage}% 
+                              {commission.split_with_name && ` with ${commission.split_with_name}`}
+                              {commission.split_reason && ` - ${commission.split_reason}`}
+                            </div>
+                          )}
+
+                          {/* Status and Actions */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{
+                              padding: '4px 10px',
+                              borderRadius: '9999px',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              background: commission.status === 'approved' ? '#dcfce7' : commission.status === 'paid' ? '#dbeafe' : commission.status === 'pending_approval' ? '#fef3c7' : '#f3f4f6',
+                              color: commission.status === 'approved' ? '#166534' : commission.status === 'paid' ? '#1e40af' : commission.status === 'pending_approval' ? '#92400e' : '#374151',
+                            }}>
+                              {commission.status === 'pending' ? 'Pending Approval' : 
+                               commission.status === 'pending_approval' ? 'Needs Approval (Split)' :
+                               commission.status.charAt(0).toUpperCase() + commission.status.slice(1)}
+                            </span>
+                            
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              {/* Edit button */}
+                              <button
+                                onClick={() => {
+                                  setEditingCommission(commission);
+                                  setShowEditCommissionModal(true);
+                                }}
+                                style={{
+                                  padding: '6px 10px',
+                                  background: 'white',
+                                  border: '1px solid #d1d5db',
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                Edit
+                              </button>
+
+                              {/* Split button - only show if not already split */}
+                              {!commission.is_split && commission.status !== 'paid' && (
+                                <button
+                                  onClick={() => {
+                                    setSplitCommission(commission);
+                                    setShowSplitModal(true);
+                                  }}
+                                  style={{
+                                    padding: '6px 10px',
+                                    background: '#e0e7ff',
+                                    color: '#3730a3',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Split
+                                </button>
+                              )}
+
+                              {/* Approve button */}
+                              {(commission.status === 'pending' || commission.status === 'pending_approval') && (
+                                <button
+                                  onClick={() => approveCommission(selectedOrder.id, commission.id)}
+                                  style={{
+                                    padding: '6px 10px',
+                                    background: '#10b981',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Approve
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Notes */}
               {(selectedOrder.notes || selectedOrder.internal_notes) && (
                 <div style={styles.modalSection}>
@@ -2276,6 +2576,234 @@ export default function OrderList() {
               <button onClick={() => setShowOrderModal(false)} style={styles.closeModalButton}>
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Split Commission Modal */}
+      {showSplitModal && splitCommission && (
+        <div style={styles.modalOverlay} onClick={() => setShowSplitModal(false)}>
+          <div 
+            style={{ 
+              background: 'white', 
+              borderRadius: '16px', 
+              width: '480px', 
+              maxWidth: '95vw',
+              overflow: 'hidden' 
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontWeight: '600', fontSize: '18px' }}>Split Commission</h3>
+              <button onClick={() => setShowSplitModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+                <Icons.X />
+              </button>
+            </div>
+            <div style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '20px', padding: '16px', background: '#f8fafc', borderRadius: '8px' }}>
+                <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '4px' }}>Current Commission</div>
+                <div style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>
+                  ${parseFloat(splitCommission.commission_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </div>
+                <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                  {splitCommission.user_name} • {splitCommission.commission_rate}%
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Split With *
+                </label>
+                <select
+                  value={splitUserId}
+                  onChange={(e) => setSplitUserId(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' }}
+                >
+                  <option value="">Select team member...</option>
+                  {salesUsers.filter(u => u.id !== splitCommission.user_id).map(user => (
+                    <option key={user.id} value={user.id}>{user.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Split Percentage *
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <input
+                    type="range"
+                    min="5"
+                    max="95"
+                    step="5"
+                    value={splitPercentage}
+                    onChange={(e) => setSplitPercentage(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ fontWeight: '600', minWidth: '50px' }}>{splitPercentage}%</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#6b7280', marginTop: '8px' }}>
+                  <span>{splitCommission.user_name}: ${(parseFloat(splitCommission.commission_amount) * (1 - splitPercentage/100)).toFixed(2)}</span>
+                  <span>Split: ${(parseFloat(splitCommission.commission_amount) * (splitPercentage/100)).toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Reason (optional)
+                </label>
+                <input
+                  type="text"
+                  value={splitReason}
+                  onChange={(e) => setSplitReason(e.target.value)}
+                  placeholder="e.g., Co-sold deal, referral, etc."
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ 
+                padding: '12px', 
+                background: '#fef3c7', 
+                borderRadius: '8px', 
+                fontSize: '13px', 
+                color: '#92400e',
+                marginBottom: '20px'
+              }}>
+                ⚠️ Split commissions will require approval before being finalized.
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowSplitModal(false)}
+                  style={{ padding: '10px 20px', background: 'white', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSplitCommission}
+                  disabled={!splitUserId}
+                  style={{ 
+                    padding: '10px 20px', 
+                    background: splitUserId ? '#3b82f6' : '#94a3b8', 
+                    color: 'white', 
+                    border: 'none', 
+                    borderRadius: '8px', 
+                    cursor: splitUserId ? 'pointer' : 'not-allowed' 
+                  }}
+                >
+                  Split Commission
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Commission Modal */}
+      {showEditCommissionModal && editingCommission && (
+        <div style={styles.modalOverlay} onClick={() => setShowEditCommissionModal(false)}>
+          <div 
+            style={{ 
+              background: 'white', 
+              borderRadius: '16px', 
+              width: '480px', 
+              maxWidth: '95vw',
+              overflow: 'hidden' 
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontWeight: '600', fontSize: '18px' }}>Edit Commission</h3>
+              <button onClick={() => setShowEditCommissionModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+                <Icons.X />
+              </button>
+            </div>
+            <div style={{ padding: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Sales Rep
+                </label>
+                <div style={{ padding: '10px 12px', background: '#f3f4f6', borderRadius: '8px', fontSize: '14px', color: '#6b7280' }}>
+                  {editingCommission.user_name}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Commission Rate (%)
+                </label>
+                <input
+                  type="number"
+                  value={editingCommission.commission_rate || ''}
+                  onChange={(e) => setEditingCommission({ 
+                    ...editingCommission, 
+                    commission_rate: e.target.value,
+                    commission_amount: (parseFloat(editingCommission.order_amount) * parseFloat(e.target.value) / 100).toFixed(2)
+                  })}
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Commission Amount ($)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editingCommission.commission_amount || ''}
+                  onChange={(e) => setEditingCommission({ ...editingCommission, commission_amount: e.target.value })}
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Adjustment Amount ($) <span style={{ fontWeight: 'normal', color: '#6b7280' }}>(optional, can be negative)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editingCommission.adjustment_amount || ''}
+                  onChange={(e) => setEditingCommission({ ...editingCommission, adjustment_amount: e.target.value })}
+                  placeholder="0.00"
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: '500', fontSize: '14px', color: '#374151' }}>
+                  Notes
+                </label>
+                <textarea
+                  value={editingCommission.notes || ''}
+                  onChange={(e) => setEditingCommission({ ...editingCommission, notes: e.target.value })}
+                  rows={3}
+                  placeholder="Add notes about this commission..."
+                  style={{ width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => { setShowEditCommissionModal(false); setEditingCommission(null); }}
+                  style={{ padding: '10px 20px', background: 'white', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => updateCommission(selectedOrder.id, editingCommission.id, {
+                    commission_amount: parseFloat(editingCommission.commission_amount),
+                    commission_rate: parseFloat(editingCommission.commission_rate),
+                    adjustment_amount: editingCommission.adjustment_amount ? parseFloat(editingCommission.adjustment_amount) : null,
+                    notes: editingCommission.notes,
+                  })}
+                  style={{ padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Save Changes
+                </button>
+              </div>
             </div>
           </div>
         </div>
