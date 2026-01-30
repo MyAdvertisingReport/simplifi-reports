@@ -153,72 +153,23 @@ const categoryConfig = {
   'social': { bg: '#ffe4e6', color: '#be123c', icon: '📱' },
 };
 
-// Entity/Brand color configuration - matches the primary product category for each brand
-const entityColorConfig = {
-  // WSIC - Broadcast (pink/magenta)
-  'WSIC': { bg: '#9d174d', color: '#ffffff', lightBg: '#fce7f3', lightColor: '#9d174d' },
-  'wsic': { bg: '#9d174d', color: '#ffffff', lightBg: '#fce7f3', lightColor: '#9d174d' },
-  
-  // Lake Norman Woman - Print (blue)
-  'Lake Norman Woman': { bg: '#1e40af', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e40af' },
-  'LKN': { bg: '#1e40af', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e40af' },
-  'lkn': { bg: '#1e40af', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e40af' },
-  
-  // LiveWorkPlay LKN - Events (amber/orange)
-  'LiveWorkPlay LKN': { bg: '#92400e', color: '#ffffff', lightBg: '#fef3c7', lightColor: '#92400e' },
-  'LWP': { bg: '#92400e', color: '#ffffff', lightBg: '#fef3c7', lightColor: '#92400e' },
-  'lwp': { bg: '#92400e', color: '#ffffff', lightBg: '#fef3c7', lightColor: '#92400e' },
-  
-  // Digital/Programmatic brands (green)
-  'Simpli.fi': { bg: '#166534', color: '#ffffff', lightBg: '#dcfce7', lightColor: '#166534' },
-  'simplifi': { bg: '#166534', color: '#ffffff', lightBg: '#dcfce7', lightColor: '#166534' },
-};
-
-// Get brand color based on entity name or primary category
-const getBrandColor = (entityName, primaryCategory) => {
-  // First check if we have a specific color for this entity
-  const entityColor = entityColorConfig[entityName] || entityColorConfig[entityName?.toLowerCase()];
-  if (entityColor) return entityColor;
-  
-  // Fall back to category-based color
-  if (primaryCategory) {
-    const catStyle = getCategoryStyle(primaryCategory);
-    // Invert for brand bubble (darker bg, white text)
-    return { 
-      bg: catStyle.color, // Use the category text color as brand bg
-      color: '#ffffff',
-      lightBg: catStyle.bg,
-      lightColor: catStyle.color
-    };
-  }
-  
-  // Default dark blue
-  return { bg: '#1e3a8a', color: '#ffffff', lightBg: '#dbeafe', lightColor: '#1e3a8a' };
-};
-
 const getCategoryStyle = (category) => {
   if (!category) return { bg: '#f3f4f6', color: '#374151', icon: '📋' };
   return categoryConfig[category] || { bg: '#f3f4f6', color: '#374151', icon: '📋' };
 };
 
-// Get unique brands from order items with their primary category
+// Get unique brands from order items
 const getOrderBrands = (items) => {
   if (!items || items.length === 0) return [];
-  const brandMap = new Map();
-  
-  items.forEach(item => {
-    if (!item.entity_name) return;
-    if (!brandMap.has(item.entity_name)) {
-      brandMap.set(item.entity_name, {
-        name: item.entity_name,
-        code: item.entity_code,
-        logo: item.entity_logo,
-        primaryCategory: item.product_category // First category seen
-      });
-    }
-  });
-  
-  return Array.from(brandMap.values());
+  const seen = new Set();
+  return items.filter(item => {
+    if (!item.entity_name || seen.has(item.entity_name)) return false;
+    seen.add(item.entity_name);
+    return true;
+  }).map(item => ({
+    name: item.entity_name,
+    logo: item.entity_logo
+  }));
 };
 
 // Get unique categories from order items
@@ -276,17 +227,29 @@ export default function OrderList() {
   const [salesUsers, setSalesUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // Get current user from localStorage
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
-  const isAdmin = currentUser.is_super_admin || currentUser.role === 'admin' || currentUser.role === 'manager';
+  
+  // Admin check - check multiple possible field names and specific emails
+  const isAdmin = 
+    currentUser.is_super_admin === true || 
+    currentUser.isSuperAdmin === true ||
+    currentUser.role === 'admin' || 
+    currentUser.role === 'manager' ||
+    currentUser.email === 'justin@wsicnews.com' || 
+    currentUser.email === 'mamie@wsicnews.com' ||
+    currentUser.email === 'admin@wsicnews.com';
+  
+  // Debug log (can remove later)
+  console.log('OrderList - currentUser:', currentUser, 'isAdmin:', isAdmin);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [salesRepFilter, setSalesRepFilter] = useState('');
   const [entityFilter, setEntityFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [salesRepFilter, setSalesRepFilter] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showFilters, setShowFilters] = useState(false);
   
@@ -611,13 +574,12 @@ export default function OrderList() {
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter('');
-    setSalesRepFilter('');
     setEntityFilter('');
     setCategoryFilter('');
     setDateRange({ start: '', end: '' });
   };
 
-  const hasActiveFilters = searchQuery || statusFilter || salesRepFilter || entityFilter || categoryFilter || dateRange.start || dateRange.end;
+  const hasActiveFilters = searchQuery || statusFilter || entityFilter || categoryFilter || dateRange.start || dateRange.end;
 
   // Calculate summary stats
   const stats = useMemo(() => {
@@ -706,53 +668,6 @@ export default function OrderList() {
             ))}
           </select>
 
-          {/* Sales Rep Filter - Admin only */}
-          {isAdmin && salesUsers.length > 0 && (
-            <select
-              value={salesRepFilter}
-              onChange={(e) => setSalesRepFilter(e.target.value)}
-              style={styles.filterSelect}
-            >
-              <option value="">All Sales Reps</option>
-              {salesUsers.map(user => (
-                <option key={user.id} value={user.id}>{user.name}</option>
-              ))}
-            </select>
-          )}
-
-          {/* View Mode Toggle */}
-          <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-            <button
-              onClick={() => setViewMode('sections')}
-              style={{
-                padding: '8px 12px',
-                background: viewMode === 'sections' ? '#1e3a8a' : 'white',
-                color: viewMode === 'sections' ? 'white' : '#64748b',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: 500
-              }}
-            >
-              Sections
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              style={{
-                padding: '8px 12px',
-                background: viewMode === 'table' ? '#1e3a8a' : 'white',
-                color: viewMode === 'table' ? 'white' : '#64748b',
-                border: 'none',
-                borderLeft: '1px solid #e2e8f0',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: 500
-              }}
-            >
-              Table
-            </button>
-          </div>
-
           <button
             onClick={() => setShowFilters(!showFilters)}
             style={{
@@ -768,23 +683,6 @@ export default function OrderList() {
         {/* Expanded Filters */}
         {showFilters && (
           <div style={styles.expandedFilters}>
-            {/* Sales Rep Filter in expanded area for mobile */}
-            {isAdmin && salesUsers.length > 0 && (
-              <div style={styles.filterGroup}>
-                <label style={styles.filterLabel}>Sales Rep</label>
-                <select
-                  value={salesRepFilter}
-                  onChange={(e) => setSalesRepFilter(e.target.value)}
-                  style={styles.filterSelectSmall}
-                >
-                  <option value="">All Sales Reps</option>
-                  {salesUsers.map(user => (
-                    <option key={user.id} value={user.id}>{user.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             <div style={styles.filterGroup}>
               <label style={styles.filterLabel}>Entity</label>
               <select
@@ -833,23 +731,6 @@ export default function OrderList() {
               />
             </div>
 
-            {/* Sales Rep Filter - Only visible to admins */}
-            {isAdmin && salesUsers.length > 0 && (
-              <div style={styles.filterGroup}>
-                <label style={styles.filterLabel}>Sales Rep</label>
-                <select
-                  value={salesRepFilter}
-                  onChange={(e) => setSalesRepFilter(e.target.value)}
-                  style={styles.filterSelectSmall}
-                >
-                  <option value="">All Sales Reps</option>
-                  {salesUsers.map(user => (
-                    <option key={user.id} value={user.id}>{user.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
             {hasActiveFilters && (
               <button onClick={clearFilters} style={styles.clearFiltersButton}>
                 Clear All
@@ -861,11 +742,10 @@ export default function OrderList() {
 
       {/* Results Summary */}
       <div style={styles.resultsSummary}>
-        <span>Showing {filteredOrders.length} orders</span>
-        {!isAdmin && <span style={{ marginLeft: '8px', color: '#64748b', fontSize: '12px' }}>(Your orders only)</span>}
+        <span>Showing {paginatedOrders.length} of {filteredOrders.length} orders</span>
       </div>
 
-      {/* Orders Display */}
+      {/* Orders Table */}
       {error ? (
         <div style={styles.errorCard}>
           <p>{error}</p>
@@ -882,169 +762,7 @@ export default function OrderList() {
             </a>
           )}
         </div>
-      ) : viewMode === 'sections' ? (
-        /* SECTIONED VIEW */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {Object.entries(orderSections).map(([key, section]) => {
-            if (section.orders.length === 0) return null;
-            return (
-              <div key={key} style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
-                {/* Section Header */}
-                <div style={{ 
-                  padding: '16px 20px', 
-                  background: section.bgColor, 
-                  borderBottom: `2px solid ${section.color}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: section.color }}>
-                      {section.title}
-                    </h3>
-                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{section.description}</p>
-                  </div>
-                  <span style={{ 
-                    background: section.color, 
-                    color: 'white', 
-                    padding: '4px 12px', 
-                    borderRadius: '20px', 
-                    fontSize: '13px', 
-                    fontWeight: 600 
-                  }}>
-                    {section.orders.length}
-                  </span>
-                </div>
-                
-                {/* Section Orders */}
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>Client</th>
-                        <th style={styles.th}>Brands</th>
-                        <th style={styles.th}>Products</th>
-                        <th style={styles.th}>Contract Period</th>
-                        <th style={styles.th}>Value</th>
-                        <th style={styles.th}>Sales Rep</th>
-                        <th style={styles.th}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {section.orders.map(order => {
-                        const brands = getOrderBrands(order.items);
-                        const categories = getOrderCategories(order.items);
-                        return (
-                          <tr key={order.id} style={styles.tr}>
-                            <td style={styles.td}>
-                              <div style={styles.clientCell}>
-                                <span style={styles.clientName}>{order.client_name || 'Unknown Client'}</span>
-                                {order.order_number && (
-                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>#{order.order_number}</span>
-                                )}
-                              </div>
-                            </td>
-                            <td style={styles.td}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                {brands.length > 0 ? brands.map((brand, idx) => {
-                                  const brandColor = getBrandColor(brand.name, brand.primaryCategory);
-                                  return (
-                                    <span key={idx} style={{
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      padding: '3px 8px',
-                                      fontSize: '11px',
-                                      fontWeight: '600',
-                                      backgroundColor: brandColor.bg,
-                                      color: brandColor.color,
-                                      borderRadius: '6px',
-                                    }}>
-                                      {brand.code || brand.name}
-                                    </span>
-                                  );
-                                }) : (
-                                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
-                                )}
-                              </div>
-                            </td>
-                            <td style={styles.td}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                <span style={styles.productCount}>
-                                  {order.items?.length || order.item_count || 0} products
-                                </span>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                                  {categories.slice(0, 3).map((cat, idx) => {
-                                    const catStyle = getCategoryStyle(cat.name);
-                                    return (
-                                      <span key={idx} style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '2px',
-                                        padding: '2px 6px',
-                                        fontSize: '10px',
-                                        fontWeight: '500',
-                                        backgroundColor: catStyle.bg,
-                                        color: catStyle.color,
-                                        borderRadius: '4px',
-                                      }}>
-                                        {catStyle.icon} {cat.count}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </td>
-                            <td style={styles.td}>
-                              <div style={styles.dateCell}>
-                                <span>{formatDate(order.contract_start_date)}</span>
-                                <span style={styles.dateSeparator}>→</span>
-                                <span>{formatDate(order.contract_end_date)}</span>
-                              </div>
-                              <span style={styles.termMonths}>
-                                {order.term_months === 1 ? 'One-Time' : `${order.term_months || 0} months`}
-                              </span>
-                            </td>
-                            <td style={styles.td}>
-                              <div style={styles.valueCell}>
-                                <span style={styles.totalValue}>{formatCurrency(order.total_value || order.contract_total)}</span>
-                                {order.term_months > 1 && order.monthly_total && (
-                                  <span style={styles.monthlyValue}>{formatCurrency(order.monthly_total)}/mo</span>
-                                )}
-                              </div>
-                            </td>
-                            <td style={styles.td}>
-                              <span style={styles.salesRep}>{order.submitted_by_name || '—'}</span>
-                            </td>
-                            <td style={styles.td}>
-                              <div style={styles.actions}>
-                                <button
-                                  onClick={() => fetchOrderDetails(order.id)}
-                                  style={styles.actionButton}
-                                  title="View Details"
-                                >
-                                  <Icons.Eye />
-                                </button>
-                                <a
-                                  href={`/orders/${order.id}/edit`}
-                                  style={styles.actionButton}
-                                  title="Edit Order"
-                                >
-                                  <Icons.Edit />
-                                </a>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            );
-          })}
-        </div>
       ) : (
-        /* TABLE VIEW */
         <div style={styles.tableCard}>
           <div style={styles.tableWrapper}>
             <table style={styles.table}>
@@ -1113,23 +831,20 @@ export default function OrderList() {
                       </td>
                       <td style={styles.td}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                          {brands.length > 0 ? brands.map((brand, idx) => {
-                            const brandColor = getBrandColor(brand.name, brand.primaryCategory);
-                            return (
-                              <span key={idx} style={{
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                padding: '3px 8px',
-                                fontSize: '11px',
-                                fontWeight: '600',
-                                backgroundColor: brandColor.bg,
-                                color: brandColor.color,
-                                borderRadius: '6px',
-                              }}>
-                                {brand.code || brand.name}
-                              </span>
-                            );
-                          }) : (
+                          {brands.length > 0 ? brands.map((brand, idx) => (
+                            <span key={idx} style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              backgroundColor: '#1e3a8a',
+                              color: 'white',
+                              borderRadius: '6px',
+                            }}>
+                              {brand.name}
+                            </span>
+                          )) : (
                             <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
                           )}
                         </div>
@@ -1183,7 +898,7 @@ export default function OrderList() {
                         </div>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.salesRep}>{order.sales_associate_name || order.submitted_by_name || '—'}</span>
+                        <span style={styles.salesRep}>{order.submitted_by_name || '—'}</span>
                       </td>
                       <td style={styles.td}>
                         <span style={styles.dateText}>{formatDate(order.created_at)}</span>
