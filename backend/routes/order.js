@@ -742,26 +742,45 @@ router.get('/:id', async (req, res) => {
       [id]
     );
 
+    // If no items found and this is a kill/change order, get parent order's items
+    let items = itemsResult.rows;
+    const order = orderResult.rows[0];
+    
+    if (items.length === 0 && order.parent_order_id) {
+      const parentItemsResult = await pool.query(
+        `SELECT oi.*, e.name as entity_name, e.code as entity_code
+         FROM order_items oi
+         LEFT JOIN entities e ON oi.entity_id = e.id
+         WHERE oi.order_id = $1
+         ORDER BY oi.created_at`,
+        [order.parent_order_id]
+      );
+      items = parentItemsResult.rows;
+    }
+
     // Get primary contact for the client
     const contactResult = await pool.query(
       `SELECT * FROM contacts WHERE client_id = $1 AND is_primary = true LIMIT 1`,
-      [orderResult.rows[0].client_id]
+      [order.client_id]
     );
 
-    // Calculate totals
-    const items = itemsResult.rows;
+    // Calculate totals from items
     const monthly_total = items.reduce((sum, item) => sum + (parseFloat(item.line_total) || 0), 0);
     const setup_fees_total = items.reduce((sum, item) => sum + (parseFloat(item.setup_fee) || 0), 0);
-    const order = orderResult.rows[0];
+    
+    // Use calculated totals, but fall back to stored values if no items
+    const calculated_monthly = items.length > 0 ? monthly_total : (parseFloat(order.monthly_total) || 0);
+    const calculated_setup = items.length > 0 ? setup_fees_total : 0;
     const total_value = order.term_months === 1 
-      ? monthly_total + setup_fees_total 
-      : (monthly_total * (order.term_months || 1)) + setup_fees_total;
+      ? calculated_monthly + calculated_setup 
+      : (calculated_monthly * (order.term_months || 1)) + calculated_setup;
 
     res.json({
       ...order,
       items: items,
       item_count: items.length,
-      setup_fees_total,
+      monthly_total: calculated_monthly,
+      setup_fees_total: calculated_setup,
       total_value,
       primary_contact: contactResult.rows[0] || null
     });
