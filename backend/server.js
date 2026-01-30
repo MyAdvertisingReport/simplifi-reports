@@ -1551,7 +1551,9 @@ app.put('/api/clients/:id', authenticateToken, async (req, res) => {
       name, logoPath, primaryColor, secondaryColor,
       monthlyBudget, campaignGoal, contactName, contactEmail, startDate,
       // New CRM fields
-      status, tier, industry, clientSince, source, tags, website, billingTerms
+      status, tier, industry, clientSince, source, tags, website, billingTerms,
+      // Simpli.fi Integration
+      simplifiOrgId
     } = req.body;
     
     // Build dynamic update query for new CRM fields
@@ -1579,6 +1581,12 @@ app.put('/api/clients/:id', authenticateToken, async (req, res) => {
     if (tags !== undefined) { updates.push(`tags = $${paramCount++}`); values.push(tags); }
     if (website !== undefined) { updates.push(`website = $${paramCount++}`); values.push(website); }
     if (billingTerms !== undefined) { updates.push(`billing_terms = $${paramCount++}`); values.push(billingTerms); }
+    
+    // Simpli.fi Integration - this is the key field for linking to Simpli.fi
+    if (simplifiOrgId !== undefined) { 
+      updates.push(`simpli_fi_client_id = $${paramCount++}`); 
+      values.push(simplifiOrgId ? parseInt(simplifiOrgId) : null); 
+    }
     
     // Always update timestamp
     updates.push(`updated_at = NOW()`);
@@ -1621,7 +1629,11 @@ app.put('/api/clients/:id', authenticateToken, async (req, res) => {
       }
     }
     
-    res.json(result.rows[0]);
+    // Map simpli_fi_client_id to simplifi_org_id for frontend compatibility
+    const updatedClient = result.rows[0];
+    updatedClient.simplifi_org_id = updatedClient.simpli_fi_client_id;
+    
+    res.json(updatedClient);
   } catch (error) {
     console.error('Update client error:', error);
     res.status(500).json({ error: 'Failed to update client' });

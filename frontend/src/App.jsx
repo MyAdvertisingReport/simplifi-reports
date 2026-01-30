@@ -11154,7 +11154,9 @@ function EditClientForm({ client, onSave, onCancel }) {
     source: client?.source || '',
     tags: client?.tags?.join(', ') || '',
     website: client?.website || '',
-    billingTerms: client?.billing_terms || 'due_on_receipt'
+    billingTerms: client?.billing_terms || 'due_on_receipt',
+    // Simpli.fi Integration
+    simplifiOrgId: client?.simpli_fi_client_id || client?.simplifi_org_id || ''
   });
   const [saving, setSaving] = useState(false);
 
@@ -11178,7 +11180,9 @@ function EditClientForm({ client, onSave, onCancel }) {
       source: formData.source || null,
       tags: formData.tags ? formData.tags.split(',').map(t => t.trim()).filter(t => t) : [],
       website: formData.website || null,
-      billingTerms: formData.billingTerms
+      billingTerms: formData.billingTerms,
+      // Simpli.fi Integration
+      simplifiOrgId: formData.simplifiOrgId || null
     });
     setSaving(false);
   };
@@ -11351,6 +11355,65 @@ function EditClientForm({ client, onSave, onCancel }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <FormField label="Contact Name" value={formData.contactName} onChange={(v) => setFormData({...formData, contactName: v})} placeholder="John Smith" />
           <FormField label="Contact Email" value={formData.contactEmail} onChange={(v) => setFormData({...formData, contactEmail: v})} placeholder="john@example.com" type="email" />
+        </div>
+      </div>
+      
+      {/* Simpli.fi Integration */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <h4 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#374151', marginBottom: '0.75rem' }}>
+          <Globe size={14} style={{ display: 'inline', marginRight: '0.5rem', verticalAlign: 'middle' }} />
+          Simpli.fi Integration
+        </h4>
+        <div style={{ 
+          padding: '1rem', 
+          background: client?.simpli_fi_client_id || client?.simplifi_org_id ? '#f0fdf4' : '#fef3c7', 
+          borderRadius: '0.5rem', 
+          border: `1px solid ${client?.simpli_fi_client_id || client?.simplifi_org_id ? '#86efac' : '#fcd34d'}`,
+          marginBottom: '0.75rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            {client?.simpli_fi_client_id || client?.simplifi_org_id ? (
+              <>
+                <CheckCircle size={16} style={{ color: '#16a34a' }} />
+                <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#166534' }}>
+                  Connected to Simpli.fi Organization
+                </span>
+              </>
+            ) : (
+              <>
+                <AlertCircle size={16} style={{ color: '#d97706' }} />
+                <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#92400e' }}>
+                  Not Connected - Enter Simpli.fi Org ID to enable programmatic reports
+                </span>
+              </>
+            )}
+          </div>
+          {(client?.simpli_fi_client_id || client?.simplifi_org_id) && (
+            <p style={{ fontSize: '0.75rem', color: '#166534', margin: 0 }}>
+              Current Org ID: {client.simpli_fi_client_id || client.simplifi_org_id}
+            </p>
+          )}
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
+            Simpli.fi Organization ID
+          </label>
+          <input 
+            type="text" 
+            value={formData.simplifiOrgId} 
+            onChange={(e) => setFormData({...formData, simplifiOrgId: e.target.value})}
+            placeholder="e.g., 12345"
+            style={{ 
+              width: '100%', 
+              padding: '0.625rem', 
+              border: '1px solid #d1d5db', 
+              borderRadius: '0.5rem',
+              fontFamily: 'monospace'
+            }}
+          />
+          <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
+            Find this ID in your Simpli.fi dashboard URL: app.simpli.fi/organizations/<strong>[ID]</strong>/campaigns
+          </p>
         </div>
       </div>
       
