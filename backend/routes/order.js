@@ -504,13 +504,14 @@ const generateOrderNumber = async (poolClient) => {
 // GET /api/orders - List all orders WITH item counts and proper totals
 router.get('/', async (req, res) => {
   try {
-    const { status, client_id, clientId, limit = 50 } = req.query;
+    const { status, client_id, clientId, sales_associate_id, limit = 200 } = req.query;
+    const user = req.user;
     
     // Support both clientId (camelCase) and client_id (snake_case)
     const filterClientId = clientId || client_id;
     
     // Updated query to include item_count, calculate total_value, and get submitted_by name
-    // Use COALESCE to fall back to signature if user not found
+    // Also get sales_associate info
     let query = `
       SELECT 
         o.*,
@@ -520,6 +521,8 @@ router.get('/', async (req, res) => {
         COALESCE(u.name, o.submitted_signature) as submitted_by_name,
         u.email as submitted_by_email,
         approver.name as approved_by_name,
+        sales_rep.name as sales_associate_name,
+        sales_rep.id as sales_associate_id,
         COALESCE(item_stats.item_count, 0) as item_count,
         COALESCE(item_stats.setup_fees_total, 0) as setup_fees_total,
         CASE 
@@ -531,6 +534,7 @@ router.get('/', async (req, res) => {
       JOIN advertising_clients c ON o.client_id = c.id
       LEFT JOIN users u ON o.submitted_by = u.id
       LEFT JOIN users approver ON o.approved_by = approver.id
+      LEFT JOIN users sales_rep ON o.sales_associate_id = sales_rep.id OR o.submitted_by = sales_rep.id
       LEFT JOIN (
         SELECT 
           oi.order_id,
@@ -556,6 +560,14 @@ router.get('/', async (req, res) => {
     const params = [];
     let paramCount = 0;
 
+    // Sales reps only see their own orders (unless admin/super_admin)
+    const isAdmin = user && (user.is_super_admin || user.role === 'admin' || user.role === 'manager');
+    if (!isAdmin && user) {
+      paramCount++;
+      query += ` AND (o.submitted_by = $${paramCount} OR o.sales_associate_id = $${paramCount})`;
+      params.push(user.id);
+    }
+
     if (status) {
       // Support comma-separated status values (e.g., "signed,active")
       const statuses = status.split(',').map(s => s.trim()).filter(s => s);
@@ -577,7 +589,28 @@ router.get('/', async (req, res) => {
       params.push(filterClientId);
     }
 
-    query += ` ORDER BY o.created_at DESC LIMIT ${parseInt(limit)}`;
+    // Filter by sales associate (for admin filtering)
+    if (sales_associate_id) {
+      paramCount++;
+      query += ` AND (o.sales_associate_id = $${paramCount} OR o.submitted_by = $${paramCount})`;
+      params.push(sales_associate_id);
+    }
+
+    // Order by status priority, then by date
+    query += ` ORDER BY 
+      CASE o.status 
+        WHEN 'pending_approval' THEN 1
+        WHEN 'approved' THEN 2
+        WHEN 'sent' THEN 3
+        WHEN 'signed' THEN 4
+        WHEN 'active' THEN 5
+        WHEN 'draft' THEN 6
+        WHEN 'completed' THEN 7
+        WHEN 'cancelled' THEN 8
+        ELSE 9
+      END,
+      o.created_at DESC 
+      LIMIT ${parseInt(limit)}`;
 
     const result = await pool.query(query, params);
     
