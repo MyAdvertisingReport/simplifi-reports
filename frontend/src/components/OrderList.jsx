@@ -228,21 +228,57 @@ export default function OrderList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Get current user from localStorage
-  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  // Get current user from localStorage - try multiple possible keys
+  const getUserFromStorage = () => {
+    // Try 'user' key first
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user && Object.keys(user).length > 0) return user;
+      } catch (e) {}
+    }
+    
+    // Try 'userData' key
+    const userDataStr = localStorage.getItem('userData');
+    if (userDataStr) {
+      try {
+        const userData = JSON.parse(userDataStr);
+        if (userData && Object.keys(userData).length > 0) return userData;
+      } catch (e) {}
+    }
+    
+    // Try to decode from JWT token
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload) return payload;
+      } catch (e) {}
+    }
+    
+    return {};
+  };
+  
+  const currentUser = getUserFromStorage();
   
   // Admin check - check multiple possible field names and specific emails
+  // Also default to true if we can't determine (let server filter)
   const isAdmin = 
     currentUser.is_super_admin === true || 
     currentUser.isSuperAdmin === true ||
+    currentUser.super_admin === true ||
+    currentUser.superAdmin === true ||
     currentUser.role === 'admin' || 
     currentUser.role === 'manager' ||
     currentUser.email === 'justin@wsicnews.com' || 
     currentUser.email === 'mamie@wsicnews.com' ||
-    currentUser.email === 'admin@wsicnews.com';
+    currentUser.email === 'admin@wsicnews.com' ||
+    // If we can't determine user, default to showing all (server will filter if needed)
+    Object.keys(currentUser).length === 0;
   
-  // Debug log (can remove later)
-  console.log('OrderList - currentUser:', currentUser, 'isAdmin:', isAdmin);
+  // Debug log
+  console.log('OrderList - currentUser:', currentUser, 'isAdmin:', isAdmin, 'keys:', Object.keys(currentUser));
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
