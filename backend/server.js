@@ -2944,12 +2944,14 @@ app.get('/api/diagnostics/admin', authenticateToken, requireAdmin, async (req, r
       
       for (const client of allClients) {
         const issues = [];
-        if (!client.simplifi_org_id) issues.push('Missing Simpli.fi Org ID');
+        // Check both column name conventions for Simpli.fi org ID
+        const hasSimplifiId = client.simplifi_org_id || client.simpli_fi_client_id;
+        if (!hasSimplifiId) issues.push('Missing Simpli.fi Org ID');
         if (!client.slug) issues.push('Missing slug');
         if (client.slug && !/^[a-z0-9-]+$/.test(client.slug)) issues.push('Invalid slug format');
         
         if (issues.length > 0) {
-          clientIssues.push({ name: client.name, id: client.id, issues });
+          clientIssues.push({ name: client.name || client.business_name, id: client.id, issues });
         }
       }
       
@@ -2962,6 +2964,62 @@ app.get('/api/diagnostics/admin', authenticateToken, requireAdmin, async (req, r
     }
   } catch (error) {
     results.clients = { status: 'error', message: error.message };
+  }
+
+  // Public Report URL Check - verify the actual API endpoints work correctly
+  try {
+    // Get a sample client with a slug to test the public endpoint
+    const sampleClientResult = await adminPool.query(`
+      SELECT slug, simpli_fi_client_id, business_name 
+      FROM advertising_clients 
+      WHERE slug IS NOT NULL AND slug != ''
+      LIMIT 5
+    `);
+    
+    const publicUrlIssues = [];
+    let clientsWithPublicUrls = 0;
+    let clientsWithSimplifiLinked = 0;
+    
+    for (const client of sampleClientResult.rows) {
+      if (client.slug) clientsWithPublicUrls++;
+      if (client.simpli_fi_client_id) clientsWithSimplifiLinked++;
+      
+      // Check for potential issues
+      if (client.slug && !client.simpli_fi_client_id) {
+        publicUrlIssues.push({
+          client: client.business_name,
+          slug: client.slug,
+          issue: 'Has public URL but no Simpli.fi Org ID linked',
+          publicUrl: `https://myadvertisingreport.com/client/${client.slug}/report`
+        });
+      }
+    }
+    
+    // Get total counts for all clients
+    const totalCounts = await adminPool.query(`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(CASE WHEN slug IS NOT NULL AND slug != '' THEN 1 END) as with_slug,
+        COUNT(CASE WHEN simpli_fi_client_id IS NOT NULL THEN 1 END) as with_simplifi,
+        COUNT(CASE WHEN slug IS NOT NULL AND slug != '' AND simpli_fi_client_id IS NOT NULL THEN 1 END) as fully_configured
+      FROM advertising_clients
+    `);
+    
+    const counts = totalCounts.rows[0];
+    
+    results.publicReports = {
+      status: publicUrlIssues.length === 0 ? 'ok' : 'warning',
+      message: publicUrlIssues.length === 0 
+        ? `${counts.fully_configured} clients have working public report URLs`
+        : `${publicUrlIssues.length} clients have public URLs but no Simpli.fi data`,
+      total_clients: parseInt(counts.total),
+      with_public_url: parseInt(counts.with_slug),
+      with_simplifi_linked: parseInt(counts.with_simplifi),
+      fully_configured: parseInt(counts.fully_configured),
+      issues: publicUrlIssues
+    };
+  } catch (error) {
+    results.publicReports = { status: 'error', message: error.message };
   }
 
   // Test Email Service (Postmark)
