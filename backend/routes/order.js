@@ -548,6 +548,9 @@ router.get('/', async (req, res) => {
             'entity_name', e.name,
             'entity_code', e.code,
             'unit_price', oi.unit_price,
+            'book_price', oi.book_price,
+            'setup_fee', oi.setup_fee,
+            'book_setup_fee', oi.book_setup_fee,
             'quantity', oi.quantity,
             'line_total', oi.line_total
           )) as items_json
@@ -567,6 +570,9 @@ router.get('/', async (req, res) => {
             'entity_name', e.name,
             'entity_code', e.code,
             'unit_price', oi.unit_price,
+            'book_price', oi.book_price,
+            'setup_fee', oi.setup_fee,
+            'book_setup_fee', oi.book_setup_fee,
             'quantity', oi.quantity,
             'line_total', oi.line_total
           )) as items_json
@@ -899,20 +905,27 @@ router.post('/', async (req, res) => {
     // Create order items
     const createdItems = [];
     for (const item of items) {
+      // book_price captures the original/list price, unit_price is what's actually charged
+      // If book_price not provided, default to unit_price (no discount)
+      const bookPrice = item.book_price || item.original_price || item.unit_price;
+      const bookSetupFee = item.book_setup_fee || item.original_setup_fee || item.setup_fee || 0;
+      
       const itemResult = await client.query(
         `INSERT INTO order_items (
           id, order_id, entity_id, product_id, product_name, product_category,
-          quantity, unit_price, discount_percent, line_total, setup_fee,
+          quantity, unit_price, book_price, discount_percent, line_total, 
+          setup_fee, book_setup_fee,
           spots_per_week, spot_length, ad_size, premium_placement,
           monthly_impressions, notes, created_at, updated_at
         ) VALUES (
           gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-          $11, $12, $13, $14, $15, $16, NOW(), NOW()
+          $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW()
         ) RETURNING *`,
         [
           newOrder.id, item.entity_id, item.product_id, item.product_name, item.product_category,
-          item.quantity || 1, item.unit_price, item.discount_percent || 0, item.line_total,
-          item.setup_fee || 0, item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
+          item.quantity || 1, item.unit_price, bookPrice, item.discount_percent || 0, item.line_total,
+          item.setup_fee || 0, bookSetupFee,
+          item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
           item.monthly_impressions, item.notes
         ]
       );
@@ -1962,22 +1975,28 @@ router.put('/:id', async (req, res) => {
       // Delete existing items
       await client.query('DELETE FROM order_items WHERE order_id = $1', [id]);
 
-      // Create new items
+      // Create new items with book price tracking
       for (const item of items) {
+        // book_price captures the original/list price, unit_price is what's actually charged
+        const bookPrice = item.book_price || item.original_price || item.unit_price;
+        const bookSetupFee = item.book_setup_fee || item.original_setup_fee || item.setup_fee || 0;
+        
         await client.query(
           `INSERT INTO order_items (
             id, order_id, entity_id, product_id, product_name, product_category,
-            quantity, unit_price, discount_percent, line_total, setup_fee,
+            quantity, unit_price, book_price, discount_percent, line_total, 
+            setup_fee, book_setup_fee,
             spots_per_week, spot_length, ad_size, premium_placement,
             monthly_impressions, notes, created_at, updated_at
           ) VALUES (
             gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, NOW(), NOW()
+            $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW()
           )`,
           [
             id, item.entity_id, item.product_id, item.product_name, item.product_category,
-            item.quantity || 1, item.unit_price, item.discount_percent || 0, item.line_total,
-            item.setup_fee || 0, item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
+            item.quantity || 1, item.unit_price, bookPrice, item.discount_percent || 0, item.line_total,
+            item.setup_fee || 0, bookSetupFee,
+            item.spots_per_week, item.spot_length, item.ad_size, item.premium_placement,
             item.monthly_impressions, item.notes
           ]
         );
@@ -2027,10 +2046,28 @@ router.put('/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const result = await pool.query(
-      `UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [status, id]
-    );
+    // Build dynamic update based on status
+    let query = 'UPDATE orders SET status = $1, updated_at = NOW()';
+    const params = [status];
+    let paramCount = 1;
+
+    // Track specific timestamps for journey timeline
+    if (status === 'active') {
+      paramCount++;
+      query += `, activated_at = NOW()`;
+    } else if (status === 'completed') {
+      paramCount++;
+      query += `, completed_at = NOW()`;
+    } else if (status === 'cancelled') {
+      paramCount++;
+      query += `, cancelled_at = NOW()`;
+    }
+
+    paramCount++;
+    query += ` WHERE id = $${paramCount} RETURNING *`;
+    params.push(id);
+
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Order not found' });

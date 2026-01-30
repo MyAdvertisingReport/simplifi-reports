@@ -1812,19 +1812,385 @@ export default function OrderList() {
                 )}
               </div>
 
-              {/* Totals */}
-              <div style={styles.modalTotals}>
-                <div style={styles.modalTotalRow}>
-                  <span>Monthly Total</span>
-                  <span>{formatCurrency(selectedOrder.monthly_total)}</span>
-                </div>
-                <div style={styles.modalTotalRow}>
-                  <span>Setup Fees</span>
-                  <span>{formatCurrency(selectedOrder.setup_fees)}</span>
-                </div>
-                <div style={{ ...styles.modalTotalRow, ...styles.modalTotalRowFinal }}>
-                  <span>Contract Total</span>
-                  <span style={styles.modalTotalValue}>{formatCurrency(selectedOrder.total_value)}</span>
+              {/* Pricing Summary with Book Value Comparison */}
+              {(() => {
+                // Calculate book value totals from items
+                const items = selectedOrder.items || [];
+                const bookMonthly = items.reduce((sum, item) => {
+                  const bookPrice = parseFloat(item.book_price) || parseFloat(item.unit_price) || parseFloat(item.line_total) || 0;
+                  return sum + (bookPrice * (parseInt(item.quantity) || 1));
+                }, 0);
+                const bookSetup = items.reduce((sum, item) => {
+                  return sum + (parseFloat(item.book_setup_fee) || parseFloat(item.setup_fee) || 0);
+                }, 0);
+                const actualMonthly = parseFloat(selectedOrder.monthly_total) || 0;
+                const actualSetup = parseFloat(selectedOrder.setup_fees_total) || parseFloat(selectedOrder.setup_fees) || 0;
+                
+                const termMonths = parseInt(selectedOrder.term_months) || 1;
+                const bookTotal = termMonths === 1 ? bookMonthly + bookSetup : (bookMonthly * termMonths) + bookSetup;
+                const actualTotal = parseFloat(selectedOrder.total_value) || (termMonths === 1 ? actualMonthly + actualSetup : (actualMonthly * termMonths) + actualSetup);
+                
+                const totalDiscount = bookTotal - actualTotal;
+                const discountPercent = bookTotal > 0 ? Math.round((totalDiscount / bookTotal) * 100) : 0;
+                const hasDiscount = totalDiscount > 1; // Allow for rounding
+                
+                return (
+                  <div style={{
+                    backgroundColor: hasDiscount ? '#fefce8' : '#f8fafc',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    marginBottom: '20px',
+                    border: hasDiscount ? '2px solid #fcd34d' : '1px solid #e2e8f0'
+                  }}>
+                    <h3 style={{ 
+                      margin: '0 0 16px 0', 
+                      fontSize: '14px', 
+                      fontWeight: '600',
+                      color: '#374151',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}>
+                      💰 Pricing Summary
+                      {hasDiscount && selectedOrder.approved_by_name && (
+                        <span style={{
+                          backgroundColor: '#dcfce7',
+                          color: '#166534',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontSize: '11px',
+                          fontWeight: '600'
+                        }}>
+                          ✓ Approved by {selectedOrder.approved_by_name}
+                        </span>
+                      )}
+                    </h3>
+                    
+                    {/* Monthly Comparison */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ color: '#64748b', fontSize: '14px' }}>Monthly Rate</span>
+                      <div style={{ textAlign: 'right' }}>
+                        {hasDiscount && bookMonthly !== actualMonthly ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: '13px' }}>
+                              {formatCurrency(bookMonthly)}
+                            </span>
+                            <span style={{ fontWeight: '600', color: '#059669' }}>
+                              {formatCurrency(actualMonthly)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontWeight: '500' }}>{formatCurrency(actualMonthly)}</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Setup Fees */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ color: '#64748b', fontSize: '14px' }}>Setup Fees</span>
+                      <div style={{ textAlign: 'right' }}>
+                        {bookSetup > actualSetup ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ textDecoration: 'line-through', color: '#9ca3af', fontSize: '13px' }}>
+                              {formatCurrency(bookSetup)}
+                            </span>
+                            <span style={{ fontWeight: '600', color: '#059669' }}>
+                              {actualSetup > 0 ? formatCurrency(actualSetup) : 'WAIVED'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontWeight: '500' }}>{formatCurrency(actualSetup)}</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Term */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0' }}>
+                      <span style={{ color: '#64748b', fontSize: '14px' }}>Contract Term</span>
+                      <span style={{ fontWeight: '500' }}>{termMonths === 1 ? 'One-Time' : `${termMonths} months`}</span>
+                    </div>
+                    
+                    {/* Book Value vs Contract Total */}
+                    {hasDiscount && (
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        marginBottom: '8px',
+                        padding: '8px 12px',
+                        backgroundColor: 'white',
+                        borderRadius: '8px'
+                      }}>
+                        <span style={{ color: '#64748b', fontSize: '14px' }}>Book Value</span>
+                        <span style={{ textDecoration: 'line-through', color: '#9ca3af', fontWeight: '500' }}>
+                          {formatCurrency(bookTotal)}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Discount Amount */}
+                    {hasDiscount && (
+                      <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        marginBottom: '8px',
+                        padding: '8px 12px',
+                        backgroundColor: '#fee2e2',
+                        borderRadius: '8px'
+                      }}>
+                        <span style={{ color: '#991b1b', fontSize: '14px', fontWeight: '500' }}>
+                          Total Discount ({discountPercent}%)
+                        </span>
+                        <span style={{ color: '#dc2626', fontWeight: '700' }}>
+                          -{formatCurrency(totalDiscount)}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {/* Final Contract Total */}
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      padding: '12px 16px',
+                      backgroundColor: hasDiscount ? '#dcfce7' : '#1e3a8a',
+                      borderRadius: '8px',
+                      marginTop: '8px'
+                    }}>
+                      <span style={{ 
+                        color: hasDiscount ? '#166534' : 'white', 
+                        fontSize: '16px', 
+                        fontWeight: '600' 
+                      }}>
+                        Contract Total
+                      </span>
+                      <span style={{ 
+                        color: hasDiscount ? '#166534' : 'white', 
+                        fontSize: '20px', 
+                        fontWeight: '700' 
+                      }}>
+                        {formatCurrency(actualTotal)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Order Journey Timeline */}
+              <div style={styles.modalSection}>
+                <h3 style={styles.modalSectionTitle}>📋 Order Journey</h3>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0',
+                  position: 'relative',
+                  paddingLeft: '24px'
+                }}>
+                  {/* Vertical line */}
+                  <div style={{
+                    position: 'absolute',
+                    left: '7px',
+                    top: '8px',
+                    bottom: '8px',
+                    width: '2px',
+                    backgroundColor: '#e2e8f0'
+                  }} />
+                  
+                  {/* Created/Initiated */}
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative' }}>
+                    <div style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '50%',
+                      backgroundColor: '#3b82f6',
+                      position: 'absolute',
+                      left: '-24px',
+                      top: '10px',
+                      border: '3px solid white',
+                      boxShadow: '0 0 0 2px #3b82f6'
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>Order Created</div>
+                      <div style={{ color: '#64748b', fontSize: '13px' }}>
+                        {selectedOrder.submitted_by_name || 'Unknown'} • {formatDate(selectedOrder.created_at)}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Submitted for Approval (if has price adjustments) */}
+                  {selectedOrder.submitted_signature_date && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative' }}>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: selectedOrder.status === 'pending_approval' ? '#f59e0b' : '#10b981',
+                        position: 'absolute',
+                        left: '-24px',
+                        top: '10px',
+                        border: '3px solid white',
+                        boxShadow: `0 0 0 2px ${selectedOrder.status === 'pending_approval' ? '#f59e0b' : '#10b981'}`
+                      }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>
+                          Submitted for Approval
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: '13px' }}>
+                          {selectedOrder.submitted_by_name || 'Sales Rep'} • {formatDate(selectedOrder.submitted_signature_date)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Approved */}
+                  {selectedOrder.approved_at && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative' }}>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#10b981',
+                        position: 'absolute',
+                        left: '-24px',
+                        top: '10px',
+                        border: '3px solid white',
+                        boxShadow: '0 0 0 2px #10b981'
+                      }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>Admin Approved</div>
+                        <div style={{ color: '#64748b', fontSize: '13px' }}>
+                          {selectedOrder.approved_by_name || 'Admin'} • {formatDate(selectedOrder.approved_at)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Sent to Client */}
+                  {selectedOrder.sent_to_client_at && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative' }}>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#8b5cf6',
+                        position: 'absolute',
+                        left: '-24px',
+                        top: '10px',
+                        border: '3px solid white',
+                        boxShadow: '0 0 0 2px #8b5cf6'
+                      }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>Sent to Client</div>
+                        <div style={{ color: '#64748b', fontSize: '13px' }}>
+                          {formatDate(selectedOrder.sent_to_client_at)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Client Signed */}
+                  {selectedOrder.client_signature_date && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative' }}>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#10b981',
+                        position: 'absolute',
+                        left: '-24px',
+                        top: '10px',
+                        border: '3px solid white',
+                        boxShadow: '0 0 0 2px #10b981'
+                      }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>Client Signed</div>
+                        <div style={{ color: '#64748b', fontSize: '13px' }}>
+                          {selectedOrder.client_signature || 'Client'} • {formatDate(selectedOrder.client_signature_date)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Activated */}
+                  {selectedOrder.status === 'active' && selectedOrder.activated_at && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative' }}>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#059669',
+                        position: 'absolute',
+                        left: '-24px',
+                        top: '10px',
+                        border: '3px solid white',
+                        boxShadow: '0 0 0 2px #059669'
+                      }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: '#1e293b', fontSize: '14px' }}>Contract Activated</div>
+                        <div style={{ color: '#64748b', fontSize: '13px' }}>
+                          {formatDate(selectedOrder.activated_at)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Current Status (if not complete) */}
+                  {!['completed', 'cancelled', 'active'].includes(selectedOrder.status) && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative' }}>
+                      <div style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        backgroundColor: '#e2e8f0',
+                        border: '3px dashed #94a3b8',
+                        position: 'absolute',
+                        left: '-24px',
+                        top: '10px'
+                      }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '600', color: '#94a3b8', fontSize: '14px' }}>
+                          {selectedOrder.status === 'pending_approval' && 'Awaiting Admin Approval'}
+                          {selectedOrder.status === 'approved' && 'Ready to Send to Client'}
+                          {selectedOrder.status === 'sent' && 'Awaiting Client Signature'}
+                          {selectedOrder.status === 'signed' && 'Ready to Activate'}
+                          {selectedOrder.status === 'draft' && 'Draft - Not Submitted'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Future Steps Placeholder */}
+                  {selectedOrder.status === 'active' && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative', opacity: 0.5 }}>
+                        <div style={{
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '50%',
+                          backgroundColor: '#e2e8f0',
+                          position: 'absolute',
+                          left: '-24px',
+                          top: '10px'
+                        }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: '500', color: '#94a3b8', fontSize: '13px' }}>Creative Submitted</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '8px 0', position: 'relative', opacity: 0.5 }}>
+                        <div style={{
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '50%',
+                          backgroundColor: '#e2e8f0',
+                          position: 'absolute',
+                          left: '-24px',
+                          top: '10px'
+                        }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: '500', color: '#94a3b8', fontSize: '13px' }}>Scheduled</div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
