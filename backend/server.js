@@ -5231,7 +5231,7 @@ app.get('/api/reports/sales-performance', authenticateToken, async (req, res) =>
         COUNT(DISTINCT CASE WHEN o.status = 'pending' THEN o.id END) as pending_orders,
         COUNT(DISTINCT CASE WHEN o.status = 'rejected' THEN o.id END) as rejected_orders
       FROM users u
-      LEFT JOIN orders o ON o.created_by = u.id ${dateFilter}
+      LEFT JOIN orders o ON o.submitted_by = u.id ${dateFilter}
       WHERE u.role IN ('sales_associate', 'sales_manager', 'admin', 'staff')
       ${userFilter}
       GROUP BY u.id, u.name, u.email, u.role
@@ -5240,7 +5240,7 @@ app.get('/api/reports/sales-performance', authenticateToken, async (req, res) =>
     
     // Get monthly trend
     const trendParams = user_id ? [user_id] : [];
-    const trendUserFilter = user_id ? 'AND o.created_by = $1' : '';
+    const trendUserFilter = user_id ? 'AND o.submitted_by = $1' : '';
     
     const trendResult = await adminPool.query(`
       SELECT 
@@ -5524,7 +5524,7 @@ app.get('/api/reports/leaderboard', authenticateToken, async (req, res) => {
         COUNT(DISTINCT ca.id) as activities,
         COUNT(DISTINCT CASE WHEN ac.created_at >= ${dateFilter} THEN ac.id END) as new_clients
       FROM users u
-      LEFT JOIN orders o ON o.created_by = u.id AND o.created_at >= ${dateFilter}
+      LEFT JOIN orders o ON o.submitted_by = u.id AND o.created_at >= ${dateFilter}
       LEFT JOIN client_activities ca ON ca.user_id = u.id AND ca.created_at >= ${dateFilter}
       LEFT JOIN advertising_clients ac ON ac.assigned_to = u.id
       WHERE u.role IN ('sales_associate', 'sales_manager', 'admin', 'staff')
