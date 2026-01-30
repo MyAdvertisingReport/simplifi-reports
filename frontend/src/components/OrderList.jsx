@@ -704,6 +704,53 @@ export default function OrderList() {
             ))}
           </select>
 
+          {/* Sales Rep Filter - Admin only */}
+          {isAdmin && salesUsers.length > 0 && (
+            <select
+              value={salesRepFilter}
+              onChange={(e) => setSalesRepFilter(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="">All Sales Reps</option>
+              {salesUsers.map(user => (
+                <option key={user.id} value={user.id}>{user.name}</option>
+              ))}
+            </select>
+          )}
+
+          {/* View Mode Toggle */}
+          <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+            <button
+              onClick={() => setViewMode('sections')}
+              style={{
+                padding: '8px 12px',
+                background: viewMode === 'sections' ? '#1e3a8a' : 'white',
+                color: viewMode === 'sections' ? 'white' : '#64748b',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500
+              }}
+            >
+              Sections
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              style={{
+                padding: '8px 12px',
+                background: viewMode === 'table' ? '#1e3a8a' : 'white',
+                color: viewMode === 'table' ? 'white' : '#64748b',
+                border: 'none',
+                borderLeft: '1px solid #e2e8f0',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500
+              }}
+            >
+              Table
+            </button>
+          </div>
+
           <button
             onClick={() => setShowFilters(!showFilters)}
             style={{
@@ -719,6 +766,23 @@ export default function OrderList() {
         {/* Expanded Filters */}
         {showFilters && (
           <div style={styles.expandedFilters}>
+            {/* Sales Rep Filter in expanded area for non-desktop */}
+            {isAdmin && salesUsers.length > 0 && (
+              <div style={styles.filterGroup}>
+                <label style={styles.filterLabel}>Sales Rep</label>
+                <select
+                  value={salesRepFilter}
+                  onChange={(e) => setSalesRepFilter(e.target.value)}
+                  style={styles.filterSelectSmall}
+                >
+                  <option value="">All Sales Reps</option>
+                  {salesUsers.map(user => (
+                    <option key={user.id} value={user.id}>{user.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div style={styles.filterGroup}>
               <label style={styles.filterLabel}>Entity</label>
               <select
