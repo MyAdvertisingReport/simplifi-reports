@@ -905,10 +905,30 @@ router.post('/', async (req, res) => {
     // Create order items
     const createdItems = [];
     for (const item of items) {
-      // book_price captures the original/list price, unit_price is what's actually charged
-      // If book_price not provided, default to unit_price (no discount)
-      const bookPrice = item.book_price || item.original_price || item.unit_price;
-      const bookSetupFee = item.book_setup_fee || item.original_setup_fee || item.setup_fee || 0;
+      // Look up the product's default_rate and setup_fee from the catalog as book values
+      let bookPrice = item.book_price || item.original_price;
+      let bookSetupFee = item.book_setup_fee || item.original_setup_fee;
+      
+      // If book prices not provided and we have a product_id, look them up from the catalog
+      if ((!bookPrice || !bookSetupFee) && item.product_id) {
+        const productLookup = await client.query(
+          'SELECT default_rate, setup_fee FROM products WHERE id = $1',
+          [item.product_id]
+        );
+        if (productLookup.rows.length > 0) {
+          const catalogProduct = productLookup.rows[0];
+          if (!bookPrice) {
+            bookPrice = parseFloat(catalogProduct.default_rate) || item.unit_price;
+          }
+          if (!bookSetupFee && bookSetupFee !== 0) {
+            bookSetupFee = parseFloat(catalogProduct.setup_fee) || 0;
+          }
+        }
+      }
+      
+      // Fall back to unit_price if still no book_price
+      bookPrice = bookPrice || item.unit_price;
+      bookSetupFee = bookSetupFee ?? item.setup_fee ?? 0;
       
       const itemResult = await client.query(
         `INSERT INTO order_items (
@@ -1977,9 +1997,30 @@ router.put('/:id', async (req, res) => {
 
       // Create new items with book price tracking
       for (const item of items) {
-        // book_price captures the original/list price, unit_price is what's actually charged
-        const bookPrice = item.book_price || item.original_price || item.unit_price;
-        const bookSetupFee = item.book_setup_fee || item.original_setup_fee || item.setup_fee || 0;
+        // Look up the product's default_rate and setup_fee from the catalog as book values
+        let bookPrice = item.book_price || item.original_price;
+        let bookSetupFee = item.book_setup_fee || item.original_setup_fee;
+        
+        // If book prices not provided and we have a product_id, look them up from the catalog
+        if ((!bookPrice || !bookSetupFee) && item.product_id) {
+          const productLookup = await client.query(
+            'SELECT default_rate, setup_fee FROM products WHERE id = $1',
+            [item.product_id]
+          );
+          if (productLookup.rows.length > 0) {
+            const catalogProduct = productLookup.rows[0];
+            if (!bookPrice) {
+              bookPrice = parseFloat(catalogProduct.default_rate) || item.unit_price;
+            }
+            if (!bookSetupFee && bookSetupFee !== 0) {
+              bookSetupFee = parseFloat(catalogProduct.setup_fee) || 0;
+            }
+          }
+        }
+        
+        // Fall back to unit_price if still no book_price
+        bookPrice = bookPrice || item.unit_price;
+        bookSetupFee = bookSetupFee ?? item.setup_fee ?? 0;
         
         await client.query(
           `INSERT INTO order_items (
