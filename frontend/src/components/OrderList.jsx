@@ -273,16 +273,25 @@ export default function OrderList() {
   const [orders, setOrders] = useState([]);
   const [entities, setEntities] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [salesUsers, setSalesUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Get current user from localStorage
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const isAdmin = currentUser.is_super_admin || currentUser.role === 'admin' || currentUser.role === 'manager';
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [entityFilter, setEntityFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [salesRepFilter, setSalesRepFilter] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showFilters, setShowFilters] = useState(false);
+  
+  // View mode: 'sections' (default) or 'table'
+  const [viewMode, setViewMode] = useState('sections');
 
   // Sort states
   const [sortField, setSortField] = useState('created_at');
@@ -305,23 +314,43 @@ export default function OrderList() {
   useEffect(() => {
     fetchOrders();
     fetchFilterOptions();
+    fetchSalesUsers();
   }, []);
 
   const fetchOrders = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/orders`, {
+      const response = await fetch(`${API_BASE}/api/orders?limit=200`, {
         headers: getAuthHeaders()
       });
       if (!response.ok) throw new Error('Failed to fetch orders');
       const data = await response.json();
-      setOrders(data);
+      
+      // Parse items if it's a JSON string (from PostgreSQL json_agg)
+      const processedOrders = data.map(order => ({
+        ...order,
+        items: typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || [])
+      }));
+      
+      setOrders(processedOrders);
     } catch (err) {
       console.error('Error fetching orders:', err);
       setError('Failed to load orders. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSalesUsers = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/users/sales`, { headers: getAuthHeaders() });
+      if (response.ok) {
+        const data = await response.json();
+        setSalesUsers(data || []);
+      }
+    } catch (err) {
+      console.error('Error fetching sales users:', err);
     }
   };
 
@@ -379,6 +408,14 @@ export default function OrderList() {
   const filteredOrders = useMemo(() => {
     let result = [...orders];
 
+    // For non-admins, only show their own orders
+    if (!isAdmin) {
+      result = result.filter(order => 
+        order.submitted_by === currentUser.id || 
+        order.sales_associate_id === currentUser.id
+      );
+    }
+
     // Search filter (client name or order number)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -391,6 +428,14 @@ export default function OrderList() {
     // Status filter
     if (statusFilter) {
       result = result.filter(order => order.status === statusFilter);
+    }
+
+    // Sales rep filter (admin only)
+    if (salesRepFilter && isAdmin) {
+      result = result.filter(order => 
+        order.submitted_by === salesRepFilter || 
+        order.sales_associate_id === salesRepFilter
+      );
     }
 
     // Entity filter (check if any item matches)
@@ -444,7 +489,89 @@ export default function OrderList() {
     });
 
     return result;
-  }, [orders, searchQuery, statusFilter, entityFilter, categoryFilter, dateRange, sortField, sortDirection]);
+  }, [orders, searchQuery, statusFilter, salesRepFilter, entityFilter, categoryFilter, dateRange, sortField, sortDirection, isAdmin, currentUser.id]);
+
+  // Group orders by section for sectioned view
+  const orderSections = useMemo(() => {
+    const sections = {
+      needsApproval: { 
+        title: '⚠️ Needs Approval', 
+        orders: [], 
+        color: '#f59e0b',
+        bgColor: '#fef3c7',
+        description: 'Orders with price adjustments awaiting manager approval'
+      },
+      approved: { 
+        title: '✅ Approved - Ready to Send', 
+        orders: [], 
+        color: '#3b82f6',
+        bgColor: '#dbeafe',
+        description: 'Approved orders ready to be sent to clients'
+      },
+      sentToClient: { 
+        title: '📤 Sent to Client', 
+        orders: [], 
+        color: '#8b5cf6',
+        bgColor: '#f3e8ff',
+        description: 'Awaiting client signature'
+      },
+      signed: { 
+        title: '✍️ Signed', 
+        orders: [], 
+        color: '#10b981',
+        bgColor: '#d1fae5',
+        description: 'Client has signed - ready to activate'
+      },
+      active: { 
+        title: '🟢 Active', 
+        orders: [], 
+        color: '#059669',
+        bgColor: '#dcfce7',
+        description: 'Currently running campaigns'
+      },
+      drafts: { 
+        title: '📝 Drafts', 
+        orders: [], 
+        color: '#6b7280',
+        bgColor: '#f3f4f6',
+        description: 'Work in progress'
+      },
+      other: { 
+        title: '📁 Other', 
+        orders: [], 
+        color: '#9ca3af',
+        bgColor: '#f9fafb',
+        description: 'Completed, cancelled, or expired'
+      }
+    };
+
+    filteredOrders.forEach(order => {
+      switch (order.status) {
+        case 'pending_approval':
+          sections.needsApproval.orders.push(order);
+          break;
+        case 'approved':
+          sections.approved.orders.push(order);
+          break;
+        case 'sent':
+          sections.sentToClient.orders.push(order);
+          break;
+        case 'signed':
+          sections.signed.orders.push(order);
+          break;
+        case 'active':
+          sections.active.orders.push(order);
+          break;
+        case 'draft':
+          sections.drafts.orders.push(order);
+          break;
+        default:
+          sections.other.orders.push(order);
+      }
+    });
+
+    return sections;
+  }, [filteredOrders]);
 
   // Pagination
   const totalPages = Math.ceil(filteredOrders.length / itemsPerPage);
@@ -456,7 +583,7 @@ export default function OrderList() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter, entityFilter, categoryFilter, dateRange]);
+  }, [searchQuery, statusFilter, salesRepFilter, entityFilter, categoryFilter, dateRange]);
 
   // Format helpers
   const formatCurrency = (amount) => {
@@ -484,12 +611,13 @@ export default function OrderList() {
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter('');
+    setSalesRepFilter('');
     setEntityFilter('');
     setCategoryFilter('');
     setDateRange({ start: '', end: '' });
   };
 
-  const hasActiveFilters = searchQuery || statusFilter || entityFilter || categoryFilter || dateRange.start || dateRange.end;
+  const hasActiveFilters = searchQuery || statusFilter || salesRepFilter || entityFilter || categoryFilter || dateRange.start || dateRange.end;
 
   // Calculate summary stats
   const stats = useMemo(() => {
@@ -578,6 +706,53 @@ export default function OrderList() {
             ))}
           </select>
 
+          {/* Sales Rep Filter - Admin only */}
+          {isAdmin && salesUsers.length > 0 && (
+            <select
+              value={salesRepFilter}
+              onChange={(e) => setSalesRepFilter(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="">All Sales Reps</option>
+              {salesUsers.map(user => (
+                <option key={user.id} value={user.id}>{user.name}</option>
+              ))}
+            </select>
+          )}
+
+          {/* View Mode Toggle */}
+          <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+            <button
+              onClick={() => setViewMode('sections')}
+              style={{
+                padding: '8px 12px',
+                background: viewMode === 'sections' ? '#1e3a8a' : 'white',
+                color: viewMode === 'sections' ? 'white' : '#64748b',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500
+              }}
+            >
+              Sections
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              style={{
+                padding: '8px 12px',
+                background: viewMode === 'table' ? '#1e3a8a' : 'white',
+                color: viewMode === 'table' ? 'white' : '#64748b',
+                border: 'none',
+                borderLeft: '1px solid #e2e8f0',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontWeight: 500
+              }}
+            >
+              Table
+            </button>
+          </div>
+
           <button
             onClick={() => setShowFilters(!showFilters)}
             style={{
@@ -593,6 +768,23 @@ export default function OrderList() {
         {/* Expanded Filters */}
         {showFilters && (
           <div style={styles.expandedFilters}>
+            {/* Sales Rep Filter in expanded area for mobile */}
+            {isAdmin && salesUsers.length > 0 && (
+              <div style={styles.filterGroup}>
+                <label style={styles.filterLabel}>Sales Rep</label>
+                <select
+                  value={salesRepFilter}
+                  onChange={(e) => setSalesRepFilter(e.target.value)}
+                  style={styles.filterSelectSmall}
+                >
+                  <option value="">All Sales Reps</option>
+                  {salesUsers.map(user => (
+                    <option key={user.id} value={user.id}>{user.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div style={styles.filterGroup}>
               <label style={styles.filterLabel}>Entity</label>
               <select
@@ -641,6 +833,23 @@ export default function OrderList() {
               />
             </div>
 
+            {/* Sales Rep Filter - Only visible to admins */}
+            {isAdmin && salesUsers.length > 0 && (
+              <div style={styles.filterGroup}>
+                <label style={styles.filterLabel}>Sales Rep</label>
+                <select
+                  value={salesRepFilter}
+                  onChange={(e) => setSalesRepFilter(e.target.value)}
+                  style={styles.filterSelectSmall}
+                >
+                  <option value="">All Sales Reps</option>
+                  {salesUsers.map(user => (
+                    <option key={user.id} value={user.id}>{user.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             {hasActiveFilters && (
               <button onClick={clearFilters} style={styles.clearFiltersButton}>
                 Clear All
@@ -652,10 +861,11 @@ export default function OrderList() {
 
       {/* Results Summary */}
       <div style={styles.resultsSummary}>
-        <span>Showing {paginatedOrders.length} of {filteredOrders.length} orders</span>
+        <span>Showing {filteredOrders.length} orders</span>
+        {!isAdmin && <span style={{ marginLeft: '8px', color: '#64748b', fontSize: '12px' }}>(Your orders only)</span>}
       </div>
 
-      {/* Orders Table */}
+      {/* Orders Display */}
       {error ? (
         <div style={styles.errorCard}>
           <p>{error}</p>
@@ -672,7 +882,169 @@ export default function OrderList() {
             </a>
           )}
         </div>
+      ) : viewMode === 'sections' ? (
+        /* SECTIONED VIEW */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {Object.entries(orderSections).map(([key, section]) => {
+            if (section.orders.length === 0) return null;
+            return (
+              <div key={key} style={{ background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                {/* Section Header */}
+                <div style={{ 
+                  padding: '16px 20px', 
+                  background: section.bgColor, 
+                  borderBottom: `2px solid ${section.color}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: section.color }}>
+                      {section.title}
+                    </h3>
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{section.description}</p>
+                  </div>
+                  <span style={{ 
+                    background: section.color, 
+                    color: 'white', 
+                    padding: '4px 12px', 
+                    borderRadius: '20px', 
+                    fontSize: '13px', 
+                    fontWeight: 600 
+                  }}>
+                    {section.orders.length}
+                  </span>
+                </div>
+                
+                {/* Section Orders */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Client</th>
+                        <th style={styles.th}>Brands</th>
+                        <th style={styles.th}>Products</th>
+                        <th style={styles.th}>Contract Period</th>
+                        <th style={styles.th}>Value</th>
+                        <th style={styles.th}>Sales Rep</th>
+                        <th style={styles.th}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.orders.map(order => {
+                        const brands = getOrderBrands(order.items);
+                        const categories = getOrderCategories(order.items);
+                        return (
+                          <tr key={order.id} style={styles.tr}>
+                            <td style={styles.td}>
+                              <div style={styles.clientCell}>
+                                <span style={styles.clientName}>{order.client_name || 'Unknown Client'}</span>
+                                {order.order_number && (
+                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>#{order.order_number}</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {brands.length > 0 ? brands.map((brand, idx) => {
+                                  const brandColor = getBrandColor(brand.name, brand.primaryCategory);
+                                  return (
+                                    <span key={idx} style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      padding: '3px 8px',
+                                      fontSize: '11px',
+                                      fontWeight: '600',
+                                      backgroundColor: brandColor.bg,
+                                      color: brandColor.color,
+                                      borderRadius: '6px',
+                                    }}>
+                                      {brand.code || brand.name}
+                                    </span>
+                                  );
+                                }) : (
+                                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <span style={styles.productCount}>
+                                  {order.items?.length || order.item_count || 0} products
+                                </span>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                  {categories.slice(0, 3).map((cat, idx) => {
+                                    const catStyle = getCategoryStyle(cat.name);
+                                    return (
+                                      <span key={idx} style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '2px',
+                                        padding: '2px 6px',
+                                        fontSize: '10px',
+                                        fontWeight: '500',
+                                        backgroundColor: catStyle.bg,
+                                        color: catStyle.color,
+                                        borderRadius: '4px',
+                                      }}>
+                                        {catStyle.icon} {cat.count}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={styles.dateCell}>
+                                <span>{formatDate(order.contract_start_date)}</span>
+                                <span style={styles.dateSeparator}>→</span>
+                                <span>{formatDate(order.contract_end_date)}</span>
+                              </div>
+                              <span style={styles.termMonths}>
+                                {order.term_months === 1 ? 'One-Time' : `${order.term_months || 0} months`}
+                              </span>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={styles.valueCell}>
+                                <span style={styles.totalValue}>{formatCurrency(order.total_value || order.contract_total)}</span>
+                                {order.term_months > 1 && order.monthly_total && (
+                                  <span style={styles.monthlyValue}>{formatCurrency(order.monthly_total)}/mo</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <span style={styles.salesRep}>{order.submitted_by_name || '—'}</span>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={styles.actions}>
+                                <button
+                                  onClick={() => fetchOrderDetails(order.id)}
+                                  style={styles.actionButton}
+                                  title="View Details"
+                                >
+                                  <Icons.Eye />
+                                </button>
+                                <a
+                                  href={`/orders/${order.id}/edit`}
+                                  style={styles.actionButton}
+                                  title="Edit Order"
+                                >
+                                  <Icons.Edit />
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
+        /* TABLE VIEW */
         <div style={styles.tableCard}>
           <div style={styles.tableWrapper}>
             <table style={styles.table}>
@@ -811,7 +1183,7 @@ export default function OrderList() {
                         </div>
                       </td>
                       <td style={styles.td}>
-                        <span style={styles.salesRep}>{order.submitted_by_name || '—'}</span>
+                        <span style={styles.salesRep}>{order.sales_associate_name || order.submitted_by_name || '—'}</span>
                       </td>
                       <td style={styles.td}>
                         <span style={styles.dateText}>{formatDate(order.created_at)}</span>
