@@ -373,7 +373,15 @@ export default function OrderList() {
       });
       if (!response.ok) throw new Error('Failed to fetch order details');
       const data = await response.json();
-      setSelectedOrder(data);
+      
+      // Parse items if it's a JSON string
+      const processedOrder = {
+        ...data,
+        items: typeof data.items === 'string' ? JSON.parse(data.items) : (data.items || [])
+      };
+      
+      console.log('Order details loaded:', processedOrder.id, 'Items:', processedOrder.items?.length || 0);
+      setSelectedOrder(processedOrder);
       setShowOrderModal(true);
     } catch (err) {
       console.error('Error fetching order details:', err);
@@ -1580,36 +1588,228 @@ export default function OrderList() {
                 <h3 style={styles.modalSectionTitle}>
                   <Icons.FileText /> Products ({selectedOrder.items?.length || 0})
                 </h3>
-                <div style={styles.productsList}>
-                  {selectedOrder.items?.map((item, idx) => {
-                    const catStyle = getCategoryStyle(item.product_category);
-                    return (
-                      <div key={idx} style={styles.productItem}>
-                        <div style={styles.productItemInfo}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {selectedOrder.items?.length > 0 ? (
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '12px',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '12px',
+                    padding: '16px'
+                  }}>
+                    {selectedOrder.items.map((item, idx) => {
+                      const catStyle = getCategoryStyle(item.product_category);
+                      const bookPrice = parseFloat(item.book_price) || 0;
+                      const unitPrice = parseFloat(item.unit_price) || parseFloat(item.line_total) || 0;
+                      const hasDiscount = bookPrice > 0 && unitPrice < bookPrice;
+                      const discountPercent = hasDiscount ? Math.round(((bookPrice - unitPrice) / bookPrice) * 100) : 0;
+                      const bookSetupFee = parseFloat(item.book_setup_fee) || 0;
+                      const actualSetupFee = parseFloat(item.setup_fee) || 0;
+                      const setupWaived = bookSetupFee > 0 && actualSetupFee < bookSetupFee;
+                      
+                      return (
+                        <div key={idx} style={{
+                          backgroundColor: 'white',
+                          borderRadius: '10px',
+                          padding: '14px 16px',
+                          border: hasDiscount || setupWaived ? '2px solid #fcd34d' : '1px solid #e2e8f0',
+                        }}>
+                          {/* Product Header Row */}
+                          <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'flex-start',
+                            marginBottom: '8px'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                              {/* Brand Bubble */}
+                              {item.entity_name && (
+                                <span style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '4px 10px',
+                                  fontSize: '11px',
+                                  fontWeight: '600',
+                                  backgroundColor: '#1e3a8a',
+                                  color: 'white',
+                                  borderRadius: '6px',
+                                }}>
+                                  {item.entity_name}
+                                </span>
+                              )}
+                              {/* Category Bubble */}
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 10px',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                backgroundColor: catStyle.bg,
+                                color: catStyle.color,
+                                borderRadius: '6px',
+                              }}>
+                                {catStyle.icon} {item.product_category || 'Other'}
+                              </span>
+                            </div>
+                            {/* Quantity Badge */}
                             <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              padding: '2px 6px',
-                              fontSize: '10px',
-                              backgroundColor: catStyle.bg,
-                              color: catStyle.color,
-                              borderRadius: '4px',
+                              padding: '4px 10px',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              backgroundColor: '#f1f5f9',
+                              color: '#64748b',
+                              borderRadius: '6px',
                             }}>
-                              {catStyle.icon}
+                              Qty: {item.quantity || 1}
                             </span>
-                            <span style={styles.productItemName}>{item.product_name}</span>
                           </div>
-                          <span style={styles.productItemMeta}>{item.entity_name || item.product_category}</span>
+                          
+                          {/* Product Name */}
+                          <div style={{ 
+                            fontWeight: '600', 
+                            fontSize: '15px',
+                            color: '#1e293b',
+                            marginBottom: '10px'
+                          }}>
+                            {item.product_name}
+                          </div>
+                          
+                          {/* Pricing Row */}
+                          <div style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '8px'
+                          }}>
+                            {/* Price Info */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              {hasDiscount ? (
+                                <>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                    <span style={{ fontSize: '11px', color: '#9ca3af' }}>Book Rate</span>
+                                    <span style={{ 
+                                      textDecoration: 'line-through', 
+                                      color: '#9ca3af', 
+                                      fontSize: '14px' 
+                                    }}>
+                                      {formatCurrency(bookPrice)}
+                                    </span>
+                                  </div>
+                                  <span style={{ fontSize: '18px', color: '#d1d5db' }}>→</span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                    <span style={{ fontSize: '11px', color: '#059669' }}>Actual Rate</span>
+                                    <span style={{ 
+                                      fontWeight: '700', 
+                                      color: '#059669', 
+                                      fontSize: '16px' 
+                                    }}>
+                                      {formatCurrency(unitPrice)}
+                                    </span>
+                                  </div>
+                                  <span style={{
+                                    backgroundColor: '#fee2e2',
+                                    color: '#dc2626',
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '12px',
+                                    fontWeight: '700',
+                                  }}>
+                                    -{discountPercent}%
+                                  </span>
+                                </>
+                              ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <span style={{ fontSize: '11px', color: '#64748b' }}>Rate</span>
+                                  <span style={{ 
+                                    fontWeight: '600', 
+                                    color: '#1e293b', 
+                                    fontSize: '16px' 
+                                  }}>
+                                    {formatCurrency(unitPrice || item.line_total)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Setup Fee Info */}
+                            {(bookSetupFee > 0 || actualSetupFee > 0) && (
+                              <div style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '8px',
+                                padding: '6px 12px',
+                                backgroundColor: setupWaived ? '#dbeafe' : '#f1f5f9',
+                                borderRadius: '8px'
+                              }}>
+                                <span style={{ fontSize: '12px', color: '#64748b' }}>Setup:</span>
+                                {setupWaived ? (
+                                  <>
+                                    <span style={{ 
+                                      textDecoration: 'line-through', 
+                                      color: '#9ca3af', 
+                                      fontSize: '12px' 
+                                    }}>
+                                      {formatCurrency(bookSetupFee)}
+                                    </span>
+                                    <span style={{ 
+                                      fontWeight: '600', 
+                                      color: '#1e40af', 
+                                      fontSize: '12px' 
+                                    }}>
+                                      {actualSetupFee > 0 ? formatCurrency(actualSetupFee) : 'WAIVED'}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span style={{ fontWeight: '500', color: '#374151', fontSize: '12px' }}>
+                                    {formatCurrency(actualSetupFee || bookSetupFee)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Line Total */}
+                            <div style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column',
+                              alignItems: 'flex-end',
+                              borderLeft: '1px solid #e2e8f0',
+                              paddingLeft: '16px'
+                            }}>
+                              <span style={{ fontSize: '11px', color: '#64748b' }}>Line Total</span>
+                              <span style={{ 
+                                fontWeight: '700', 
+                                color: '#1e293b', 
+                                fontSize: '16px' 
+                              }}>
+                                {formatCurrency(item.line_total)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div style={styles.productItemPrice}>
-                          <span>{formatCurrency(item.line_total)}</span>
-                          <span style={styles.productItemQty}>× {item.quantity}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '24px',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '12px',
+                    color: '#64748b'
+                  }}>
+                    <p style={{ margin: 0 }}>No products found for this order</p>
+                    <a href={`/orders/${selectedOrder.id}/edit`} style={{
+                      display: 'inline-block',
+                      marginTop: '12px',
+                      color: '#3b82f6',
+                      fontWeight: '500'
+                    }}>
+                      Edit order to add products →
+                    </a>
+                  </div>
+                )}
               </div>
 
               {/* Totals */}
