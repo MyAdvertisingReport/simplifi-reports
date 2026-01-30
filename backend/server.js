@@ -1562,7 +1562,7 @@ app.put('/api/clients/:id', authenticateToken, async (req, res) => {
     let paramCount = 1;
     
     // Handle existing fields through dbHelper pattern
-    if (name !== undefined) { updates.push(`name = $${paramCount++}`); values.push(name); }
+    if (name !== undefined) { updates.push(`business_name = $${paramCount++}`); values.push(name); }
     if (logoPath !== undefined) { updates.push(`logo_path = $${paramCount++}`); values.push(logoPath); }
     if (primaryColor !== undefined) { updates.push(`primary_color = $${paramCount++}`); values.push(primaryColor); }
     if (secondaryColor !== undefined) { updates.push(`secondary_color = $${paramCount++}`); values.push(secondaryColor); }
