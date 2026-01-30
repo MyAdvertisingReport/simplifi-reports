@@ -1,6 +1,45 @@
 # WSIC Advertising Platform - New Chat Context
 ## Upload this file at the START of every new Claude chat
-## Last Updated: January 29, 2026 (Late Evening)
+## Last Updated: January 30, 2026
+
+---
+
+## 🎯 IMMEDIATE PRIORITY: Orders Page Fixes
+
+### Current Issues to Resolve
+
+#### 1. Sections View Not Rendering
+- **Status**: Toggle buttons show, but clicking "Sections" does nothing
+- **Root Cause**: `viewMode === 'sections'` conditional rendering not implemented
+- **Files**: `OrderList.jsx`
+- **Solution Needed**: Add the sectioned view JSX that groups orders by status
+
+#### 2. Some Orders Missing Products/Brands
+- **Status**: Some rows show "0 products" and "—" for brands
+- **Root Cause**: These orders genuinely have no items in `order_items` table
+- **Note**: NOT a code bug - data issue from test orders created without products
+- **Parent order items**: Kill/Change orders now show parent order's products ✅
+
+#### 3. Completed Features ✅
+- Sales Rep filter dropdown (admin only) ✅
+- Sections/Table toggle buttons visible ✅
+- Brand bubbles with correct colors ✅
+- Category icons showing ✅
+- Admin sees all orders, sales reps see only theirs ✅
+- JWT token decode for user detection ✅
+
+### Order Sections Needed
+```javascript
+const orderSections = {
+  needsApproval: { title: '⚠️ Needs Approval', color: '#f59e0b', statuses: ['pending_approval'] },
+  approved: { title: '✅ Approved - Ready to Send', color: '#3b82f6', statuses: ['approved'] },
+  sentToClient: { title: '📤 Sent to Client', color: '#8b5cf6', statuses: ['sent'] },
+  signed: { title: '✍️ Signed', color: '#10b981', statuses: ['signed'] },
+  active: { title: '🟢 Active', color: '#059669', statuses: ['active'] },
+  drafts: { title: '📝 Drafts', color: '#6b7280', statuses: ['draft'] },
+  other: { title: '📁 Other', color: '#9ca3af', statuses: ['cancelled', 'completed', 'expired'] }
+};
+```
 
 ---
 
@@ -11,32 +50,32 @@
 ```
 simplifi-reports/              ← Git root (push from here)
 ├── backend/                   ← Railway deployment
-│   ├── server.js              ← Main server (~5,800 lines) ⭐
+│   ├── server.js              ← Main server (~6,300 lines) ⭐
 │   ├── package.json
 │   ├── routes/
-│   │   ├── order.js           
+│   │   ├── order.js           ← Order CRUD, items query ⭐
 │   │   ├── billing.js         
 │   │   └── ...
 │   └── services/
-│       ├── email-service.js   ← Universal Email Design System ⭐
+│       ├── email-service.js   ← Universal Email Design System
 │       └── stripe-service.js  
 │
 └── frontend/                  ← Vercel deployment
     └── src/
-        ├── App.jsx            ← Main app (~17k lines) ⭐
+        ├── App.jsx            ← Main app (~17k lines)
         └── components/
-            ├── OrderList.jsx  ← Orders page with brand bubbles ⭐
-            ├── ClientSigningPage.jsx ← Stripe Financial Connections
+            ├── OrderList.jsx  ← Orders page - NEEDS SECTIONS VIEW ⭐
+            ├── ClientSigningPage.jsx
             └── ...
 ```
 
 ### 🚨 Git Commands MUST Use Full Paths:
 ```bash
 # ✅ CORRECT
-git add backend/server.js frontend/src/App.jsx
+git add backend/routes/order.js frontend/src/components/OrderList.jsx
 
 # ❌ WRONG
-git add server.js App.jsx
+git add order.js OrderList.jsx
 ```
 
 ---
@@ -51,168 +90,64 @@ git add server.js App.jsx
 | Auth | JWT + bcrypt | Custom |
 | Email | Postmark | ✅ Working |
 | Payments | Stripe | ✅ Working (Financial Connections) |
-| Ad Platform | Simpli.fi API | ✅ Working |
 | Domain | myadvertisingreport.com | Vercel |
-
----
-
-## 📧 UNIVERSAL EMAIL DESIGN SYSTEM ⭐ NEW
-
-### Anti-Phishing Principles
-1. **NEVER use Order Numbers** in emails - backend only
-2. **Subject Format**: `[ACTION] - [CLIENT NAME] - [BRANDS]`
-3. **Always include Brand Bubbles** (dark blue #1e3a8a)
-4. **Always include Category Bubbles** with icons
-5. **Single clear CTA button**
-
-### Subject Line Examples
-```
-New Order Submitted - ABC Company - WSIC + Lake Norman Woman
-⚠️ Approval Required - ABC Company - WSIC
-✓ Approved - ABC Company - WSIC + Lake Norman Woman
-🎉 Contract Signed - ABC Company - WSIC
-```
-
-### Category Icons
-- 📰 Print (blue)
-- 📻 Broadcast (pink)  
-- 🎙️ Podcast (purple)
-- 💻 Digital (green)
-- 🎪 Events (amber)
-- 🌐 Web (indigo)
-- 📱 Social (rose)
 
 ---
 
 ## 🗄️ Database Tables
 
-### Key Tables
+### Key Tables for Orders
 | Table | Purpose |
 |-------|---------|
-| `advertising_clients` | Client/business records |
-| `contacts` | Contact people (first_name, last_name) |
-| `users` | Team members |
-| `orders` | Advertising orders |
-| `order_items` | Line items with `book_price`, `book_setup_fee` |
-| `invoices` | Billing invoices |
-| `commissions` | Commission records with split support |
+| `orders` | Order records with status, client_id, submitted_by |
+| `order_items` | Line items with product details, entity_id |
+| `entities` | Business entities (WSIC, LKN, LWP) |
+| `products` | Product catalog |
+| `users` | Team members (for sales_associate filter) |
 
-### Order Items Fields (for approval display)
+### Order Items Query (in order.js)
 ```sql
-order_items:
-  - book_price         -- Original product price
-  - book_setup_fee     -- Original setup fee
-  - unit_price         -- Adjusted price (what client pays)
-  - setup_fee          -- Adjusted setup fee
-  - discount_percent   -- Discount applied
+-- Items are fetched via LEFT JOIN with json_agg
+-- Kill/Change orders also get parent_item_stats for parent order's items
+COALESCE(item_stats.items_json, parent_item_stats.items_json) as items
 ```
 
-### User Roles
-```sql
-CHECK (role IN ('admin', 'sales_manager', 'sales_associate', 'staff', 'sales', 'event_manager'))
-```
-
----
-
-## 👥 Team Structure & Dashboard Requirements
-
-### Super Admins (Macro Dashboard)
-| User | Email | Dashboard Focus |
-|------|-------|-----------------|
-| Justin Ckezepis | justin@wsicnews.com | All metrics, team performance, revenue, approvals |
-| Mamie Lee | mamie@wsicnews.com | All metrics, team performance, revenue, approvals |
-| Bill Blakely | bill@wsicnews.com | Radio/Programming focused (WSIC Broadcast) |
-
-### Admin (Operational Dashboard)
-| User | Email | Dashboard Focus |
-|------|-------|-----------------|
-| Lalaine Agustin | admin@wsicnews.com | Orders to process, pending payments, action items |
-
-### Event Manager (Events Dashboard)
-| User | Email | Dashboard Focus |
-|------|-------|-----------------|
-| Erin Connair | erin@lakenormanwoman.com | Events calendar, event orders, LKN Woman events |
-
-### Sales Associates (Sales Dashboard)
-- Their clients only
-- Their pipeline
-- Their commissions
-- CRM capabilities
-
-### Staff
-- Chelsea Bren, CJ Schrader, Reese Smith
-- Non-sales access, specialized views
-
----
-
-## 💰 Commission System ✅ COMPLETE
-
-### Default Rates
-| Category | Rate |
-|----------|------|
-| Print | 30% |
-| Broadcast | 30% |
-| Podcast | 30% |
-| Digital/Programmatic | 18% |
-| Web & Social | 30% |
-| Events | 20% |
-| Default | 10% |
-
----
-
-## 🎯 CURRENT PRIORITIES
-
-### 1. Email System Fine-Tuning (In Progress)
-- [ ] Verify brand bubbles show on all email types
-- [ ] Ensure `order.items` is populated when emails are sent
-- [ ] Test all email templates with real orders
-
-### 2. Role-Based Dashboards (Next)
-- [ ] **Bill's Dashboard** - WSIC Radio/Programming focus
-- [ ] **Lalaine's Dashboard** - Operational action items
-- [ ] **Erin's Dashboard** - Events Manager view
-- [ ] **Sales Associate Dashboard** - Personal CRM
-
-### 3. Order Testing
-- [ ] New Order (Electronic) - Full signing flow
-- [ ] ACH with Stripe Financial Connections
-- [ ] Commission auto-generates on approval
-
----
-
-## ✅ Completed This Session (January 29, 2026 - Late Evening)
-
-### Email System Updates
-- Universal Email Design System principles
-- Subject lines: `[ACTION] - [CLIENT] - [BRANDS]` format
-- Brand bubbles in all order-related emails
-- Category bubbles with icons (📰📻🎙️💻🎪🌐📱)
-- Removed order numbers from all emails
-- Multiple recipients: Justin, Mamie, Lalaine + Bill (if WSIC)
-- Product details table in order submitted emails
-
-### Orders Page Updates
-- Brand bubbles column in orders table
-- Category bubbles with icons under product count
-- Removed order numbers from display
-- Order detail modal shows client name (not order number)
-- Clear approval reasons showing:
-  - Book price vs adjusted price
-  - Discount percentage
-  - Setup fee waivers
-
-### ACH Payment Fix
-- Implemented Stripe Financial Connections
-- Instant bank verification via customer's online banking
-- Replaced manual routing/account number entry
-
----
-
-## 📝 API Endpoints Reference
-
-### Email Recipients Logic
+### User Detection (in OrderList.jsx)
 ```javascript
-// Order Submitted - always these three + conditional Bill
+// User data is stored in JWT token, not localStorage.user
+const token = localStorage.getItem('token');
+const payload = JSON.parse(atob(token.split('.')[1]));
+// payload = { id, email, role, name, iat, exp }
+```
+
+---
+
+## 👥 User Roles
+
+| Role | Orders Access |
+|------|---------------|
+| Super Admin (is_super_admin) | All orders |
+| Admin (role='admin') | All orders |
+| Manager (role='manager') | All orders |
+| Sales Associate | Own orders only |
+| Staff | Own orders only |
+
+### Admin Detection in OrderList.jsx
+```javascript
+const isAdmin = 
+  currentUser.is_super_admin === true || 
+  currentUser.role === 'admin' || 
+  currentUser.role === 'manager' ||
+  currentUser.email === 'justin@wsicnews.com' || 
+  currentUser.email === 'mamie@wsicnews.com';
+```
+
+---
+
+## 📧 Email System (Reference)
+
+### Recipients Logic
+```javascript
 const recipients = [
   'justin@wsicnews.com',
   'mamie@wsicnews.com', 
@@ -223,13 +158,32 @@ if (includesWSIC) {
 }
 ```
 
-### Key Endpoints
-```
-GET  /api/orders                         - List orders with items
-POST /api/orders/:id/status              - Update status (triggers emails)
-GET  /api/orders/:id                     - Get order with items
-POST /api/orders/sign/:token/setup-intent/ach - ACH Financial Connections
-```
+### Category Icons
+- 📰 Print (blue) | 📻 Broadcast (pink) | 🎙️ Podcast (purple)
+- 💻 Digital (green) | 🎪 Events (amber) | 🌐 Web (indigo) | 📱 Social (rose)
+
+---
+
+## ✅ Completed This Session (January 30, 2026)
+
+### Orders Page
+- [x] Admin sees all orders (JWT token decode working)
+- [x] Sales Rep filter dropdown for admins
+- [x] Sections/Table toggle buttons visible
+- [x] Brand bubbles with entity-specific colors
+- [x] Category bubbles with icons
+- [x] Kill/Change orders show parent's products
+- [x] `viewMode` and `orderSections` state ready
+
+### Server Fixes
+- [x] Fixed `o.created_by` → `o.submitted_by` in sales performance report
+- [x] Fixed same in leaderboard report
+- [x] Email logging infrastructure added
+- [x] Auto-send on approval (when primary contact exists)
+
+### Still Needed
+- [ ] **Sections view rendering** (main priority)
+- [ ] Orders with no items - data cleanup or handling
 
 ---
 
@@ -243,16 +197,10 @@ POST /api/orders/sign/:token/setup-intent/ach - ACH Financial Connections
 ### Git Workflow
 ```cmd
 cd simplifi-reports
-del backend\server.js
-del frontend\src\App.jsx
 del frontend\src\components\OrderList.jsx
-del backend\services\email-service.js
-copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
-copy "C:\Users\WSIC BILLING\Downloads\App.jsx" frontend\src\App.jsx
 copy "C:\Users\WSIC BILLING\Downloads\OrderList.jsx" frontend\src\components\OrderList.jsx
-copy "C:\Users\WSIC BILLING\Downloads\email-service.js" backend\services\email-service.js
 git add -A
-git commit -m "Description"
+git commit -m "Add sections view to orders page"
 git push origin main
 ```
 
@@ -262,22 +210,19 @@ git push origin main
 
 ### Required
 1. **NEW_CHAT_PROMPT.md** - This file (always first)
-2. **ROADMAP.md** - Current priorities
-3. **SESSION_SUMMARY.md** - Last session's work
-4. **EMAIL_DESIGN_SYSTEM.md** - Email principles
+2. **OrderList.jsx** - Current version for sections view work
+3. **order.js** - Backend orders route (for reference)
 
-### Code Files (for dashboard work)
-- **App.jsx** - For dashboard customization
+### Optional (if needed)
+- **App.jsx** - For dashboard work
 - **server.js** - For backend reference
-- **email-service.js** - For email fine-tuning
-- **OrderList.jsx** - For orders page reference
+- **email-service.js** - For email work
 
 ---
 
 ## 🔒 Security Notes
 
-- Order numbers: NEVER in client/public emails (phishing prevention)
-- Passwords hashed with bcrypt (10 rounds)
+- Order numbers: NEVER in client/public emails
 - JWT authentication with 24h expiry
+- User data in JWT token payload (not localStorage.user)
 - Stripe Financial Connections for secure bank verification
-- No card/bank data stored locally (Stripe handles all)

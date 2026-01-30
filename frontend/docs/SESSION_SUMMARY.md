@@ -1,167 +1,173 @@
-# Session Summary - January 29, 2026 (Late Evening)
-## Email Design System & Orders Page Visual Updates
+# Session Summary - January 30, 2026
+## Orders Page Improvements & Email Infrastructure
 
 ---
 
 ## 🎯 Session Goals
-1. ✅ Fix ACH payment "must be verified" error
-2. ✅ Update emails with better formatting and recipients
-3. ✅ Add brand/category bubbles to Orders page
-4. ✅ Show clear approval reasons in order modal
-5. ✅ Create Universal Email Design System principles
+1. ✅ Fix brand bubble colors to match product categories
+2. ✅ Debug email delivery issues (Lalaine not receiving)
+3. ✅ Add email logging infrastructure
+4. ✅ Auto-send orders to client after approval
+5. ✅ Add sectioned view to Orders page
+6. ✅ Add Sales Rep filter for admins
+7. ⏳ Sections view rendering (partially complete)
 
 ---
 
 ## ✅ What We Accomplished
 
-### 1. ACH Payment Fix - COMPLETE
+### 1. Email Logging Infrastructure - COMPLETE
 
-**Problem:** Stripe ACH returned "must be verified" error with test credentials
+**New Features:**
+- All emails now logged to `email_logs` table with:
+  - `email_type` (contract-sent, order-approved, etc.)
+  - `order_id`, `invoice_id`, `client_id`, `contact_id`
+  - `status` (sent, failed, pending_resend)
+  - `metadata` (JSONB for additional context)
+- Console logging: `[Email] Attempting to send "Subject" to email@example.com`
+- Success/failure tracking with Postmark MessageID
 
-**Solution:** Implemented Stripe Financial Connections
-- Instant bank verification via customer's online banking login
-- Fallback to micro-deposits if instant not available
-- Removed manual routing/account number entry form
+**New API Endpoints:**
+```
+GET  /api/email/dashboard     - Email stats (last 30 days)
+GET  /api/email/order/:id     - Emails for specific order
+POST /api/email/:id/resend    - Mark email for resend
+POST /api/email/test          - Send test email
+```
 
-**Files Changed:**
-- `ClientSigningPage.jsx` - New "Connect Bank Account" flow
-- `server.js` - New endpoint `/api/orders/sign/:token/setup-intent/ach`
+**Files Changed:** `email-service.js`, `server.js`
 
 ---
 
-### 2. Universal Email Design System - COMPLETE
+### 2. Auto-Send After Approval - COMPLETE
 
-**Anti-Phishing Principles:**
-1. NEVER use order numbers in emails (backend only)
-2. Consistent subject format: `[ACTION] - [CLIENT] - [BRANDS]`
-3. Always include brand bubbles (dark blue #1e3a8a)
-4. Always include category bubbles with icons
-5. Single clear CTA button
+**New Behavior:**
+- When order is approved AND has primary contact:
+  - Status changes directly to `sent` (not just `approved`)
+  - Generates signing token
+  - Sends contract email automatically
+  - Response includes `auto_sent: true` and `signing_url`
 
-**Subject Line Format:**
-```
-New Order Submitted - ABC Company - WSIC + Lake Norman Woman
-⚠️ Approval Required - ABC Company - WSIC
-✓ Approved - ABC Company - WSIC + Lake Norman Woman
-↩️ Revision Needed - ABC Company - WSIC
-🎉 Contract Signed - ABC Company - WSIC
-```
+- When order approved but NO primary contact:
+  - Status changes to `approved`
+  - Message: "Order approved (no primary contact found - please add contact and send manually)"
 
-**Category Icons:**
-| Category | Icon | Color |
-|----------|------|-------|
-| Print | 📰 | Blue |
-| Broadcast | 📻 | Pink |
-| Podcast | 🎙️ | Purple |
-| Digital | 💻 | Green |
-| Events | 🎪 | Amber |
-| Web | 🌐 | Indigo |
-| Social | 📱 | Rose |
-
-**Email Recipients:**
-- Order Submitted: Justin, Mamie, Lalaine + Bill (if WSIC included)
-- Approval Required: Approvers only
-- Order Approved: Order submitter
-- Contract Signed: Justin, Mamie, Lalaine + Sales Rep
+**Files Changed:** `order.js`
 
 ---
 
-### 3. Orders Page Visual Updates - COMPLETE
+### 3. Orders Page - User Detection Fixed - COMPLETE
 
-**Table Changes:**
-- Added **Brands column** with brand bubbles
-- Added **category bubbles** with icons under product count
-- Removed order numbers from client column
-- Client name now displays alone
+**Problem:** `localStorage.getItem('user')` returned `null`
 
-**Order Detail Modal Changes:**
-- Header shows **Client Name** (not "Order ORD-2026-XXXX")
-- Brand bubbles displayed prominently
-- Category bubbles with icons
-- **Clear Approval Reasons** showing:
-  - Book price vs adjusted price (strikethrough)
-  - Discount percentage badge
-  - Setup fee waivers
-
-**Approval Alert Example:**
+**Solution:** User data is in JWT token, not localStorage
+```javascript
+const token = localStorage.getItem('token');
+const payload = JSON.parse(atob(token.split('.')[1]));
+// Returns: { id, email, role, name, iat, exp }
 ```
-⚠️ Approval Required
-The following products have price adjustments that require approval:
 
-🎙️ Create Your Own Podcast - Full Package
-   $2,000.00 → $1,500.00  [-25%]
-```
+**Result:** `isAdmin: true` now correctly detected for admin users
 
 ---
 
-### 4. Email Content Enhancements - COMPLETE
+### 4. Sales Rep Filter & View Toggle - COMPLETE
 
-**New Order Submitted Email includes:**
-- Brand bubbles at top
-- Category bubbles with counts
-- Contract period (start → end dates)
-- Product details table:
-  - Product name with category icon
-  - Monthly price
-  - Setup fee
-- Monthly Total + Setup Fees + Contract Value grid
+**Added to Orders page:**
+- Sales Rep dropdown (admin only) - filter by sales associate
+- Sections/Table toggle buttons
+- `orderSections` computed grouping orders by status
+- `viewMode` state ('sections' or 'table')
+
+**Files Changed:** `OrderList.jsx`
 
 ---
 
-## 📁 Files Created/Modified
+### 5. Kill/Change Orders Show Parent Products - COMPLETE
 
-### New Files
-| File | Purpose |
-|------|---------|
-| `EMAIL_DESIGN_SYSTEM.md` | Universal email principles documentation |
+**Problem:** Kill orders showed "0 products" because they don't have their own items
 
-### Modified Files
+**Solution:** Query now fetches parent order's items:
+```sql
+COALESCE(item_stats.items_json, parent_item_stats.items_json) as items
+```
+
+**Files Changed:** `order.js`
+
+---
+
+### 6. Server Fixes - COMPLETE
+
+**Fixed SQL errors:**
+- `o.created_by` → `o.submitted_by` in sales performance report
+- Same fix in leaderboard report
+
+**Files Changed:** `server.js`
+
+---
+
+## ⏳ Partially Complete
+
+### Sections View Rendering
+- ✅ Toggle buttons visible
+- ✅ `orderSections` grouping logic ready
+- ✅ `viewMode` state working
+- ❌ Sectioned view JSX not fully implemented (still shows table in both modes)
+
+**Next Step:** Add the conditional rendering for `viewMode === 'sections'`
+
+---
+
+## 📝 Files Modified
+
 | File | Changes |
 |------|---------|
-| `email-service.js` | All subject lines, brand extraction, category bubbles, product details |
-| `OrderList.jsx` | Brand column, category bubbles, approval reasons, removed order numbers |
-| `ClientSigningPage.jsx` | Stripe Financial Connections for ACH |
-| `server.js` | New ACH setup-intent endpoint, updated ACH payment-method endpoint |
+| `email-service.js` | Logging infrastructure, `initEmailLogging()`, database logging |
+| `server.js` | Email dashboard API, test endpoint, SQL fixes |
+| `order.js` | Auto-send on approval, parent order items for kill/change |
+| `OrderList.jsx` | JWT user detection, sales rep filter, view toggle, sections grouping |
 
 ---
 
-## 🗄️ Database Fields Used
+## 🗄️ Database Changes
 
-### order_items table (for approval display)
+### email_logs Table Additions
 ```sql
-book_price          -- Original product price from catalog
-book_setup_fee      -- Original setup fee from catalog  
-unit_price          -- Adjusted price (what client pays)
-setup_fee           -- Adjusted setup fee
-discount_percent    -- Discount percentage applied
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS email_type VARCHAR(50);
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS order_id UUID REFERENCES orders(id);
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES invoices(id);
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP;
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS clicked_at TIMESTAMP;
+ALTER TABLE email_logs ADD COLUMN IF NOT EXISTS metadata JSONB;
 ```
-
-These fields enable showing: `$2,000 → $1,500 [-25%]`
 
 ---
 
 ## 🎯 Next Session Goals
 
-### 1. Email System Verification
-- Test all email types with real orders
-- Verify brand bubbles appear in all emails
-- Ensure `order.items` is populated when emails are triggered
+### 1. Complete Sections View (Priority)
+Add the JSX for sectioned view:
+```jsx
+{viewMode === 'sections' ? (
+  <div>
+    {Object.entries(orderSections).map(([key, section]) => (
+      // Section header with color
+      // Table of orders in that section
+    ))}
+  </div>
+) : (
+  // Existing table view
+)}
+```
 
-### 2. Role-Based Dashboards
-Create custom dashboards for each user type:
+### 2. Test Email Delivery
+- Use `/api/email/test` endpoint to verify Postmark
+- Check email dashboard for delivery stats
+- Verify Lalaine receives emails
 
-| User | Dashboard Focus |
-|------|-----------------|
-| Justin & Mamie | Macro - All metrics, team performance |
-| Bill | Radio - WSIC Broadcast, programming |
-| Lalaine | Operational - Action items, processing queue |
-| Erin | Events - LKN Woman events, calendar |
-| Sales Associates | Personal - Their clients, pipeline, commissions |
-
-### 3. Continue Order Testing
-- Complete signing flow
-- Commission auto-generation
-- Change/Kill orders
+### 3. Data Cleanup (Optional)
+- Identify orders with no items
+- Either delete test orders or add placeholder items
 
 ---
 
@@ -170,24 +176,20 @@ Create custom dashboards for each user type:
 ```cmd
 cd simplifi-reports
 
-REM Email service
+REM Backend files
+del backend\server.js
+del backend\routes\order.js
 del backend\services\email-service.js
+copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
+copy "C:\Users\WSIC BILLING\Downloads\order.js" backend\routes\order.js
 copy "C:\Users\WSIC BILLING\Downloads\email-service.js" backend\services\email-service.js
 
-REM Orders page
+REM Frontend
 del frontend\src\components\OrderList.jsx
 copy "C:\Users\WSIC BILLING\Downloads\OrderList.jsx" frontend\src\components\OrderList.jsx
 
-REM Client signing (ACH fix)
-del frontend\src\components\ClientSigningPage.jsx
-copy "C:\Users\WSIC BILLING\Downloads\ClientSigningPage.jsx" frontend\src\components\ClientSigningPage.jsx
-
-REM Server (ACH endpoints)
-del backend\server.js
-copy "C:\Users\WSIC BILLING\Downloads\server.js" backend\server.js
-
 git add -A
-git commit -m "Email design system, orders page bubbles, ACH Financial Connections"
+git commit -m "Email logging, auto-send, orders page improvements"
 git push origin main
 ```
 
@@ -195,29 +197,39 @@ git push origin main
 
 ## 📚 Files for Next Chat
 
-### Required Documentation
-1. `NEW_CHAT_PROMPT.md` - Updated context
-2. `ROADMAP.md` - Dashboard priorities
-3. `SESSION_SUMMARY.md` - This file
-4. `EMAIL_DESIGN_SYSTEM.md` - Email principles
+### Required
+1. `NEW_CHAT_PROMPT.md` - Updated with orders page focus
+2. `OrderList.jsx` - For sections view implementation
 
-### Code Files
-- `App.jsx` - For dashboard customization
-- `server.js` - For backend reference
-- `email-service.js` - For email fine-tuning
-- `OrderList.jsx` - For orders page reference
+### For Reference
+- `order.js` - Backend orders route
+- `server.js` - If email work needed
 
 ---
 
-## 🔐 Security Improvements
+## 🔍 Debugging Notes
 
-### Anti-Phishing Measures
-- Order numbers removed from all emails
-- Consistent visual format (brand bubbles, category icons)
-- Standard subject line format
-- Team training point: "We NEVER use order numbers in emails"
+### User Detection in OrderList.jsx
+```javascript
+// This is how user data is accessed (NOT localStorage.user)
+const token = localStorage.getItem('token');
+const payload = JSON.parse(atob(token.split('.')[1]));
+// payload.email, payload.role, payload.id, payload.name
+```
 
-### ACH Security
-- Bank verification via Stripe Financial Connections
-- No manual routing/account number handling
-- Instant verification via customer's online banking
+### Orders with No Products
+Some orders show "0 products" because:
+1. Test orders created without adding products
+2. Kill orders whose parent also has no products
+This is a **data issue**, not a code bug.
+
+### Email Debugging
+Check Railway logs for:
+```
+[Email] Attempting to send "Subject" to email@example.com
+[Email] ✓ Sent successfully: abc123 to email@example.com
+```
+Or:
+```
+[Email] ✗ Failed to send: Error message
+```

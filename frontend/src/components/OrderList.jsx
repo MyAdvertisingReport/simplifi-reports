@@ -862,7 +862,182 @@ export default function OrderList() {
             </a>
           )}
         </div>
+      ) : viewMode === 'sections' ? (
+        /* ========== SECTIONS VIEW ========== */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {Object.entries(orderSections).map(([key, section]) => {
+            if (section.orders.length === 0) return null;
+            return (
+              <div key={key} style={{
+                background: 'white',
+                borderRadius: '12px',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                overflow: 'hidden'
+              }}>
+                {/* Section Header */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '16px 20px',
+                  backgroundColor: section.bgColor,
+                  borderBottom: `2px solid ${section.color}`
+                }}>
+                  <div>
+                    <h3 style={{ 
+                      margin: 0, 
+                      fontSize: '16px', 
+                      fontWeight: '600',
+                      color: '#1e293b'
+                    }}>
+                      {section.title}
+                    </h3>
+                    <p style={{ 
+                      margin: '4px 0 0', 
+                      fontSize: '13px', 
+                      color: '#64748b' 
+                    }}>
+                      {section.description}
+                    </p>
+                  </div>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: '28px',
+                    height: '28px',
+                    padding: '0 10px',
+                    backgroundColor: section.color,
+                    color: 'white',
+                    borderRadius: '14px',
+                    fontSize: '13px',
+                    fontWeight: '600'
+                  }}>
+                    {section.orders.length}
+                  </span>
+                </div>
+
+                {/* Section Table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Client</th>
+                        <th style={styles.th}>Brands</th>
+                        <th style={styles.th}>Contract Period</th>
+                        <th style={styles.th}>Products</th>
+                        <th style={styles.th}>Value</th>
+                        <th style={styles.th}>Sales Rep</th>
+                        <th style={styles.th}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {section.orders.map(order => {
+                        const brands = getOrderBrands(order.items);
+                        const cats = getOrderCategories(order.items);
+                        return (
+                          <tr key={order.id} style={styles.tr}>
+                            <td style={styles.td}>
+                              <span style={styles.clientName}>{order.client_name || 'Unknown Client'}</span>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                {brands.length > 0 ? brands.map((brand, idx) => (
+                                  <span key={idx} style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    padding: '3px 8px',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    backgroundColor: '#1e3a8a',
+                                    color: 'white',
+                                    borderRadius: '6px',
+                                  }}>
+                                    {brand.name}
+                                  </span>
+                                )) : (
+                                  <span style={{ color: '#9ca3af', fontSize: '12px' }}>—</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={styles.dateCell}>
+                                <span>{formatDate(order.contract_start_date)}</span>
+                                <span style={styles.dateSeparator}>→</span>
+                                <span>{formatDate(order.contract_end_date)}</span>
+                              </div>
+                              <span style={styles.termMonths}>
+                                {order.term_months === 1 ? 'One-Time' : `${order.term_months} months`}
+                              </span>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <span style={styles.productCount}>
+                                  {order.item_count || order.items?.length || 0} products
+                                </span>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                  {cats.slice(0, 3).map((cat, idx) => {
+                                    const catStyle = getCategoryStyle(cat.name);
+                                    return (
+                                      <span key={idx} style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '2px',
+                                        padding: '2px 6px',
+                                        fontSize: '10px',
+                                        fontWeight: '500',
+                                        backgroundColor: catStyle.bg,
+                                        color: catStyle.color,
+                                        borderRadius: '4px',
+                                      }}>
+                                        {catStyle.icon} {cat.count}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={styles.valueCell}>
+                                <span style={styles.totalValue}>{formatCurrency(order.total_value)}</span>
+                                {order.term_months > 1 && order.monthly_total && (
+                                  <span style={styles.monthlyValue}>{formatCurrency(order.monthly_total)}/mo</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <span style={styles.salesRep}>{order.submitted_by_name || '—'}</span>
+                            </td>
+                            <td style={styles.td}>
+                              <div style={styles.actions}>
+                                <button
+                                  onClick={() => fetchOrderDetails(order.id)}
+                                  style={styles.actionButton}
+                                  title="View Details"
+                                >
+                                  <Icons.Eye />
+                                </button>
+                                <a
+                                  href={`/orders/${order.id}/edit`}
+                                  style={styles.actionButton}
+                                  title="Edit Order"
+                                >
+                                  <Icons.Edit />
+                                </a>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
+        /* ========== TABLE VIEW ========== */
         <div style={styles.tableCard}>
           <div style={styles.tableWrapper}>
             <table style={styles.table}>
