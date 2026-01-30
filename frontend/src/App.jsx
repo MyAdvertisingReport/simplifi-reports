@@ -5628,21 +5628,47 @@ function ClientDetailPage({ publicMode = false }) {
               </div>
               <div style={{ padding: '1rem 1.25rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
+                  <div 
+                    onClick={() => !clientViewMode && setShowEditModal(true)}
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      padding: '0.75rem', 
+                      background: '#f9fafb', 
+                      borderRadius: '0.5rem',
+                      cursor: clientViewMode ? 'default' : 'pointer',
+                      transition: 'background 0.15s ease'
+                    }}
+                    onMouseOver={(e) => !clientViewMode && (e.currentTarget.style.background = '#f3f4f6')}
+                    onMouseOut={(e) => !clientViewMode && (e.currentTarget.style.background = '#f9fafb')}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <div style={{ width: '32px', height: '32px', borderRadius: '0.375rem', background: '#0d9488', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Target size={16} color="white" />
                       </div>
-                      <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Simpli.fi</span>
+                      <div>
+                        <span style={{ fontSize: '0.875rem', fontWeight: 500, display: 'block' }}>Simpli.fi</span>
+                        {(client?.simplifi_org_id || client?.simpli_fi_client_id) && (
+                          <span style={{ fontSize: '0.6875rem', color: '#6b7280' }}>
+                            Org ID: {client.simplifi_org_id || client.simpli_fi_client_id}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    {client?.simplifi_org_id ? (
+                    {(client?.simplifi_org_id || client?.simpli_fi_client_id) ? (
                       <span style={{ padding: '0.25rem 0.5rem', background: '#dcfce7', color: '#166534', borderRadius: '0.25rem', fontSize: '0.6875rem', fontWeight: 600 }}>
                         CONNECTED
                       </span>
                     ) : (
-                      <span style={{ padding: '0.25rem 0.5rem', background: '#f3f4f6', color: '#6b7280', borderRadius: '0.25rem', fontSize: '0.6875rem', fontWeight: 600 }}>
-                        NOT LINKED
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {!clientViewMode && (
+                          <span style={{ fontSize: '0.6875rem', color: '#6b7280' }}>Click to link →</span>
+                        )}
+                        <span style={{ padding: '0.25rem 0.5rem', background: '#fef3c7', color: '#92400e', borderRadius: '0.25rem', fontSize: '0.6875rem', fontWeight: 600 }}>
+                          NOT LINKED
+                        </span>
+                      </div>
                     )}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
@@ -11159,6 +11185,37 @@ function EditClientForm({ client, onSave, onCancel }) {
     simplifiOrgId: client?.simpli_fi_client_id || client?.simplifi_org_id || ''
   });
   const [saving, setSaving] = useState(false);
+  
+  // Simpli.fi organization browsing
+  const [simplifiOrgs, setSimplifiOrgs] = useState([]);
+  const [loadingOrgs, setLoadingOrgs] = useState(false);
+  const [showOrgBrowser, setShowOrgBrowser] = useState(false);
+  const [orgSearchTerm, setOrgSearchTerm] = useState('');
+  
+  // Load Simpli.fi organizations when browser is opened
+  const loadSimplifiOrgs = async () => {
+    setLoadingOrgs(true);
+    try {
+      const orgs = await api.get('/api/simplifi/organizations');
+      setSimplifiOrgs(orgs.organizations || orgs || []);
+    } catch (err) {
+      console.error('Failed to load Simpli.fi organizations:', err);
+      setSimplifiOrgs([]);
+    }
+    setLoadingOrgs(false);
+  };
+  
+  useEffect(() => {
+    if (showOrgBrowser && simplifiOrgs.length === 0) {
+      loadSimplifiOrgs();
+    }
+  }, [showOrgBrowser]);
+  
+  // Filter organizations by search term
+  const filteredOrgs = simplifiOrgs.filter(org => 
+    org.name?.toLowerCase().includes(orgSearchTerm.toLowerCase()) ||
+    String(org.id).includes(orgSearchTerm)
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -11366,13 +11423,13 @@ function EditClientForm({ client, onSave, onCancel }) {
         </h4>
         <div style={{ 
           padding: '1rem', 
-          background: client?.simpli_fi_client_id || client?.simplifi_org_id ? '#f0fdf4' : '#fef3c7', 
+          background: formData.simplifiOrgId ? '#f0fdf4' : '#fef3c7', 
           borderRadius: '0.5rem', 
-          border: `1px solid ${client?.simpli_fi_client_id || client?.simplifi_org_id ? '#86efac' : '#fcd34d'}`,
+          border: `1px solid ${formData.simplifiOrgId ? '#86efac' : '#fcd34d'}`,
           marginBottom: '0.75rem'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            {client?.simpli_fi_client_id || client?.simplifi_org_id ? (
+            {formData.simplifiOrgId ? (
               <>
                 <CheckCircle size={16} style={{ color: '#16a34a' }} />
                 <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#166534' }}>
@@ -11383,38 +11440,163 @@ function EditClientForm({ client, onSave, onCancel }) {
               <>
                 <AlertCircle size={16} style={{ color: '#d97706' }} />
                 <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#92400e' }}>
-                  Not Connected - Enter Simpli.fi Org ID to enable programmatic reports
+                  Not Connected - Link a Simpli.fi Organization to enable reports
                 </span>
               </>
             )}
           </div>
-          {(client?.simpli_fi_client_id || client?.simplifi_org_id) && (
+          {formData.simplifiOrgId && (
             <p style={{ fontSize: '0.75rem', color: '#166534', margin: 0 }}>
-              Current Org ID: {client.simpli_fi_client_id || client.simplifi_org_id}
+              Organization ID: {formData.simplifiOrgId}
             </p>
           )}
         </div>
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
-            Simpli.fi Organization ID
-          </label>
-          <input 
-            type="text" 
-            value={formData.simplifiOrgId} 
-            onChange={(e) => setFormData({...formData, simplifiOrgId: e.target.value})}
-            placeholder="e.g., 12345"
-            style={{ 
-              width: '100%', 
-              padding: '0.625rem', 
-              border: '1px solid #d1d5db', 
+        
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
+              Simpli.fi Organization ID
+            </label>
+            <input 
+              type="text" 
+              value={formData.simplifiOrgId} 
+              onChange={(e) => setFormData({...formData, simplifiOrgId: e.target.value})}
+              placeholder="e.g., 12345"
+              style={{ 
+                width: '100%', 
+                padding: '0.625rem', 
+                border: '1px solid #d1d5db', 
+                borderRadius: '0.5rem',
+                fontFamily: 'monospace'
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowOrgBrowser(!showOrgBrowser)}
+            style={{
+              padding: '0.625rem 1rem',
+              background: showOrgBrowser ? '#1e3a8a' : 'white',
+              color: showOrgBrowser ? 'white' : '#374151',
+              border: '1px solid #d1d5db',
               borderRadius: '0.5rem',
-              fontFamily: 'monospace'
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              whiteSpace: 'nowrap'
             }}
-          />
-          <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
-            Find this ID in your Simpli.fi dashboard URL: app.simpli.fi/organizations/<strong>[ID]</strong>/campaigns
-          </p>
+          >
+            <Search size={14} />
+            Browse
+          </button>
+          {formData.simplifiOrgId && (
+            <button
+              type="button"
+              onClick={() => setFormData({...formData, simplifiOrgId: ''})}
+              style={{
+                padding: '0.625rem',
+                background: '#fee2e2',
+                color: '#dc2626',
+                border: '1px solid #fecaca',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+              title="Unlink organization"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
+        
+        {/* Organization Browser Panel */}
+        {showOrgBrowser && (
+          <div style={{ 
+            marginTop: '0.75rem', 
+            border: '1px solid #e5e7eb', 
+            borderRadius: '0.5rem',
+            background: 'white',
+            maxHeight: '300px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ padding: '0.75rem', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+              <input
+                type="text"
+                value={orgSearchTerm}
+                onChange={(e) => setOrgSearchTerm(e.target.value)}
+                placeholder="Search organizations..."
+                style={{
+                  width: '100%',
+                  padding: '0.5rem',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '0.375rem',
+                  fontSize: '0.875rem'
+                }}
+              />
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+              {loadingOrgs ? (
+                <div style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>
+                  Loading organizations...
+                </div>
+              ) : filteredOrgs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '1rem', color: '#6b7280' }}>
+                  {simplifiOrgs.length === 0 ? 'No organizations found' : 'No matches found'}
+                </div>
+              ) : (
+                filteredOrgs.map(org => (
+                  <div
+                    key={org.id}
+                    onClick={() => {
+                      setFormData({...formData, simplifiOrgId: String(org.id)});
+                      setShowOrgBrowser(false);
+                      setOrgSearchTerm('');
+                    }}
+                    style={{
+                      padding: '0.625rem 0.75rem',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: String(org.id) === formData.simplifiOrgId ? '#eff6ff' : 'transparent',
+                      border: String(org.id) === formData.simplifiOrgId ? '1px solid #bfdbfe' : '1px solid transparent',
+                      marginBottom: '0.25rem'
+                    }}
+                    onMouseOver={(e) => {
+                      if (String(org.id) !== formData.simplifiOrgId) {
+                        e.currentTarget.style.background = '#f9fafb';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (String(org.id) !== formData.simplifiOrgId) {
+                        e.currentTarget.style.background = 'transparent';
+                      }
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 500 }}>{org.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>ID: {org.id}</div>
+                    </div>
+                    {String(org.id) === formData.simplifiOrgId && (
+                      <CheckCircle size={16} style={{ color: '#2563eb' }} />
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        
+        <p style={{ margin: '0.5rem 0 0', fontSize: '0.75rem', color: '#6b7280' }}>
+          Use Browse to select from available organizations, or manually enter the ID from your Simpli.fi dashboard URL.
+        </p>
       </div>
       
       {/* Actions */}
