@@ -3844,7 +3844,7 @@ function ClientDetailPage({ publicMode = false }) {
   };
 
   useEffect(() => { loadClient(); }, [slug]);
-  useEffect(() => { if (client?.simplifi_org_id) { loadData(); } }, [client]);
+  useEffect(() => { if (client?.simplifi_org_id || client?.simpli_fi_client_id) { loadData(); } }, [client]);
   
   // Load orders when Orders tab is selected
   useEffect(() => {
@@ -3967,7 +3967,8 @@ function ClientDetailPage({ publicMode = false }) {
   };
 
   const loadData = async () => {
-    if (!client?.simplifi_org_id) return;
+    const orgId = client?.simplifi_org_id || client?.simpli_fi_client_id;
+    if (!orgId) return;
     setStatsLoading(true);
     try {
       if (publicMode) {
@@ -3995,7 +3996,7 @@ function ClientDetailPage({ publicMode = false }) {
       } else {
         // Use authenticated endpoints
         // Get all campaigns WITH ADS INCLUDED (using include parameter)
-        const campaignsData = await api.get(`/api/simplifi/organizations/${client.simplifi_org_id}/campaigns-with-ads`);
+        const campaignsData = await api.get(`/api/simplifi/organizations/${orgId}/campaigns-with-ads`);
         const allCampaigns = campaignsData.campaigns || [];
         setCampaigns(allCampaigns);
 
@@ -4055,7 +4056,7 @@ function ClientDetailPage({ publicMode = false }) {
 
       // Get stats by campaign
       const statsData = await api.get(
-        `/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byCampaign=true`
+        `/api/simplifi/organizations/${orgId}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byCampaign=true`
       );
       
       // Create a map of campaign stats by ID (normalize CTR)
@@ -4067,7 +4068,7 @@ function ClientDetailPage({ publicMode = false }) {
 
       // Get daily stats for the charts (aggregated across all campaigns)
       const dailyData = await api.get(
-        `/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byDay=true`
+        `/api/simplifi/organizations/${orgId}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byDay=true`
       );
       setDailyStats((dailyData.campaign_stats || []).map(d => ({
         ...d,
@@ -4081,7 +4082,7 @@ function ClientDetailPage({ publicMode = false }) {
       if (activeCampaignIds.length > 0) {
         // Get ad stats
         const adStatsData = await api.get(
-          `/api/simplifi/organizations/${client.simplifi_org_id}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byAd=true`
+          `/api/simplifi/organizations/${orgId}/stats?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}&byAd=true`
         );
         
         // Merge ad stats with ad details from campaigns, filter to active campaigns, and dedupe by ad_id
@@ -4124,8 +4125,9 @@ function ClientDetailPage({ publicMode = false }) {
   const loadEnhancedData = async () => {
     // Compute active campaigns inside the function to avoid closure issues
     const activeOnes = campaigns.filter(c => c.status?.toLowerCase() === 'active');
+    const orgId = client?.simplifi_org_id || client?.simpli_fi_client_id;
     
-    if (!client?.simplifi_org_id || activeOnes.length === 0) {
+    if (!orgId || activeOnes.length === 0) {
       setEnhancedDataLoading(false);
       return;
     }
@@ -4141,8 +4143,8 @@ function ClientDetailPage({ publicMode = false }) {
       const devicePromises = activeOnes.slice(0, 5).map(async (campaign) => {
         try {
           const endpoint = publicMode 
-            ? `/api/public/report-center/${client.simplifi_org_id}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
-            : `/api/simplifi/organizations/${client.simplifi_org_id}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
+            ? `/api/public/report-center/${orgId}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`
+            : `/api/simplifi/organizations/${orgId}/campaigns/${campaign.id}/device-breakdown?startDate=${dateRange.startDate}&endDate=${dateRange.endDate}`;
           
           console.log(`[DEVICE] Fetching device data for campaign ${campaign.id}`);
           
@@ -4183,7 +4185,7 @@ function ClientDetailPage({ publicMode = false }) {
 
   // Load enhanced data after campaigns are loaded
   useEffect(() => {
-    if (campaigns.length > 0 && client?.simplifi_org_id) {
+    if (campaigns.length > 0 && (client?.simplifi_org_id || client?.simpli_fi_client_id)) {
       loadEnhancedData();
     }
   }, [campaigns, client]);
@@ -4608,7 +4610,7 @@ function ClientDetailPage({ publicMode = false }) {
         <InternalNotesSection clientId={client?.id} isCollapsible={true} />
       )}
 
-      {!client?.simplifi_org_id ? (
+      {!(client?.simplifi_org_id || client?.simpli_fi_client_id) ? (
         <div style={{ background: 'white', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center', border: '1px solid #e5e7eb' }}>
           <Target size={48} style={{ color: '#d1d5db', marginBottom: '1rem' }} />
           <h3>No Simpli.fi Organization Linked</h3>
@@ -5059,10 +5061,10 @@ function ClientDetailPage({ publicMode = false }) {
               
               case 'pixel':
                 // Only show pixel section if org ID exists and user is logged in (not client view)
-                if (!client?.simplifi_org_id || clientViewMode) return null;
+                if (!(client?.simplifi_org_id || client?.simpli_fi_client_id) || clientViewMode) return null;
                 return (
                   <DraggableReportSection {...sectionProps} title="Retargeting Pixel" icon={Radio} iconColor="#0d9488">
-                    <PixelSection orgId={client.simplifi_org_id} clientName={client.name} />
+                    <PixelSection orgId={client.simplifi_org_id || client.simpli_fi_client_id} clientName={client.name} />
                   </DraggableReportSection>
                 );
               
