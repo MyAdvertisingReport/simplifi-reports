@@ -16516,7 +16516,7 @@ function CommissionsPage() {
       ) : (
         <>
           {/* APPROVALS TAB - Admin Only */}
-          {activeTab === 'approvals' && user?.role === 'admin' && (
+          {activeTab === 'approvals' && isAdminUser(user) && (
             <div>
               {pendingCommissions.length === 0 ? (
                 <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e5e7eb', padding: '3rem', textAlign: 'center' }}>

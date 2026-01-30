@@ -2355,7 +2355,12 @@ router.post('/change', async (req, res) => {
       management_approval_confirmed,
       signature,
       change_summary,
-      items
+      items,
+      // Contract term update fields
+      update_contract_term,
+      new_term_months,
+      new_start_date,
+      new_end_date
     } = req.body;
 
     if (!parent_order_id) {
@@ -2396,6 +2401,11 @@ router.post('/change', async (req, res) => {
 
     let submitted_by = req.user?.id || null;
 
+    // Determine contract dates - use new values if updating term, otherwise parent values
+    const finalStartDate = update_contract_term && new_start_date ? new_start_date : parentOrder.contract_start_date;
+    const finalEndDate = update_contract_term && new_end_date ? new_end_date : parentOrder.contract_end_date;
+    const finalTermMonths = update_contract_term && new_term_months ? parseInt(new_term_months) : parentOrder.term_months;
+
     // Create change order
     const orderResult = await client.query(
       `INSERT INTO orders (
@@ -2412,9 +2422,8 @@ router.post('/change', async (req, res) => {
       ) RETURNING *`,
       [
         changeOrderNumber, parentOrder.client_id, parent_order_id,
-        parentOrder.contract_start_date, parentOrder.contract_end_date,
-        parentOrder.term_months, monthly_total,
-        (monthly_total * (parentOrder.term_months || 1)) + setup_fees_total,
+        finalStartDate, finalEndDate, finalTermMonths, monthly_total,
+        (monthly_total * (finalTermMonths || 1)) + setup_fees_total,
         notes, effective_date, management_approval_confirmed,
         JSON.stringify(change_summary), submitted_by, signature
       ]
@@ -2453,7 +2462,27 @@ router.post('/change', async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error creating change order:', error);
-    res.status(500).json({ error: 'Failed to create change order' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      constraint: error.constraint
+    });
+    
+    // Return more helpful error message
+    let errorMessage = 'Failed to create change order';
+    if (error.code === '23505') {
+      errorMessage = 'A change order with this number already exists';
+    } else if (error.code === '23503') {
+      errorMessage = 'Referenced record not found (invalid client, product, or parent order)';
+    } else if (error.code === '22P02') {
+      errorMessage = 'Invalid data format provided';
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
   } finally {
     client.release();
   }
@@ -2789,9 +2818,31 @@ router.post('/payment-method/card', async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating card payment method:', error);
+    
+    // Provide more helpful error messages based on Stripe error codes
+    let errorMessage = error.message || 'Failed to create payment method';
+    
+    if (error.code === 'card_declined') {
+      errorMessage = 'Card was declined. Please try a different card.';
+    } else if (error.code === 'invalid_card_number' || error.code === 'incorrect_number') {
+      errorMessage = 'Invalid card number. Please check and try again.';
+    } else if (error.code === 'expired_card') {
+      errorMessage = 'Card has expired. Please use a different card.';
+    } else if (error.code === 'incorrect_cvc') {
+      errorMessage = 'Incorrect CVC. Please check and try again.';
+    } else if (error.code === 'invalid_expiry_month' || error.code === 'invalid_expiry_year') {
+      errorMessage = 'Invalid expiration date. Please check and try again.';
+    } else if (error.type === 'StripeCardError') {
+      errorMessage = `Card error: ${error.message}`;
+    } else if (error.message?.includes('raw card data')) {
+      console.error('[STRIPE] Raw card data API may need to be enabled in Stripe dashboard');
+      errorMessage = 'Payment processing configuration issue. Please contact support.';
+    }
+    
     res.status(400).json({ 
-      error: error.message || 'Failed to create payment method',
+      error: errorMessage,
       code: error.code,
+      type: error.type,
     });
   }
 });

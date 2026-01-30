@@ -226,6 +226,9 @@ export default function ChangeOrderForm() {
 
     setSaving(true);
     try {
+      // Calculate effective term months for contract renewal
+      const effectiveTermMonths = isCustomTerm ? parseInt(customTerm) : parseInt(newTermMonths);
+      
       const changeOrderData = {
         parent_order_id: selectedOrder.id,
         order_type: 'change',
@@ -233,6 +236,11 @@ export default function ChangeOrderForm() {
         notes: changeNotes,
         management_approval_confirmed: managementApproved,
         signature: signature.trim(),
+        // Contract term update fields
+        update_contract_term: updateContractTerm,
+        new_term_months: updateContractTerm ? effectiveTermMonths : null,
+        new_start_date: updateContractTerm ? newStartDate : null,
+        new_end_date: updateContractTerm ? newEndDate : null,
         change_summary: {
           original_monthly: changeSummary.originalMonthly,
           new_monthly: changeSummary.newMonthly,
@@ -240,6 +248,13 @@ export default function ChangeOrderForm() {
           added: changeSummary.addedItems.map(i => ({ name: i.product_name, price: i.unit_price })),
           removed: changeSummary.removedItems.map(i => ({ name: i.product_name, price: i.unit_price })),
           modified: changeSummary.modifiedItems.map(i => ({ name: i.product_name, old: i.originalPrice, new: i.unit_price })),
+          // Include term changes in summary if updating contract
+          term_change: updateContractTerm ? {
+            old_term: selectedOrder.term_months,
+            new_term: effectiveTermMonths,
+            new_start: newStartDate,
+            new_end: newEndDate,
+          } : null,
         },
         items: newItems.filter(i => !i.isRemoved).map(item => ({
           entity_id: item.entity_id,
